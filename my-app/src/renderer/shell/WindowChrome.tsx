@@ -4,11 +4,10 @@
  * Subscribes to IPC events and keeps local state in sync.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { TabStrip } from './TabStrip';
 import { NavButtons } from './NavButtons';
 import { URLBar } from './URLBar';
-import { RecentlyClosedDropdown } from './RecentlyClosedDropdown';
 import { BookmarksBar } from './BookmarksBar';
 import { BookmarkDialog } from './BookmarkDialog';
 import { FindBar } from './FindBar';
@@ -81,61 +80,12 @@ declare const electronAPI: {
 };
 
 // ---------------------------------------------------------------------------
-// HistoryButton — toolbar button that anchors the RecentlyClosedDropdown.
-// Clock-face glyph, sized to match NavButtons (28x28).
-// ---------------------------------------------------------------------------
-interface HistoryButtonProps {
-  open: boolean;
-  onToggle: () => void;
-}
-
-function HistoryButton({ open, onToggle }: HistoryButtonProps): React.ReactElement {
-  return (
-    <button
-      className="nav-buttons__btn history-button"
-      aria-label="Recently closed tabs"
-      aria-expanded={open}
-      onClick={onToggle}
-      title="Recently closed tabs"
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 16 16"
-        fill="none"
-        aria-hidden="true"
-      >
-        <circle
-          cx="8"
-          cy="8"
-          r="6"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill="none"
-        />
-        <path
-          d="M8 4.5V8l2.5 1.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-        />
-      </svg>
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // WindowChrome
 // ---------------------------------------------------------------------------
 export function WindowChrome(): React.ReactElement {
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [urlBarFocused, setUrlBarFocused] = useState(false);
-  const [closedTabs, setClosedTabs] = useState<ClosedTabRecord[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const historyAnchorRef = useRef<HTMLDivElement>(null);
 
   // Bookmarks state
   const [bookmarksTree, setBookmarksTree] = useState<PersistedBookmarks | null>(null);
@@ -169,9 +119,6 @@ export function WindowChrome(): React.ReactElement {
       console.log('[WindowChrome] Initial state loaded:', state.tabs.length, 'tabs');
       setTabs(state.tabs);
       setActiveTabId(state.activeTabId);
-    });
-    electronAPI.tabs.getClosedTabs().then((records) => {
-      setClosedTabs(records);
     });
     electronAPI.bookmarks.list().then((tree) => {
       console.log('[WindowChrome] Bookmarks loaded:', tree.roots[0].children?.length ?? 0, 'bar items');
@@ -213,10 +160,6 @@ export function WindowChrome(): React.ReactElement {
       },
     );
 
-    const unsubClosedTabs = electronAPI.on.closedTabsUpdated((records) => {
-      setClosedTabs(records);
-    });
-
     const unsubFocusUrl = electronAPI.on.focusUrlBar(() => {
       setUrlBarFocused(true);
     });
@@ -251,7 +194,6 @@ export function WindowChrome(): React.ReactElement {
       unsubTabUpdated();
       unsubTabActivated();
       unsubFaviconUpdated();
-      unsubClosedTabs();
       unsubFocusUrl();
       unsubTargetLost();
       unsubBookmarksUpdated();
@@ -313,18 +255,6 @@ export function WindowChrome(): React.ReactElement {
     setUrlBarFocused(false);
   }, []);
 
-  const handleHistoryToggle = useCallback(() => {
-    setHistoryOpen((v) => !v);
-  }, []);
-
-  const handleHistoryClose = useCallback(() => {
-    setHistoryOpen(false);
-  }, []);
-
-  const handleRestoreClosed = useCallback((index: number) => {
-    electronAPI.tabs.reopenClosedAt(index);
-  }, []);
-
   const handleStarClick = useCallback(() => {
     if (!activeUrl) return;
     setBookmarkDialogOpen(true);
@@ -352,16 +282,6 @@ export function WindowChrome(): React.ReactElement {
 
       {/* Toolbar row: history + nav + URL bar */}
       <div className="window-chrome__toolbar">
-        <div className="window-chrome__history-anchor" ref={historyAnchorRef}>
-          <HistoryButton open={historyOpen} onToggle={handleHistoryToggle} />
-          <RecentlyClosedDropdown
-            open={historyOpen}
-            onClose={handleHistoryClose}
-            entries={closedTabs}
-            onRestore={handleRestoreClosed}
-          />
-        </div>
-
         <NavButtons
           canGoBack={activeTab?.canGoBack ?? false}
           canGoForward={activeTab?.canGoForward ?? false}
