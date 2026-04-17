@@ -109,13 +109,11 @@ tasks:
     cmds:
       - docker ps --filter "name=agent-"
 
-  agent:logs:
-    desc: Tail logs for a specific agent task container (usage: task agent:logs TASK=container-name)
-    vars:
-      TASK: '{{.TASK}}'
-    cmds:
-      - docker logs -f "{{.TASK}}"
 
+  agent:logs:
+    desc: Tail logs for a running agent container
+    cmds:
+      - docker logs -f
   # ----- quality gates ------------------------------------------------------
 
   lint:
