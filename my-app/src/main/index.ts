@@ -210,28 +210,17 @@ app.whenReady().then(async () => {
     const engine = getEngine();
     mainLogger.info('main.pill:submit', { engine, promptLength: validatedPrompt.length });
 
-    if (engine === 'hl-inprocess') {
-      return handleHlSubmit({
-        prompt: validatedPrompt,
-        getActiveWebContents: () => tabManager?.getActiveWebContents() ?? null,
-        getApiKey: () => getApiKey({ accountEmail: account?.email }),
-      });
-    }
-
-    return handlePillSubmit({
+    return handleHlSubmit({
       prompt: validatedPrompt,
-      getActiveTabCdpUrl: async () => tabManager ? await tabManager.getActiveTabCdpUrl() : null,
-      daemonClient,
+      getCdpUrl: async () => tabManager ? await tabManager.getActiveTabCdpUrl() : null,
       getApiKey: () => getApiKey({ accountEmail: account?.email }),
     });
   });
 
-  // pill:cancel — routed via engine flag.
+  // pill:cancel — kills the Docker container for this task.
   ipcMain.handle('pill:cancel', async (_event, { task_id }: { task_id: string }) => {
-    const engine = getEngine();
-    mainLogger.info('main.pill:cancel', { engine, task_id });
-    if (engine === 'hl-inprocess') return handleHlCancel(task_id);
-    return handlePillCancel({ task_id, daemonClient });
+    mainLogger.info('main.pill:cancel', { task_id });
+    return handleHlCancel(task_id);
   });
 
   // pill:get-tabs — returns the current tab list for the palette's fuzzy search.

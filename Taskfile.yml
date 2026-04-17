@@ -96,6 +96,24 @@ tasks:
     cmds:
       - docker compose down 2>/dev/null || true
 
+  # ----- agent docker image ---------------------------------------------------
+
+  agent:build:
+    desc: Bundle hl/ agent code + build Docker image (agent-task:latest)
+    dir: "{{.APP_DIR}}/docker/agent"
+    cmds:
+      - bash build.sh
+
+  agent:ps:
+    desc: List running agent task containers
+    cmds:
+      - docker ps --filter "name=agent-" --format "table {{.Names}}\t{{.Status}}\t{{.RunningFor}}"
+
+  agent:logs:
+    desc: Tail logs for a specific agent task container (usage: task agent:logs -- <container-name>)
+    cmds:
+      - docker logs -f {{.CLI_ARGS}}
+
   # ----- quality gates ------------------------------------------------------
 
   lint:
