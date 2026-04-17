@@ -120,11 +120,10 @@ body {
   line-height: 1.4;
 }
 
-/* Keyboard focus ring on the pill input — shown inside the pill container */
+/* No focus ring on the pill input — the whole pill container already
+   communicates focus. A ring inside the pill is visually redundant and loud. */
 .pill-input:focus-visible {
-  outline: 2px solid var(--color-accent-default, #c8f135);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline: none;
 }
 
 .pill-input::placeholder {
