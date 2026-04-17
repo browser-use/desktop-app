@@ -51,12 +51,27 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // ---------------------------------------------------------------------------
+// Dev-only: isolated userData override.
+// AGB_USER_DATA_DIR lets dev scripts (`start:fresh`, `start:onboarding`) run
+// the app against a throwaway profile without touching the real account.json,
+// keychain entries, or session store. MUST be applied before any
+// `app.getPath('userData')` call — including AccountStore/KeychainStore
+// construction at module-top-level below.
+// ---------------------------------------------------------------------------
+const USER_DATA_OVERRIDE = process.env.AGB_USER_DATA_DIR;
+if (USER_DATA_OVERRIDE) {
+  app.setPath('userData', USER_DATA_OVERRIDE);
+}
+
+// ---------------------------------------------------------------------------
 // Remote debugging: MUST be called before app.whenReady()
 // ---------------------------------------------------------------------------
 app.commandLine.appendSwitch('remote-debugging-port', '0');
 mainLogger.info('main.startup', {
   msg: 'Remote debugging port set to OS-assigned (0)',
   settingsStandalone: process.env.SETTINGS_STANDALONE === '1',
+  userDataOverride: USER_DATA_OVERRIDE ?? null,
+  forceOnboarding: process.env.AGB_FORCE_ONBOARDING === '1',
 });
 
 // Register custom protocol scheme for OAuth callback
@@ -171,8 +186,9 @@ app.whenReady().then(async () => {
     return;
   }
 
-  const onboardingComplete = accountStore.isOnboardingComplete();
-  mainLogger.info('main.onboardingGate', { onboardingComplete });
+  const forceOnboarding = process.env.AGB_FORCE_ONBOARDING === '1';
+  const onboardingComplete = !forceOnboarding && accountStore.isOnboardingComplete();
+  mainLogger.info('main.onboardingGate', { onboardingComplete, forceOnboarding });
 
   if (!onboardingComplete) {
     // First launch — show onboarding instead of shell
