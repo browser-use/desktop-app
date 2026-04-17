@@ -417,3 +417,35 @@ if (process.env.DEV_MODE === '1' || process.env.NODE_ENV === 'test') {
     togglePill();
   });
 }
+
+// ---------------------------------------------------------------------------
+// DEV/TEST IPC: test:complete-onboarding
+// Writes a completed AccountStore record (bypassing OAuth) and opens the shell.
+// Only registered when NODE_ENV=test so it is never present in prod builds.
+// Used by the golden-path E2E to skip the real OAuth flow.
+// ---------------------------------------------------------------------------
+if (process.env.NODE_ENV === 'test') {
+  ipcMain.handle('test:complete-onboarding', async (_event, payload: { agent_name: string; email: string }) => {
+    mainLogger.info('main.test:complete-onboarding', {
+      msg: 'test IPC triggered onboarding completion (bypasses OAuth)',
+      agentName: payload?.agent_name,
+      email: payload?.email,
+    });
+
+    // Write a full account record so isOnboardingComplete() returns true on next launch
+    accountStore.save({
+      agent_name: payload?.agent_name ?? 'TestAgent',
+      email: payload?.email ?? 'test@example.com',
+      created_at: new Date().toISOString(),
+      onboarding_completed_at: new Date().toISOString(),
+    });
+
+    // Close onboarding window if open and open shell
+    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+      onboardingWindow.close();
+    }
+    openShellAndWire();
+
+    mainLogger.info('main.test:complete-onboarding.done', { msg: 'Shell opened, onboarding bypassed' });
+  });
+}
