@@ -26,7 +26,7 @@ import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './iden
 import { mainLogger } from './logger';
 // Track 1 — Agent wiring: daemon lifecycle + API key
 import { DaemonClient } from './daemon/client';
-import { startDaemon, stopDaemon, handlePillSubmit, handlePillCancel } from './daemonLifecycle';
+import { startDaemon, stopDaemon, handlePillSubmit, handlePillCancel, _getDaemonPid, _getRestartCount } from './daemonLifecycle';
 import { getApiKey } from './agentApiKey';
 // Track 5 — Settings
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
@@ -447,5 +447,27 @@ if (process.env.NODE_ENV === 'test') {
     openShellAndWire();
 
     mainLogger.info('main.test:complete-onboarding.done', { msg: 'Shell opened, onboarding bypassed' });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DEV/TEST IPC: test:get-daemon-pid
+  // Returns the PID of the currently running daemon child process, or null.
+  // Used by daemon-crash-recovery.spec.ts to get the PID before killing it.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('test:get-daemon-pid', () => {
+    const pid = _getDaemonPid();
+    mainLogger.info('main.test:get-daemon-pid', { pid });
+    return pid;
+  });
+
+  // ---------------------------------------------------------------------------
+  // DEV/TEST IPC: test:get-restart-count
+  // Returns the current daemon restart count from daemonLifecycle module state.
+  // Used by daemon-crash-recovery.spec.ts to assert restartCount === 1 after kill.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('test:get-restart-count', () => {
+    const count = _getRestartCount();
+    mainLogger.info('main.test:get-restart-count', { count });
+    return count;
   });
 }

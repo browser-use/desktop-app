@@ -456,6 +456,11 @@ export function _getSocketPath(): string | null {
   return currentSocketPath;
 }
 
+/** @internal For E2E tests: get current daemon process PID (null if not running) */
+export function _getDaemonPid(): number | null {
+  return daemonProcess?.pid ?? null;
+}
+
 /**
  * @internal For E2E tests only — inject a mock DaemonClient so tests can
  * synthesize agent events without a live Python daemon process.
