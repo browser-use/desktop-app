@@ -99,9 +99,9 @@ export function NamingFlow({ onNext, onBack }: NamingFlowProps): React.ReactElem
       {/* Left panel */}
       <div className="onboarding-panel-left">
         <div>
-          <h1 className="onboarding-headline">What's my name?</h1>
+          <h1 className="onboarding-headline">Name your agent</h1>
           <p className="onboarding-subhead" style={{ marginTop: 8 }}>
-            Give your companion a name. You can always change it later.
+            Pick a name. You can change it any time in Settings.
           </p>
         </div>
 

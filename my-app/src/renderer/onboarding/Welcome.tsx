@@ -74,33 +74,29 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
             style={{ display: 'block', marginBottom: 16 }}
           />
           <p className="onboarding-subhead" style={{ marginTop: 0 }}>
-            Your very own personal assistant that can help you with
+            A browser agent that acts on your behalf. Here's what it can do:
           </p>
         </div>
 
         <CapabilitiesGrid />
 
         <p className="onboarding-subhead">
-          I have{' '}
+          My name is{' '}
           <span className="name-placeholder">
-            {agentName ?? 'no name yet'}
+            {agentName ?? 'not set yet'}
           </span>
-          .
+          .{' '}
+          {!agentName && "You'll give me one in the next step."}
         </p>
-        {!agentName && (
-          <p className="onboarding-subhead" style={{ marginTop: -12 }}>
-            I'll get one when we've gotten to know each other!
-          </p>
-        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             className="cta-button"
             onClick={onNext}
             type="button"
-            aria-label="Get Started"
+            aria-label="Get started with setup"
           >
-            Get Started
+            Get started
             <span aria-hidden="true">→</span>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

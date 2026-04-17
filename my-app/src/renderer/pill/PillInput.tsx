@@ -33,7 +33,7 @@ export function PillInput({
   onSubmit,
   onEscape,
   disabled,
-  placeholder = 'Tell your agent what to do…',
+  placeholder = 'What do you need done?',
 }: PillInputProps): React.ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
 

@@ -17,7 +17,7 @@ import { KeyHint } from '../base';
 const MASCOT_WIDTH  = 48;
 const MASCOT_HEIGHT = 54;
 
-const READY_COPY = 'Ready when you are' as const;
+const READY_COPY = 'Type a task and press Enter' as const;
 
 // ---------------------------------------------------------------------------
 // Component

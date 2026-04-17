@@ -17,8 +17,8 @@ import { KeyHint } from '../base';
 const MASCOT_WIDTH  = 96;
 const MASCOT_HEIGHT = 108;
 
-const HEADING_COPY  = 'Nothing open yet' as const;
-const BODY_COPY     = 'Press Cmd+T to open a tab, or Cmd+K to ask me something.' as const;
+const HEADING_COPY  = 'No tabs open' as const;
+const BODY_COPY     = 'Open a tab or ask your agent to get started.' as const;
 
 // ---------------------------------------------------------------------------
 // Component

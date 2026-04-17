@@ -108,16 +108,23 @@ export function CharacterMascot({
   const src    = MASCOT_URLS[normalizedState];
   const altMsg = ariaLabel ?? MASCOT_ALT_LABELS[normalizedState];
 
+  // Mascot is decorative by default (right-panel visual storytelling).
+  // Pass ariaLabel explicitly to make it meaningful to screen readers.
+  const isDecorative = !ariaLabel;
+
   return (
-    <div className="mascot-stage">
+    <div
+      className="mascot-stage"
+      aria-hidden={isDecorative ? 'true' : undefined}
+      tabIndex={-1}
+    >
       <div
         className={`mascot-wrapper ${animClass}`}
         data-state={normalizedState}
-        aria-hidden="false"
       >
         <img
           src={src}
-          alt={altMsg}
+          alt={isDecorative ? '' : altMsg}
           width={width}
           height={height}
           draggable={false}

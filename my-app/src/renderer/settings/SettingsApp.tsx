@@ -616,9 +616,37 @@ function DangerZoneTab(): React.ReactElement {
 
 function SettingsInner(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<TabId>(TAB_API_KEY);
+  const navListRef = React.useRef<HTMLUListElement>(null);
 
   function handleClose(): void {
     window.settingsAPI.closeWindow();
+  }
+
+  /** Arrow-key navigation between sidebar items (ARIA tabs pattern) */
+  function handleSidebarKeyDown(e: React.KeyboardEvent<HTMLUListElement>): void {
+    const items = navListRef.current?.querySelectorAll<HTMLButtonElement>('.settings-nav-item');
+    if (!items || items.length === 0) return;
+    const currentIndex = TABS.findIndex((t) => t.id === activeTab);
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = (currentIndex + 1) % TABS.length;
+      setActiveTab(TABS[next].id);
+      items[next]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = (currentIndex - 1 + TABS.length) % TABS.length;
+      setActiveTab(TABS[prev].id);
+      items[prev]?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setActiveTab(TABS[0].id);
+      items[0]?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setActiveTab(TABS[TABS.length - 1].id);
+      items[TABS.length - 1]?.focus();
+    }
   }
 
   const content: Record<TabId, React.ReactElement> = {
@@ -636,7 +664,13 @@ function SettingsInner(): React.ReactElement {
         <div className="settings-sidebar-header">
           <span className="settings-sidebar-title">Settings</span>
         </div>
-        <ul className="settings-nav-list" role="list">
+        <ul
+          ref={navListRef}
+          className="settings-nav-list"
+          role="list"
+          onKeyDown={handleSidebarKeyDown}
+          aria-label="Settings sections"
+        >
           {TABS.map((tab) => (
             <li key={tab.id}>
               <button
@@ -644,6 +678,7 @@ function SettingsInner(): React.ReactElement {
                 className={`settings-nav-item ${activeTab === tab.id ? 'settings-nav-item--active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
                 aria-current={activeTab === tab.id ? 'page' : undefined}
+                tabIndex={activeTab === tab.id ? 0 : -1}
               >
                 {tab.label}
               </button>
