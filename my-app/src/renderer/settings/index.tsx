@@ -25,6 +25,13 @@ import { SettingsApp } from './SettingsApp';
 document.documentElement.dataset.theme = 'onboarding';
 loadFonts();
 
+window.addEventListener('error', (e) => {
+  console.error('renderer.error', { message: e.message, file: e.filename, line: e.lineno });
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('renderer.unhandledrejection', { reason: String(e.reason) });
+});
+
 // ---------------------------------------------------------------------------
 // Mount
 // ---------------------------------------------------------------------------
