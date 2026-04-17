@@ -36,6 +36,11 @@ export class NavigationController {
     this.view.webContents.reload();
   }
 
+  reloadIgnoringCache(): void {
+    console.log('[NavigationController] Hard reload (ignoring cache)');
+    this.view.webContents.reloadIgnoringCache();
+  }
+
   canGoBack(): boolean {
     return this.view.webContents.navigationHistory.canGoBack();
   }

@@ -22,6 +22,7 @@ declare const electronAPI: {
     back: (tabId: string) => Promise<void>;
     forward: (tabId: string) => Promise<void>;
     reload: (tabId: string) => Promise<void>;
+    reloadHard: (tabId: string) => Promise<void>;
     getState: () => Promise<TabManagerState>;
   };
   cdp: {
@@ -138,9 +139,16 @@ export function WindowChrome(): React.ReactElement {
     if (activeTabId) electronAPI.tabs.forward(activeTabId);
   }, [activeTabId]);
 
-  const handleReload = useCallback(() => {
-    if (activeTabId) electronAPI.tabs.reload(activeTabId);
-  }, [activeTabId]);
+  // Issue #25 — Shift-click on the reload button performs a hard reload
+  // (bypasses the HTTP cache). Plain click keeps normal reload behaviour.
+  const handleReload = useCallback(
+    (hard: boolean) => {
+      if (!activeTabId) return;
+      if (hard) electronAPI.tabs.reloadHard(activeTabId);
+      else electronAPI.tabs.reload(activeTabId);
+    },
+    [activeTabId],
+  );
 
   const handleNavigate = useCallback(
     (input: string) => {

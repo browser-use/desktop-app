@@ -44,6 +44,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     reload: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:reload', tabId),
 
+    // Issue #25 — Hard reload bypassing cache (Shift-click on reload button).
+    reloadHard: (tabId: string): Promise<void> =>
+      ipcRenderer.invoke('tabs:reload-hard', tabId),
+
     getState: (): Promise<TabManagerState> =>
       ipcRenderer.invoke('tabs:get-state'),
   },

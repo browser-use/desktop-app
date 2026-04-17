@@ -10,7 +10,8 @@ interface NavButtonsProps {
   isLoading: boolean;
   onBack: () => void;
   onForward: () => void;
-  onReload: () => void;
+  // Issue #25 — hard=true when the user shift-clicks the reload button.
+  onReload: (hard: boolean) => void;
 }
 
 export function NavButtons({
@@ -62,8 +63,8 @@ export function NavButtons({
       <button
         className="nav-buttons__btn"
         aria-label={isLoading ? 'Stop loading' : 'Reload page'}
-        onClick={onReload}
-        title={isLoading ? 'Stop (Esc)' : 'Reload (Cmd+R)'}
+        onClick={(e) => onReload(e.shiftKey)}
+        title={isLoading ? 'Stop (Esc)' : 'Reload (Cmd+R, Shift-click to bypass cache)'}
       >
         {isLoading ? (
           /* Stop icon */

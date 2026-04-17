@@ -304,6 +304,66 @@ function registerKeyboardShortcuts(): void {
     });
   }
 
+  // Issue #88 — Opt+Left/Right mirror Cmd+Left/Right (back/forward in Chrome).
+  // Electron menu items only accept one `accelerator`, so we register hidden
+  // "shadow" items whose sole purpose is to bind an extra key combo to the
+  // same action. `visible: false` keeps them out of the menu UI but the OS
+  // still routes the key combo through them.
+  const backItem: MenuItemConstructorOptions = {
+    label: 'Back',
+    accelerator: 'CommandOrControl+Left',
+    click: () => {
+      mainLogger.debug('shortcuts.goBack');
+      tabManager?.goBackActive();
+    },
+  };
+  const backShadowOpt: MenuItemConstructorOptions = {
+    label: 'Back (Opt)',
+    accelerator: 'Alt+Left',
+    visible: false,
+    click: () => {
+      mainLogger.debug('shortcuts.goBack.altShadow');
+      tabManager?.goBackActive();
+    },
+  };
+  const forwardItem: MenuItemConstructorOptions = {
+    label: 'Forward',
+    accelerator: 'CommandOrControl+Right',
+    click: () => {
+      mainLogger.debug('shortcuts.goForward');
+      tabManager?.goForwardActive();
+    },
+  };
+  const forwardShadowOpt: MenuItemConstructorOptions = {
+    label: 'Forward (Opt)',
+    accelerator: 'Alt+Right',
+    visible: false,
+    click: () => {
+      mainLogger.debug('shortcuts.goForward.altShadow');
+      tabManager?.goForwardActive();
+    },
+  };
+
+  // Issue #88 — Cmd+Opt+Left/Right additionally bind to prev/next tab.
+  const prevTabShadow: MenuItemConstructorOptions = {
+    label: 'Previous Tab (Opt)',
+    accelerator: 'CommandOrControl+Alt+Left',
+    visible: false,
+    click: () => {
+      mainLogger.debug('shortcuts.prevTab.altShadow');
+      switchTabRelative(-1);
+    },
+  };
+  const nextTabShadow: MenuItemConstructorOptions = {
+    label: 'Next Tab (Opt)',
+    accelerator: 'CommandOrControl+Alt+Right',
+    visible: false,
+    click: () => {
+      mainLogger.debug('shortcuts.nextTab.altShadow');
+      switchTabRelative(1);
+    },
+  };
+
   const template: MenuItemConstructorOptions[] = [
     {
       role: 'appMenu',
@@ -337,6 +397,20 @@ function registerKeyboardShortcuts(): void {
           click: () => {
             mainLogger.debug('shortcuts.newTab');
             tabManager?.createTab();
+          },
+        },
+        // Issue #88 — Cmd+Shift+T placeholder. Pane 5 owns the closed-tab
+        // stack (reopenLastClosed); we call it optional-chained so this menu
+        // item is a safe no-op until that worker lands. Leave this wiring in
+        // place so the accelerator exists on first ship.
+        {
+          label: 'Reopen Closed Tab',
+          accelerator: 'CommandOrControl+Shift+T',
+          click: () => {
+            mainLogger.debug('shortcuts.reopenClosedTab');
+            // TODO(wave1/closed-tabs): pane 5 implements
+            // TabManager.reopenLastClosed(); optional-chain so merges safely.
+            (tabManager as any)?.reopenLastClosed?.();
           },
         },
         {
@@ -382,6 +456,24 @@ function registerKeyboardShortcuts(): void {
             tabManager?.reloadActive();
           },
         },
+        // Issue #25 — Hard reload (Cmd+Shift+R) bypasses the HTTP cache.
+        {
+          label: 'Force Reload',
+          accelerator: 'CommandOrControl+Shift+R',
+          click: () => {
+            mainLogger.debug('shortcuts.reloadHard');
+            tabManager?.reloadActiveIgnoringCache();
+          },
+        },
+        // Issue #76 — View page source opens a new tab at view-source:<url>.
+        {
+          label: 'View Source',
+          accelerator: 'CommandOrControl+Alt+U',
+          click: () => {
+            mainLogger.debug('shortcuts.viewSource');
+            tabManager?.openViewSourceForActive();
+          },
+        },
         { type: 'separator' },
         {
           label: 'Zoom In',
@@ -424,6 +516,10 @@ function registerKeyboardShortcuts(): void {
             switchTabRelative(-1);
           },
         },
+        // Shadow items: add Cmd+Opt+Left/Right as alternate prev/next-tab
+        // accelerators without cluttering the menu.
+        prevTabShadow,
+        nextTabShadow,
         { type: 'separator' },
         ...tabSwitchItems,
       ],
@@ -431,6 +527,11 @@ function registerKeyboardShortcuts(): void {
     {
       label: 'History',
       submenu: [
+        backItem,
+        backShadowOpt,
+        forwardItem,
+        forwardShadowOpt,
+        { type: 'separator' },
         {
           label: 'Clear Browsing Data…',
           accelerator: 'CommandOrControl+Shift+Delete',
@@ -442,7 +543,18 @@ function registerKeyboardShortcuts(): void {
       ],
     },
     { role: 'editMenu' },
-    { role: 'windowMenu' },
+    {
+      // Issue #88 — Window menu. `close` role gives Cmd+Shift+W; `minimize`
+      // gives Cmd+M. Both are the macOS-standard roles Chrome uses too.
+      role: 'windowMenu',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { role: 'close', accelerator: 'CommandOrControl+Shift+W' },
+        { type: 'separator' },
+        { role: 'front' },
+      ],
+    },
   ];
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
