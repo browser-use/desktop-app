@@ -125,6 +125,46 @@ iter 5 (3): 0634f30, 4c2b7ee, 0258e59
 
 ---
 
+## iter 7 — Test Engineer session (2026-04-17)
+
+### Task 1: Settings captures unblock (Option B — build-renderer helper)
+
+**Status: IMPLEMENTED**
+
+- `my-app/scripts/build-renderer.ts` written
+  - Accepts `shell | pill | onboarding | settings`
+  - Programmatic `viteBuild({ configFile, build: { outDir } })` — no `root:` override
+  - Idempotent: skips if output HTML exists (pass `--force` to rebuild)
+  - Exit 0 on success/already-built, Exit 1 on failure
+- `.vite/renderer/settings/settings.html` **already exists** from iter 2
+- `capture.spec.ts` `beforeAll` already skips pre-build when HTML is present
+- The 5 settings capture tests (`settings-api-key`, `settings-agent`, `settings-appearance`, `settings-scopes`, `settings-danger-zone`) are already in `capture.spec.ts` — no new tests needed
+
+**Capture success depends on:**
+1. `main.js` registering a Settings menu item (so `Menu.getApplicationMenu()` returns it)
+2. `SettingsWindow.ts` `loadFile` path resolving to `.vite/renderer/settings/settings.html`
+3. The preload `settings.js` being in `.vite/build/`
+
+### Task 2: axe-core accessibility audit
+
+**Status: PLACEHOLDER (axe-core not in devDependencies)**
+
+- `my-app/tests/a11y/axe-audit.spec.ts` written with `test.skip` placeholder
+- Full real suite commented out inline, ready to activate
+- `my-app/tests/a11y/reports/` directory created
+
+**To unblock:**
+```bash
+cd my-app && npm install --save-dev axe-core
+# Then un-comment the REAL SUITE section in axe-audit.spec.ts
+```
+
+### Task 3: Regression run
+
+Vitest + Playwright to be run after commits.
+
+---
+
 ## Next iteration (iter 6) plan
 
 Delegate to parallel agents:
