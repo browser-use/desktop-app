@@ -13,6 +13,7 @@ import React from 'react';
 import { StepIndicator } from './StepIndicator';
 import { CapabilitiesGrid } from './CapabilitiesGrid';
 import { CharacterMascot } from './CharacterMascot';
+import { KeyHint } from '../components/base';
 import wordmarkLightUrl from '../../../assets/brand/wordmarks/wordmark-light.svg';
 
 // ---------------------------------------------------------------------------
@@ -92,7 +93,7 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
           </p>
         )}
 
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             className="cta-button"
             onClick={onNext}
@@ -102,6 +103,12 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
             Get Started
             <span aria-hidden="true">→</span>
           </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <KeyHint keys={['Enter']} size="xs" />
+            <span className="onboarding-eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>
+              to continue
+            </span>
+          </div>
         </div>
       </div>
 

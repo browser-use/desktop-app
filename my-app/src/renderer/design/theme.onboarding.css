@@ -213,16 +213,25 @@
   border-radius: var(--radius-full);
   background-color: var(--color-border-strong);
   transition: background-color var(--duration-normal) var(--ease-standard),
-              width var(--duration-normal) var(--ease-standard);
+              width var(--duration-normal) var(--ease-standard),
+              box-shadow var(--duration-normal) var(--ease-standard);
 }
 
 [data-theme="onboarding"] .step-dot[data-active="true"] {
   background-color: var(--color-fg-primary);
   width: 32px;
+  /* Subtle glow — accent at 13% alpha, not a hard ring */
+  box-shadow: 0 0 0 4px rgba(200, 241, 53, 0.13);
 }
 
 [data-theme="onboarding"] .step-dot[data-completed="true"] {
   background-color: var(--color-status-success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="onboarding"] .step-dot {
+    transition: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -634,13 +643,36 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background-color var(--duration-fast) var(--ease-standard),
-              border-color var(--duration-fast) var(--ease-standard);
+  transition: background-color var(--duration-fast) var(--ease-spring),
+              border-color var(--duration-fast) var(--ease-spring),
+              transform var(--duration-fast) var(--ease-spring);
 }
 
 [data-theme="onboarding"] .google-service-check[data-checked="true"] {
-  background-color: var(--color-status-success);
-  border-color: var(--color-status-success);
+  /* Use brand accent (neon green) instead of generic success — brand coherence */
+  background-color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+  transform: scale(1.08);
+}
+
+[data-theme="onboarding"] .google-service-check[data-checked="false"] {
+  transform: scale(1);
+}
+
+/* Checkmark path inside the check circle */
+[data-theme="onboarding"] .google-service-check svg path {
+  stroke: var(--color-fg-inverse);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="onboarding"] .google-service-check {
+    transition: background-color var(--duration-instant) var(--ease-standard),
+                border-color var(--duration-instant) var(--ease-standard);
+    transform: none;
+  }
+  [data-theme="onboarding"] .google-service-check[data-checked="true"] {
+    transform: none;
+  }
 }
 
 [data-theme="onboarding"] .modal-actions {

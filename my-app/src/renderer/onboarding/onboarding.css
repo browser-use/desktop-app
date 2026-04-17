@@ -55,6 +55,48 @@ body {
   text-underline-offset: 3px;
 }
 
+/* Trust signal under Google OAuth button */
+.account-trust-signal {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
+  line-height: var(--line-height-normal);
+}
+
+/* NamingFlow "nice name!" hint — appears below input on 3+ chars */
+.naming-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
+  margin-top: 4px;
+  min-height: 16px;
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+
+.naming-hint--visible {
+  opacity: 1;
+}
+
+.naming-hint--hidden {
+  opacity: 0;
+}
+
+/* Scope count summary line in GoogleScopesModal */
+.modal-scope-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
+  margin-top: 12px;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .naming-hint {
+    transition: none;
+  }
+}
+
 /* Completion screen */
 .completion-screen {
   display: flex;

@@ -188,6 +188,11 @@ export function GoogleScopesModal({ onConfirm, onCancel }: GoogleScopesModalProp
           ))}
         </div>
 
+        {/* Scope count summary */}
+        <p className="modal-scope-count" aria-live="polite">
+          {checked.size} of {GOOGLE_SERVICES.length} scopes granted
+        </p>
+
         {/* Actions */}
         <div className="modal-actions">
           <button
