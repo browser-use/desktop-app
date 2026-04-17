@@ -60,7 +60,7 @@ type PendingRequest = {
 // ---------------------------------------------------------------------------
 
 export class DaemonClient extends EventEmitter {
-  private readonly socketPath: string;
+  private socketPath: string;
   private readonly connectTimeoutMs: number;
   private readonly responseTimeoutMs: number;
   private readonly pingIntervalMs: number;
@@ -186,6 +186,14 @@ export class DaemonClient extends EventEmitter {
   /** Expose socket path for tests / diagnostics */
   getSocketPath(): string {
     return this.socketPath;
+  }
+
+  setSocketPath(newPath: string): void {
+    daemonLogger.info("DaemonClient.setSocketPath", {
+      oldPath: this.socketPath,
+      newPath,
+    });
+    this.socketPath = newPath;
   }
 
   isConnected(): boolean {

@@ -311,6 +311,7 @@ export async function startDaemon(opts: StartDaemonOptions): Promise<void> {
     // Docker daemon is already running — don't spawn a child process,
     // just point the client at the Docker socket.
     currentSocketPath = DOCKER_DAEMON_SOCKET;
+    daemonClient.setSocketPath(DOCKER_DAEMON_SOCKET);
     mainLogger.info('daemonLifecycle.startDaemon.docker', {
       msg: 'Using Docker daemon socket — skipping subprocess spawn',
       socketPath: DOCKER_DAEMON_SOCKET,
