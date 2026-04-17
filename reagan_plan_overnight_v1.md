@@ -20,7 +20,9 @@
 - [iter 3 | 02:20Z] design polish 5 families + Skeleton + empty/error components (6 commits)
 - [iter 4 | 02:41Z] CI workflow + dev scripts + logging audit + crash telemetry + design-system doc + visual refresh (6 commits)
 - [iter 5 | 03:00Z] a11y/contrast/reduced-motion + microcopy + e2e test infra + MockDaemon injection + test IPC (3 commits, vite.settings.config.ts change REVERTED per project memory)
-- [iter 6 | 03:01Z] pill-flow e2e GREEN (6/6) + golden-path e2e GREEN (7/7) + test:complete-onboarding IPC added (2 commits)
+- [iter 6 | 03:01Z] pill-flow e2e GREEN (6/6) + golden-path e2e GREEN (7/7) + test:complete-onboarding IPC added (3 commits)
+- [iter 6b | 03:05Z] Python pytest 252/253 + README + CONTRIBUTING + CHANGELOG (2 commits)
+- [iter 7 | 03:11Z] real-LLM agent-task-wiki spec + fixture + settings build-renderer script + axe-core a11y audit (4 commits)
 
 ---
 
