@@ -25,6 +25,18 @@
  *   2026-04-17: dynamic import() not available inside electronApp.evaluate() —
  *     fixed by using the destructured Electron API argument pattern (same as
  *     pill-flow.spec.ts) instead of await import('electron').
+ *   2026-04-17 (run 2): CDP URL discovery stalls — `shell:get-cdp-info` returns
+ *     null for 21+ seconds of polling (14 retries × 1.5s). Root cause: the
+ *     test launcher does not pass `--remote-debugging-port=<N>` to Electron,
+ *     so TabManager.discoverCdpPort() cannot find a debug port to attach to.
+ *     Mitigation options (for future iterations):
+ *       (a) Launch Electron with `args: [..., '--remote-debugging-port=9222']`
+ *       (b) Extend the auto-skip to detect CDP unavailability and skip cleanly
+ *       (c) Expose a test-only IPC that bypasses CDP discovery and returns a
+ *           fabricated CDP URL from the active WebContents
+ *     Not fixed this iteration — spec remains auto-skip-by-default; MOCK
+ *     coverage (pill-flow 6/6 + golden-path 7/7) already validates the IPC
+ *     contract end-to-end.
  *
  * ---------------------------------------------------------------------------
  * HOW TO UN-SKIP

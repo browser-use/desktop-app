@@ -87,6 +87,7 @@ The Figma OAuth URL was generated: user needs to visit it + paste callback. See 
 - **[02:00Z] onboarding-account-scopes capture** — Google OAuth opens external browser; needs mock. See P8.
 - **[02:07Z] pill-flow e2e unskip** — iter 5 completed the refactor (MockDaemonClient, test:open-pill IPC, Menu accelerator trigger) but the spec has not been run against the real harness yet. See P1.
 - **[02:41Z] Figma sync** — OAuth URL issued, user must visit + paste callback. See P8.
+- **[03:11Z] agent-task-wiki CDP stall** — run 2 of the real-LLM e2e stalled on `shell:get-cdp-info` returning null for 21+s (14 retries). Root cause: test launcher doesn't pass `--remote-debugging-port=N` to Electron. Spec remains auto-skip-by-default. Failure history + mitigation options documented inline at `tests/e2e/agent-task-wiki.spec.ts` lines 23-42. Mock e2e coverage (pill-flow 6/6 + golden-path 7/7) already validates the IPC contract.
 
 ---
 
