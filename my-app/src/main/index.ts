@@ -375,6 +375,15 @@ function registerKeyboardShortcuts(): void {
             tabManager?.reloadActiveIgnoringCache();
           },
         },
+        // Issue #76 — View page source opens a new tab at view-source:<url>.
+        {
+          label: 'View Source',
+          accelerator: 'CommandOrControl+Alt+U',
+          click: () => {
+            mainLogger.debug('shortcuts.viewSource');
+            tabManager?.openViewSourceForActive();
+          },
+        },
         { type: 'separator' },
         {
           label: 'Zoom In',

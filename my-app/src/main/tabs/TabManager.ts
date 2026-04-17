@@ -400,6 +400,19 @@ export class TabManager {
     if (this.activeTabId) this.reloadIgnoringCache(this.activeTabId);
   }
 
+  // Issue #76 — Open a new tab whose URL is `view-source:<active-url>`.
+  // Electron's WebContentsView renders `view-source:` natively.
+  openViewSourceForActive(): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    const currentUrl = view.webContents.getURL();
+    if (!currentUrl) return;
+    const viewSourceUrl = `view-source:${currentUrl}`;
+    mainLogger.info('TabManager.openViewSourceForActive', { sourceUrl: currentUrl });
+    this.createTab(viewSourceUrl);
+  }
+
   // ---------------------------------------------------------------------------
   // Zoom (Chrome-parity Cmd+=, Cmd+-, Cmd+0 on active tab)
   // ---------------------------------------------------------------------------
