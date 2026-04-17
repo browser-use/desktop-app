@@ -715,6 +715,13 @@ export class TabManager {
     return view ? view.webContents.getURL() : null;
   }
 
+  /** Returns the WebContents of the active tab — used by the in-process hl agent loop. */
+  getActiveWebContents(): Electron.WebContents | null {
+    if (!this.activeTabId) return null;
+    const view = this.tabs.get(this.activeTabId);
+    return view?.webContents ?? null;
+  }
+
   getTabCount(): number {
     return this.tabs.size;
   }

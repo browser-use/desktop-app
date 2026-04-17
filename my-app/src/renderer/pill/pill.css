@@ -608,3 +608,195 @@ body {
     transform: translateY(0);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * CommandPalette — idle rows under the pill input
+ *   idle row: tab match (fuzzy)
+ *   last row: agent-task, always highlighted when no tab row
+ * --------------------------------------------------------------------------- */
+
+.pill-palette {
+  padding: 6px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  animation: pill-section-in 150ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
+}
+
+.pill-palette-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  font-size: 13px;
+  color: var(--color-fg-primary, #f0f0f2);
+  cursor: pointer;
+  transition: background 120ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.pill-palette-row.is-active,
+.pill-palette-row:hover {
+  /* why-not-a-token: active-row alpha-white hover is part of the pill's
+     in-surface interaction language; not a reusable semantic. */
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pill-palette-icon {
+  color: var(--color-fg-tertiary, #6e737d);
+  font-size: 11px;
+  width: 14px;
+  text-align: center;
+}
+
+.pill-palette-row--agent .pill-palette-icon {
+  color: var(--color-accent-default, #c8f135);
+}
+
+.pill-palette-title {
+  font-weight: var(--font-weight-medium, 500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.pill-palette-sub {
+  color: var(--color-fg-tertiary, #6e737d);
+  font-size: 11px;
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------------------
+ * AgentStream — running log, shown in place of palette while a task runs
+ * --------------------------------------------------------------------------- */
+
+.pill-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 18px 14px;
+  animation: pill-section-in 160ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
+}
+
+.pill-stream-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--color-fg-tertiary, #6e737d);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pill-stream-step {
+  margin-left: auto;
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--color-fg-tertiary, #6e737d);
+}
+
+.pill-stream-stop {
+  /* why-not-a-token: alpha-white "stop" button — same glass-surface rationale
+     as other pill micro-surfaces. */
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-fg-secondary, #8a8f98);
+  font-size: 10px;
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  font-weight: var(--font-weight-medium, 500);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 120ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pill-stream-stop:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-fg-primary, #f0f0f2);
+}
+
+.pill-stream-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+
+.pill-stream-log::-webkit-scrollbar { width: 4px; }
+.pill-stream-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.pill-stream-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.4;
+}
+
+.pill-stream-entry--thinking {
+  color: var(--color-fg-secondary, #8a8f98);
+  font-style: italic;
+}
+
+.pill-stream-entry--tool {
+  color: var(--color-fg-primary, #f0f0f2);
+}
+
+.pill-stream-tool-name {
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  color: var(--color-accent-default, #c8f135);
+  font-size: 12px;
+}
+
+.pill-stream-tool-args {
+  color: var(--color-fg-tertiary, #6e737d);
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pill-stream-tool-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 14px;
+  color: var(--color-fg-secondary, #8a8f98);
+  font-size: 11px;
+}
+
+.pill-stream-tool-status {
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  color: var(--color-accent-default, #c8f135);
+}
+
+.pill-stream-entry.is-error .pill-stream-tool-status {
+  color: var(--color-status-error, #f87171);
+}
+
+.pill-stream-tool-preview {
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.pill-stream-tool-ms {
+  margin-left: auto;
+  font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--color-fg-tertiary, #6e737d);
+}

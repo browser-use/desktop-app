@@ -9,9 +9,6 @@
     "start": "electron-forge start",
     "dev": "electron-forge start",
     "dev:settings": "SETTINGS_STANDALONE=1 electron-forge start",
-    "start:fresh": "AGB_USER_DATA_DIR=$(mktemp -d -t agb-fresh) electron-forge start",
-    "start:onboarding": "AGB_USER_DATA_DIR=$(mktemp -d -t agb-onboarding) AGB_FORCE_ONBOARDING=1 electron-forge start",
-    "start:reset-onboarding": "node scripts/reset-onboarding.mjs",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
@@ -27,7 +24,6 @@
     "visual:capture": "playwright test --config=tests/visual/visual-qa.config.ts",
     "visual:diff": "ts-node --project tsconfig.json tests/visual/diff.ts",
     "visual:qa": "npm run visual:capture && npm run visual:diff",
-    "visual:figma-sync-prep": "npx --yes ts-node --project tsconfig.json scripts/prepare-figma-sync.ts",
     "qa:review": "open tests/visual/review.html",
     "qa": "npm run lint && npm run typecheck && npm run test"
   },
@@ -52,6 +48,8 @@
     "@testing-library/react": "^16.3.2",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/pngjs": "^6.0.5",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-react": "^4.7.0",
@@ -68,11 +66,14 @@
     "vitest": "^1.6.1"
   },
   "dependencies": {
-    "dotenv": "^17.4.2",
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@types/ws": "^8.18.1",
+    "dotenv": "^16.4.7",
     "electron-squirrel-startup": "^1.0.1",
     "keytar": "^7.9.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "ws": "^8.20.0"
   }
 }

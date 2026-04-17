@@ -36,7 +36,7 @@ const log = {
 
 const PILL_WIDTH = 480;             // Dia-like proportions — narrower and tighter than the old 560
 const PILL_HEIGHT_COLLAPSED = 56;   // Tighter idle height (was 72 — matches 56px input row)
-const PILL_HEIGHT_EXPANDED = 88;    // Streaming/result state (input row 56 + expanded section ~32)
+const PILL_HEIGHT_EXPANDED = 320;   // Streaming/result state — fits palette (5 rows) or agent stream log
 const PILL_TOP_OFFSET = 80;         // px from top of display work area
 
 // ---------------------------------------------------------------------------

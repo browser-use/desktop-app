@@ -69,6 +69,15 @@ contextBridge.exposeInMainWorld('pillAPI', {
   },
 
   /**
+   * Grow or shrink the pill window. true = expanded (palette / streaming log),
+   * false = collapsed (idle input row only).
+   */
+  setExpanded: (expanded: boolean): void => {
+    log.debug('preload.pill.setExpanded', { expanded });
+    ipcRenderer.invoke('pill:set-expanded', expanded);
+  },
+
+  /**
    * Subscribe to agent events forwarded from the main process.
    * Returns an unsubscribe function.
    */
@@ -135,6 +144,40 @@ contextBridge.exposeInMainWorld('pillAPI', {
     return () => {
       ipcRenderer.removeListener('pill:task-queued', handler);
     };
+  },
+
+  // ---------------------------------------------------------------------------
+  // Wave HL bridge — in-process agent loop streaming
+  // ---------------------------------------------------------------------------
+
+  cancel: (task_id: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('pill:cancel', { task_id }),
+
+  hl: {
+    /** Stream of HlEvent payloads from the in-process agent loop. */
+    onEvent: (cb: (payload: { task_id: string; event: unknown }) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { task_id: string; event: unknown }) => {
+        log.debug('preload.pill.hl.onEvent', { task_id: payload.task_id });
+        cb(payload);
+      };
+      ipcRenderer.on('pill:hl-event', handler);
+      return () => { ipcRenderer.removeListener('pill:hl-event', handler); };
+    },
+    getEngine: (): Promise<'python-daemon' | 'hl-inprocess'> =>
+      ipcRenderer.invoke('hl:get-engine'),
+    setEngine: (engine: 'python-daemon' | 'hl-inprocess'): Promise<'python-daemon' | 'hl-inprocess'> =>
+      ipcRenderer.invoke('hl:set-engine', { engine }),
+  },
+
+  // ---------------------------------------------------------------------------
+  // Tabs surface for the palette
+  // ---------------------------------------------------------------------------
+
+  tabs: {
+    getState: (): Promise<{ tabs: Array<{ id: string; url: string; title: string }>; activeTabId: string | null }> =>
+      ipcRenderer.invoke('pill:get-tabs'),
+    activate: (tab_id: string): Promise<void> =>
+      ipcRenderer.invoke('pill:activate-tab', { tab_id }),
   },
 });
 
