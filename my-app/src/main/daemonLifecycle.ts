@@ -118,6 +118,19 @@ function getSocketPath(): string {
   return path.join(app.getPath('userData'), `daemon-${process.pid}.sock`);
 }
 
+// Docker daemon uses a well-known socket path. When running via
+// `task daemon:up`, the container bind-mounts /tmp so this socket
+// appears on the host at the same path.
+const DOCKER_DAEMON_SOCKET = '/tmp/agent-daemon.sock';
+
+function isDockerDaemonRunning(): boolean {
+  try {
+    return fs.existsSync(DOCKER_DAEMON_SOCKET);
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Spawn daemon
 // ---------------------------------------------------------------------------
@@ -287,12 +300,24 @@ export async function startDaemon(opts: StartDaemonOptions): Promise<void> {
   stopped = false;
   restartCount = 0;
 
+  const dockerDaemon = isDockerDaemonRunning();
   mainLogger.info('daemonLifecycle.startDaemon', {
     hasApiKey: !!apiKey,
     skipConnect: !!skipConnect,
+    dockerDaemon,
   });
 
-  daemonProcess = spawnDaemon(apiKey);
+  if (dockerDaemon) {
+    // Docker daemon is already running — don't spawn a child process,
+    // just point the client at the Docker socket.
+    currentSocketPath = DOCKER_DAEMON_SOCKET;
+    mainLogger.info('daemonLifecycle.startDaemon.docker', {
+      msg: 'Using Docker daemon socket — skipping subprocess spawn',
+      socketPath: DOCKER_DAEMON_SOCKET,
+    });
+  } else {
+    daemonProcess = spawnDaemon(apiKey);
+  }
 
   if (!skipConnect) {
     // Wait for socket to appear, then connect

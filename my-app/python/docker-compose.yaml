@@ -1,0 +1,35 @@
+services:
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    develop:
+      watch:
+        - path: ./agent
+          target: /app/agent
+          action: sync+restart
+        - path: ./harnessless
+          target: /app/harnessless
+          action: sync+restart
+        - path: ./agent_daemon.py
+          target: /app/agent_daemon.py
+          action: sync+restart
+    env_file:
+      - ../.env
+    environment:
+      - DAEMON_SOCKET_PATH=/tmp/agent-daemon.sock
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Share the Unix socket with the host so the Electron main process can
+      # connect. The socket lives at /tmp/agent-daemon.sock inside the
+      # container; we bind-mount /tmp so the host sees the same path.
+      - /tmp:/tmp
+      # Live-reload: mount source dirs so edits on host are reflected
+      - ./agent:/app/agent
+      - ./harnessless:/app/harnessless
+      - ./agent_daemon.py:/app/agent_daemon.py
+    # No port mapping needed — communication is via Unix socket, not TCP.
+    # The daemon connects OUT to Chrome's CDP WebSocket on the host network.
+    network_mode: host
+    restart: unless-stopped

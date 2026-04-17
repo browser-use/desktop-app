@@ -46,6 +46,45 @@ tasks:
     cmds:
       - npm run dev:settings
 
+  # ----- daemon (Python agent backend in Docker) ----------------------------
+
+  daemon:up:
+    desc: Start the Python agent daemon in Docker (background, hot-reload)
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose up -d --build
+      - echo "Daemon running. Logs → task daemon:logs"
+
+  daemon:down:
+    desc: Stop the daemon container
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose down
+
+  daemon:logs:
+    desc: Tail daemon container logs (Ctrl+C to stop)
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose logs -f daemon
+
+  daemon:restart:
+    desc: Restart the daemon container
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose restart daemon
+
+  daemon:shell:
+    desc: Open a shell inside the daemon container
+    dir: "{{.APP_DIR}}/python"
+    cmds:
+      - docker compose exec daemon bash
+
+  dev:
+    desc: Start daemon + browser together (full dev stack)
+    cmds:
+      - task: daemon:up
+      - task: start
+
   # ----- quality gates ------------------------------------------------------
 
   lint:
