@@ -80,10 +80,10 @@ tasks:
       - docker compose exec daemon bash
 
   up:
-    desc: Start the browser (TS agent runs in-process, no daemon needed)
-    dir: "{{.APP_DIR}}"
+    desc: Build agent image + start the browser (everything in one command)
     cmds:
-      - npm start
+      - task: agent:build
+      - task: start
 
   logs:
     desc: Tail the app log file (main process + renderer console)
