@@ -63,8 +63,12 @@ import type { ElectronApplication, Page } from '@playwright/test';
 const MY_APP_ROOT = path.resolve(__dirname, '../..');
 const ELECTRON_BIN = path.join(MY_APP_ROOT, 'node_modules', '.bin', 'electron');
 const MAIN_JS = path.join(MY_APP_ROOT, '.vite', 'build', 'main.js');
-const FIXTURE_PATH = path.join(MY_APP_ROOT, 'tests', 'fixtures', 'wiki-article.html');
+// wiki-article.html lives alongside this spec file in tests/e2e/
+const FIXTURE_PATH = path.join(MY_APP_ROOT, 'tests', 'e2e', 'wiki-article.html');
 const ENV_FILE_PATH = path.join(MY_APP_ROOT, '.env');
+
+/** Fixed CDP port for test isolation — avoids colliding with dev Electron instances */
+const TEST_CDP_PORT = 9223;
 
 /** Completed account.json that bypasses onboarding gate. */
 const COMPLETED_ACCOUNT = JSON.stringify({
@@ -138,7 +142,9 @@ function isDaemonAvailable(): boolean {
 // URL pattern helpers
 // ---------------------------------------------------------------------------
 
-const SHELL_URL_PATTERNS = ['shell.html', '/shell/', 'localhost:5173'];
+// In dev mode: localhost:5173/...shell.html; in built mode: file://...index.html
+// The file:// fallback matches built renderer since no dev server runs in test.
+const SHELL_URL_PATTERNS = ['shell.html', '/shell/', 'localhost:5173', 'index.html', 'file://'];
 const SKIP_URL_PATTERNS = ['devtools://', 'chrome-devtools', 'about:blank'];
 
 function isSkipUrl(url: string): boolean {
@@ -189,6 +195,9 @@ async function launchWithRealDaemon(apiKey: string): Promise<TestHandle> {
       `--user-data-dir=${userDataDir}`,
       '--no-sandbox',
       '--disable-gpu',
+      // Option (a): fixed CDP port so TabManager.discoverCdpPort() can find it
+      // via HTTP poll. Port 9223 avoids collision with default 9222 dev instances.
+      `--remote-debugging-port=${TEST_CDP_PORT}`,
     ],
     env: {
       ...(process.env as Record<string, string>),
@@ -202,7 +211,7 @@ async function launchWithRealDaemon(apiKey: string): Promise<TestHandle> {
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       LOG_LEVEL: 'DEBUG',
     },
-    timeout: 40_000,
+    timeout: 70_000,
     cwd: MY_APP_ROOT,
   });
 

@@ -105,9 +105,12 @@ export function createShellWindow(): BrowserWindow {
     });
     win.webContents.openDevTools({ mode: 'detach' });
   } else {
+    // Forge VitePlugin outputs shell.html (matching the input filename).
+    // __dirname = .vite/build; renderer is at .vite/renderer/shell/shell.html
+    // so the path is one level up: ../renderer/shell/shell.html
     const htmlPath = path.join(
       __dirname,
-      `../../renderer/shell/index.html`,
+      `../renderer/shell/shell.html`,
     );
     mainLogger.debug('window.loadFile', { filePath: htmlPath });
     win.loadFile(htmlPath);

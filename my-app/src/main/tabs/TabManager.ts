@@ -56,15 +56,48 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   async discoverCdpPort(): Promise<number | null> {
-    // Try ports sequentially from Chromium's dynamic range
-    // The actual port is passed via --remote-debugging-port=0; we discover it
-    // by reading the devtools URL from the first WebContents after it's ready.
+    // Strategy 1: read --remote-debugging-port from process.argv (handles ports
+    // passed by test launchers as CLI args) AND from app.commandLine (handles
+    // ports set via appendSwitch in the main process).
+    // process.argv wins over appendSwitch because test launchers pass it last.
+    let cmdPort = 0;
+    for (const arg of process.argv) {
+      const m = arg.match(/^--remote-debugging-port=(\d+)$/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > 0) { cmdPort = n; break; }
+      }
+    }
+    if (!cmdPort) {
+      const switchVal = app.commandLine.getSwitchValue('remote-debugging-port');
+      if (switchVal) {
+        const n = parseInt(switchVal, 10);
+        if (n > 0) cmdPort = n;
+      }
+    }
+    mainLogger.debug('TabManager.discoverCdpPort.start', { cmdPort, argv: process.argv.join(' ') });
+
+    if (cmdPort > 0) {
+      // Specific port requested — check it first before the broad poll.
+      try {
+        const res = await fetch(`http://localhost:${cmdPort}/json/version`);
+        if (res.ok) {
+          this.cdpPort = cmdPort;
+          mainLogger.info('TabManager.discoverCdpPort.ok', {
+            cdpPort: cmdPort,
+            source: 'cmdline-switch',
+          });
+          return cmdPort;
+        }
+      } catch {
+        // Not ready yet — fall through to debugger-url and broad poll
+      }
+    }
+
+    // Strategy 2: read the debugger WS URL directly from the WebContents
+    // (available if the debugger has been attached).
     for (const [, view] of this.tabs) {
       const wc = view.webContents;
-      const debuggerUrl: string = (wc as any).getURL
-        ? wc.getURL()
-        : '';
-      // Use the debugger port from the webContents devtools URL
       const wsUrl: string | undefined = (wc as any).debugger?.url;
       if (wsUrl) {
         const match = wsUrl.match(/:(\d+)\//);
@@ -76,8 +109,13 @@ export class TabManager {
       }
     }
 
-    // Fallback: poll /json/version on common dynamic ports
-    for (let port = 49152; port <= 49200; port++) {
+    // Strategy 3: fallback poll — include the cmdline port (if any) plus the
+    // common ephemeral range so we can find dynamically-assigned ports.
+    const portsToTry = new Set<number>();
+    if (cmdPort > 0) portsToTry.add(cmdPort);
+    for (let p = 49152; p <= 49200; p++) portsToTry.add(p);
+
+    for (const port of portsToTry) {
       try {
         const res = await fetch(`http://localhost:${port}/json/version`);
         if (res.ok) {
@@ -89,7 +127,11 @@ export class TabManager {
         // continue
       }
     }
-    mainLogger.warn('TabManager.discoverCdpPort.notFound', { msg: 'Could not discover CDP port' });
+    mainLogger.warn('TabManager.discoverCdpPort.notFound', {
+      msg: 'Could not discover CDP port',
+      cmdPort,
+      switchVal,
+    });
     return null;
   }
 

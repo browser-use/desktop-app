@@ -123,7 +123,11 @@ class AgentDaemon:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="agent-task")
         self._registry = TaskRegistry()
         self._active_target_url: Optional[str] = None
-        self._shutdown_event = asyncio.Event()
+        # NOTE: _shutdown_event is created inside start() (inside the running
+        # asyncio loop) to avoid the "Future attached to a different loop" error
+        # that occurs in Python 3.9 when asyncio.Event() is called before
+        # asyncio.run() creates its event loop.
+        self._shutdown_event: Optional[asyncio.Event] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._emitter = EventEmitter()  # shared for tests; per-connection in production
 
@@ -131,6 +135,9 @@ class AgentDaemon:
         """Start the daemon and serve until shutdown."""
         _startup_start = _time.monotonic()
         self._loop = asyncio.get_running_loop()
+        # Create shutdown event here, inside the running loop, to avoid the
+        # Python 3.9 "Future attached to a different loop" error.
+        self._shutdown_event = asyncio.Event()
 
         # Remove stale socket file
         if os.path.exists(self.socket_path):
@@ -215,39 +222,61 @@ class AgentDaemon:
 
         Returns None only for shutdown (connection will close).
         """
+        # Extract _seq before parse_request so we can echo it back for
+        # request/response correlation in the Electron DaemonClient.
+        seq: Optional[int] = None
+        try:
+            import json as _json
+            _raw_str = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            _raw_parsed = _json.loads(_raw_str.strip())
+            if isinstance(_raw_parsed, dict):
+                _seq_val = _raw_parsed.get("_seq")
+                if isinstance(_seq_val, int):
+                    seq = _seq_val
+        except Exception:
+            pass
+
+        def _with_seq(resp: dict) -> dict:
+            """Attach _seq to response so DaemonClient can correlate it."""
+            if seq is not None:
+                resp = {**resp, "_seq": seq}
+            return resp
+
         try:
             msg = parse_request(raw)
         except Exception as exc:
             logger.warning("[daemon] parse error: %s", exc)
-            return error_response(ERR_PARSE_ERROR, str(exc))
+            return _with_seq(error_response(ERR_PARSE_ERROR, str(exc)))
 
         meta = msg.get("meta", "")
         logger.debug("[daemon] dispatch meta=%s", meta)
 
         if meta == "ping":
-            return ok_response({"pong": True, "version": PROTOCOL_VERSION})
+            return _with_seq(ok_response({"pong": True, "version": PROTOCOL_VERSION}))
 
         elif meta == "shutdown":
             logger.info("[daemon] shutdown requested")
             self._shutdown_event.set()
-            return ok_response()
+            return _with_seq(ok_response())
 
         elif meta == "set_active_target":
             url = msg.get("per_target_cdp_url", "")
             if not url:
-                return error_response(ERR_PARSE_ERROR, "per_target_cdp_url is required")
+                return _with_seq(error_response(ERR_PARSE_ERROR, "per_target_cdp_url is required"))
             self._active_target_url = url
             logger.info("[daemon] active target set to %s", url)
-            return ok_response()
+            return _with_seq(ok_response())
 
         elif meta == "agent_task":
-            return await self._handle_agent_task(msg, emitter)
+            result = await self._handle_agent_task(msg, emitter)
+            return _with_seq(result)
 
         elif meta == "cancel_task":
-            return self._handle_cancel_task(msg)
+            result = self._handle_cancel_task(msg)
+            return _with_seq(result)
 
         else:
-            return error_response(ERR_UNKNOWN_META, f"Unknown meta operation: {meta!r}")
+            return _with_seq(error_response(ERR_UNKNOWN_META, f"Unknown meta operation: {meta!r}"))
 
     async def _handle_agent_task(
         self,

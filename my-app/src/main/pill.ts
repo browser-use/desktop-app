@@ -136,7 +136,9 @@ export function createPillWindow(): BrowserWindow {
     });
     pillWindow.loadURL(pillDevUrl);
   } else {
-    const htmlPath = path.join(__dirname, '../../renderer/pill/index.html');
+    // Forge VitePlugin outputs pill.html (matching the input filename).
+    // __dirname = .vite/build; renderer is at .vite/renderer/pill/pill.html
+    const htmlPath = path.join(__dirname, '../renderer/pill/pill.html');
     log.debug('pill.createPillWindow', {
       message: 'Loading pill from file',
       htmlPath,
