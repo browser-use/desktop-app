@@ -7,10 +7,13 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
+    "dev": "electron-forge start",
+    "dev:settings": "SETTINGS_STANDALONE=1 electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -21,7 +24,8 @@
     "visual:capture": "playwright test --config=tests/visual/visual-qa.config.ts",
     "visual:diff": "ts-node --project tsconfig.json tests/visual/diff.ts",
     "visual:qa": "npm run visual:capture && npm run visual:diff",
-    "qa:review": "open tests/visual/review.html"
+    "qa:review": "open tests/visual/review.html",
+    "qa": "npm run lint && npm run typecheck && npm run test"
   },
   "keywords": [],
   "author": {

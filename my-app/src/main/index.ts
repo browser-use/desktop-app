@@ -33,10 +33,30 @@ import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './se
 import { registerSettingsHandlers, unregisterSettingsHandlers } from './settings/ipc';
 
 // ---------------------------------------------------------------------------
+// Crash telemetry: catch unhandled errors before anything else
+// ---------------------------------------------------------------------------
+process.on('uncaughtException', (err) => {
+  mainLogger.error('main.uncaughtException', {
+    error: err.message,
+    stack: err.stack,
+    type: err.constructor?.name,
+  });
+});
+process.on('unhandledRejection', (reason, promise) => {
+  mainLogger.error('main.unhandledRejection', {
+    reason: String(reason),
+    promise: String(promise),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Remote debugging: MUST be called before app.whenReady()
 // ---------------------------------------------------------------------------
 app.commandLine.appendSwitch('remote-debugging-port', '0');
-mainLogger.info('main.startup', { msg: 'Remote debugging port set to OS-assigned (0)' });
+mainLogger.info('main.startup', {
+  msg: 'Remote debugging port set to OS-assigned (0)',
+  settingsStandalone: process.env.SETTINGS_STANDALONE === '1',
+});
 
 // Register custom protocol scheme for OAuth callback
 // Must be called before app.whenReady() on macOS
@@ -124,6 +144,16 @@ app.whenReady().then(async () => {
 
   // Track 5 — Settings IPC handlers
   registerSettingsHandlers({ accountStore, keychainStore });
+
+  // SETTINGS_STANDALONE mode: open settings window for design review
+  if (process.env.SETTINGS_STANDALONE === '1') {
+    mainLogger.info('main.settingsStandalone', {
+      msg: 'SETTINGS_STANDALONE=1 — opening shell + settings window for design review',
+    });
+    openShellAndWire();
+    openSettingsWindow();
+    return;
+  }
 
   const onboardingComplete = accountStore.isOnboardingComplete();
   mainLogger.info('main.onboardingGate', { onboardingComplete });
