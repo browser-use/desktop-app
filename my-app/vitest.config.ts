@@ -15,7 +15,13 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     name: 'unit',
-    include: ['tests/unit/**/*.test.ts', 'tests/pill/**/*.spec.ts', 'tests/integration/**/*.test.ts'],
+    include: [
+      'tests/unit/**/*.test.ts',
+      'tests/pill/**/*.spec.ts',
+      'tests/integration/**/*.test.ts',
+      // Regression tests that don't need a live Electron process
+      'tests/regression/no-global-shortcuts.spec.ts',
+    ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     environment: 'node',
     globals: false,
