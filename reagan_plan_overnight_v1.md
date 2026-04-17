@@ -20,13 +20,14 @@
 - [iter 3 | 02:20Z] design polish 5 families + Skeleton + empty/error components (6 commits)
 - [iter 4 | 02:41Z] CI workflow + dev scripts + logging audit + crash telemetry + design-system doc + visual refresh (6 commits)
 - [iter 5 | 03:00Z] a11y/contrast/reduced-motion + microcopy + e2e test infra + MockDaemon injection + test IPC (3 commits, vite.settings.config.ts change REVERTED per project memory)
+- [iter 6 | 03:01Z] pill-flow e2e GREEN (6/6) + golden-path e2e GREEN (7/7) + test:complete-onboarding IPC added (2 commits)
 
 ---
 
 ## Current branch state
 
 - Branch: `feat/agent-wiring`
-- Commits ahead of 29d3edf (prior HEAD): **35**
+- Commits ahead of 29d3edf (prior HEAD): **37**
 - Track 1 (Agent wiring) — **DONE**
 - Track 2 (Design polish) — **DONE** across all 5 families
 - Track 3 (QA harness) — **DONE**
@@ -39,19 +40,20 @@
 - Vitest unit+integration: **117 pass / 0 fail** (9 test files)
 - preload-path.spec.ts (Playwright): **5 pass**
 - visual:capture (Playwright): **15/15 spec pass**, 10 PNG baselines committed
-- E2E Playwright pill-flow: UNSKIPPED but not yet executed post-refactor (iter 6 task)
-- E2E golden-path: not yet written
+- E2E Playwright pill-flow: **6/6 GREEN** (iter 6: fixed dynamic import() → electron context param)
+- E2E golden-path: **7/7 GREEN** (iter 6: fresh install → onboarding → bypass OAuth → shell → pill → done → returning user)
 - Python pytest: not run this loop
 
 ---
 
 ## Remaining work queue
 
-### P1 — Verify e2e pill-flow passes post-unskip
-Run `npx playwright test tests/e2e/pill-flow.spec.ts` and fix any env issues. Set `DAEMON_MOCK=1` + `NODE_ENV=test` + `DEV_MODE=1` in the test launcher.
+### P1 — DONE (iter 6): pill-flow 6/6 green
+Root cause was `await import('electron')` inside `electronApp.evaluate()` — ESM main process has no dynamic import. Fixed by using destructured `{ BrowserWindow }` from Playwright's evaluate first-arg. Commits: 9fdaf3f.
 
-### P2 — Golden-path e2e
-Write `tests/e2e/golden-path.spec.ts` (the test-engineer started this but didn't finish). Assert: fresh install → onboarding opens → naming submit → account mock → shell opens → Cmd+K → agent task → done → quit → re-open → shell opens directly.
+### P2 — DONE (iter 6): golden-path 7/7 green
+Full scenario: fresh install → onboarding window → naming UI → OAuth bypass (account.json written directly) → relaunch → shell → pill → task_done mock → returning user relaunch → shell again. Commit: c13b324.
+Production addition: `test:complete-onboarding` IPC in index.ts (NODE_ENV=test guard).
 
 ### P3 — Settings captures unblock (safe approach)
 Do NOT override Vite `root` in vite.settings.config.ts (violates project memory). Instead, either:
