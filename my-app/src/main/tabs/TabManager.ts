@@ -91,6 +91,12 @@ export class TabManager {
   // Per-tab last find query — lets Cmd+F re-open with the previous query
   // pre-filled (Chrome parity). Session-only; cleared on tab close.
   private lastFindQuery: Map<string, string> = new Map();
+  // Pill toggle callback, injected from main/index.ts. Invoked from the
+  // before-input-event handler when the user hits Cmd+K inside a tab's
+  // webContents — Chromium's renderer otherwise intercepts the keystroke
+  // before the NSMenu accelerator can fire. Kept as a callback so TabManager
+  // does not import pill.ts.
+  private pillToggle: (() => void) | null = null;
 
   constructor(win: BrowserWindow) {
     this.win = win;
@@ -100,6 +106,15 @@ export class TabManager {
 
   setOnClosedTabsChanged(cb: (() => void) | null): void {
     this.onClosedTabsChanged = cb;
+  }
+
+  /**
+   * Inject the pill toggle callback. Called from main/index.ts after
+   * createPillWindow() so that tab-side before-input-event handlers can
+   * toggle the pill without TabManager importing pill.ts.
+   */
+  setPillToggle(cb: (() => void) | null): void {
+    this.pillToggle = cb;
   }
 
   setChromeOffset(offset: number): void {
@@ -850,6 +865,42 @@ export class TabManager {
       mainLogger.info('TabManager.tab.destroyed', { tabId });
       if (!this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
         this.win.webContents.send('target-lost', { tabId });
+      }
+    });
+
+    // Route Cmd+K from tab webContents to the pill toggle. On macOS Chromium
+    // swallows the keystroke in the renderer before the NSMenu accelerator
+    // fires, so a webpage-focused Cmd+K would otherwise never reach togglePill.
+    this.attachGlobalKeyHandlers(wc);
+  }
+
+  /**
+   * Intercept Cmd+K / Ctrl+K on a webContents before the renderer sees it
+   * and invoke the injected pill toggle callback. Used on tab webContents
+   * (here) and on the shell window's own webContents (main/index.ts) so the
+   * shortcut works regardless of which surface currently has keyboard focus.
+   */
+  private attachGlobalKeyHandlers(wc: Electron.WebContents): void {
+    wc.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      if (input.key !== 'k' && input.key !== 'K') return;
+      // CommandOrControl semantics: meta on macOS, control elsewhere.
+      const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
+      if (!cmdOrCtrl) return;
+      // Require no extra modifiers so Cmd+Shift+K / Cmd+Alt+K remain free.
+      if (input.shift || input.alt) return;
+      if (process.platform === 'darwin' && input.control) return;
+
+      event.preventDefault();
+      mainLogger.debug('TabManager.beforeInput.cmdK', {
+        url: wc.getURL(),
+      });
+      try {
+        this.pillToggle?.();
+      } catch (err) {
+        mainLogger.error('TabManager.beforeInput.cmdK.threw', {
+          error: (err as Error).message,
+        });
       }
     });
   }

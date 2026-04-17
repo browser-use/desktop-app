@@ -137,6 +137,27 @@ function openShellAndWire(): BrowserWindow {
     mainLogger.warn('main.hotkey', { msg: 'Cmd+K hotkey registration failed — another app may own it' });
   }
 
+  // Wire Cmd+K from every tab's webContents → togglePill(). On macOS,
+  // Chromium's renderer intercepts Cmd+K before the NSMenu accelerator
+  // fires, so the before-input-event listener in TabManager is the
+  // primary path; the Menu accelerator is a fallback for no-tab states.
+  tabManager.setPillToggle(() => togglePill());
+
+  // Attach the same before-input-event handler to the shell window's own
+  // webContents so Cmd+K works when the omnibox/URL bar has focus.
+  shellWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key !== 'k' && input.key !== 'K') return;
+    const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
+    if (!cmdOrCtrl) return;
+    if (input.shift || input.alt) return;
+    if (process.platform === 'darwin' && input.control) return;
+
+    event.preventDefault();
+    mainLogger.debug('main.shellBeforeInput.cmdK');
+    togglePill();
+  });
+
   rebuildApplicationMenu();
 
   shellWindow.webContents.once('did-finish-load', () => {
@@ -325,10 +346,11 @@ app.on('window-all-closed', () => {
 // IMPORTANT: tab shortcuts are APP-LOCAL accelerators on the Application Menu,
 // NOT globalShortcut. globalShortcut captures the key combo system-wide and
 // steals focus from other apps when the user hits Cmd+T / Cmd+W / etc.
-// Menu accelerators only fire when THIS app is frontmost. See
-// /Users/reagan/.claude/projects/-Users-reagan-Documents-GitHub-desktop-app/memory/.
-// Cmd+K is still a globalShortcut (registered in Track B's hotkeys.ts) because
-// it's the intended Wispr-style global pill trigger.
+// Menu accelerators only fire when THIS app is frontmost.
+// Cmd+K is handled via webContents.before-input-event on every tab + the shell
+// window — see TabManager.attachGlobalKeyHandlers. The Menu accelerator
+// (Agent → Toggle Agent Pill, Cmd+K) is a fallback for when no WebContentsView
+// has focus.
 //
 // The application menu is rebuilt whenever the closed-tab stack changes so
 // the "History → Recently Closed" submenu stays fresh.
