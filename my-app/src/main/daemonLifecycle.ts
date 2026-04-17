@@ -142,15 +142,16 @@ function spawnDaemon(apiKey: string): ChildProcess {
   const { bin, args, cwd } = resolveDaemonBinary();
 
   const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
+    PATH: process.env.PATH ?? '',
+    HOME: process.env.HOME ?? '',
+    TMPDIR: process.env.TMPDIR ?? '',
+    LANG: process.env.LANG ?? 'en_US.UTF-8',
     DAEMON_SOCKET_PATH: socketPath,
     ANTHROPIC_API_KEY: apiKey,
     NODE_ENV: process.env.NODE_ENV ?? 'development',
   };
 
-  if (process.env.AGENTIC_DEV) {
-    env.AGENTIC_DEV = process.env.AGENTIC_DEV;
-  }
+  if (process.env.AGENTIC_DEV) env.AGENTIC_DEV = process.env.AGENTIC_DEV;
 
   mainLogger.info('daemonLifecycle.spawnDaemon', {
     bin,
