@@ -25,9 +25,11 @@ body {
   height: calc(100% - 0px);
 }
 
-/* Input focus outline uses the accent glow (overrides global :focus-visible) */
+/* Input focus: accent border + glow. Suppress the default outline ring because
+   the border-color change provides equivalent visual focus indication. */
 .auth-input:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 0px;
   border-color: var(--color-accent-default);
   box-shadow: var(--glow-accent);
 }

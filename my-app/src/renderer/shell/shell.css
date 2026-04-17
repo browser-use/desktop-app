@@ -15,7 +15,7 @@
   --color-border: #262626;
   --color-text-primary: #e8e8e8;
   --color-text-secondary: #888888;
-  --color-text-tertiary: #555555;
+  --color-text-tertiary: #686868;  /* was #555555 — WCAG 3:1 fix (3.06:1 on surface-hover) */
   /* Brand accent: neon yellow-green — matches BRAND.md and design tokens */
   --color-accent: #c8f135;
   --color-accent-hover: #d4f74e;

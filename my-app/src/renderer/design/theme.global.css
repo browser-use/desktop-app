@@ -56,7 +56,15 @@ textarea {
   color: inherit;
   background: none;
   border: none;
+  /* outline suppressed on reset; :focus-visible below restores ring for keyboard nav */
   outline: none;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 input::placeholder,
@@ -80,7 +88,7 @@ ol {
 
 :focus-visible {
   outline: 2px solid var(--color-accent-default);
-  outline-offset: 2px;
+  outline-offset: 4px;
   border-radius: var(--radius-sm);
 }
 
@@ -333,3 +341,20 @@ ol {
 .stagger-4 { animation-delay: 160ms; }
 .stagger-5 { animation-delay: 200ms; }
 .stagger-6 { animation-delay: 240ms; }
+
+/* ---------------------------------------------------------------------------
+   Reduced motion — global catch-all (MUST be last to win specificity)
+   Specific component overrides in each theme file handle per-case fine-tuning.
+   No !important needed — this block has higher order than all above rules.
+--------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}

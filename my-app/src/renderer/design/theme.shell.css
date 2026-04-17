@@ -67,7 +67,7 @@
   /* -- Foregrounds -- */
   --color-fg-primary:   #f0f0f2;
   --color-fg-secondary: #8a8f98;
-  --color-fg-tertiary:  #5a5f68;
+  --color-fg-tertiary:  #6e737d;  /* was #5a5f68 — WCAG 3:1 fix (3.79:1 on bg-overlay) */
   --color-fg-disabled:  #3a3f48;
   --color-fg-inverse:   #0a0a0d;
 

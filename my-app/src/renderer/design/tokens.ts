@@ -118,7 +118,7 @@ export const SHELL_COLORS = {
   // Foregrounds
   fgPrimary: '#f0f0f2',
   fgSecondary: '#8a8f98',
-  fgTertiary: '#5a5f68',
+  fgTertiary: '#6e737d',   // was #5a5f68 — lightened to pass WCAG 3:1 (3.79:1 on bg-overlay)
   fgDisabled: '#3a3f48',
   fgInverse: '#0a0a0d',
 
@@ -165,7 +165,7 @@ export const ONBOARDING_COLORS = {
   // Foregrounds
   fgPrimary: '#f2f0ee',
   fgSecondary: '#9a96a0',
-  fgTertiary: '#6a6570',
+  fgTertiary: '#7a7580',   // was #6a6570 — lightened to pass WCAG 3:1 (3.52:1 on bg-elevated)
 
   // Borders
   borderSubtle: '#2a2a34',

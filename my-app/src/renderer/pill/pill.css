@@ -110,6 +110,7 @@ body {
   flex: 1;
   background: transparent;
   border: none;
+  /* No default outline — focus is communicated via pill-container border glow */
   outline: none;
   font-family: var(--font-ui, system-ui, sans-serif);
   font-size: 15px;
@@ -117,6 +118,13 @@ body {
   color: var(--color-fg-primary, #f0f0f0);
   caret-color: var(--color-accent-default, #c8f135);
   line-height: 1.4;
+}
+
+/* Keyboard focus ring on the pill input — shown inside the pill container */
+.pill-input:focus-visible {
+  outline: 2px solid var(--color-accent-default, #c8f135);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .pill-input::placeholder {
@@ -316,7 +324,7 @@ body {
   font-weight: 500;
   font-family: var(--font-ui, system-ui, sans-serif);
   cursor: pointer;
-  transition: background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), border-color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
   letter-spacing: 0.01em;
 }
 
@@ -337,7 +345,7 @@ body {
   border: none;
   color: var(--color-fg-tertiary, rgba(255, 255, 255, 0.35));
   cursor: pointer;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
   flex-shrink: 0;
   margin-left: auto;
 }

@@ -95,7 +95,7 @@
   color: var(--color-text-secondary);
   cursor: pointer;
   /* 150ms ease-out — per spec */
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
   flex-shrink: 0;
   position: relative;
 }
@@ -193,7 +193,7 @@
   padding: 0;
   /* Negative margin to avoid expanding tab width */
   margin-right: -6px;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .tab-item:hover .tab-item__close,
@@ -221,7 +221,7 @@
   align-items: center;
   justify-content: center;
   margin-left: 4px;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .tab-strip__new-tab:hover {
@@ -250,7 +250,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .nav-buttons__btn:hover:not(:disabled) {
@@ -278,8 +278,8 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  /* 250ms ease-out focus transition — per spec */
-  transition: border-color 250ms ease-out, box-shadow 250ms ease-out;
+  /* Modal/overlay fade duration — 250ms per token spec */
+  transition: border-color var(--duration-moderate, 220ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), box-shadow var(--duration-moderate, 220ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
   overflow: hidden;
 }
 
@@ -310,8 +310,15 @@
   color: var(--color-text-primary);
   font-family: var(--font-mono);
   font-size: 12px;
+  /* No outline on input — parent .url-bar shows focus ring via :focus-within */
   outline: none;
   min-width: 0;
+}
+
+/* Keyboard-only focus state: defer to parent container ring. Input itself gets
+   no secondary ring to avoid double-ring inside the url-bar border. */
+.url-bar__input:focus-visible {
+  outline: none;
 }
 
 .url-bar__input::placeholder {
