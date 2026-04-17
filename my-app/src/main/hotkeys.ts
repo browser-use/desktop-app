@@ -1,11 +1,13 @@
 /**
  * Track B — Pill hotkey (Cmd+K) registration.
  *
- * Cmd+K is now an APP-LOCAL Menu accelerator owned by src/main/index.ts
- * (registerKeyboardShortcuts). Global shortcuts steal focus system-wide,
- * which is undesirable. These functions are retained as no-ops so existing
- * callers in index.ts keep compiling; the accelerator itself lives in the
- * Menu template.
+ * Cmd+K is handled via webContents.before-input-event on every tab and
+ * on the shell window (see TabManager.attachGlobalKeyHandlers and the
+ * inline handler in index.ts openShellAndWire). The Menu accelerator
+ * (Agent → Toggle Agent Pill, Cmd+K) is a fallback for the rare case
+ * where no WebContentsView has focus. Global shortcuts are NOT used —
+ * they steal focus system-wide. These functions are retained as no-ops
+ * so existing callers in index.ts keep compiling.
  */
 
 import { globalShortcut } from 'electron';
