@@ -26,7 +26,7 @@ import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './iden
 import { mainLogger } from './logger';
 // Track 1 — Agent wiring: daemon lifecycle + API key
 import { DaemonClient } from './daemon/client';
-import { startDaemon, stopDaemon, handlePillSubmit, handlePillCancel, _getDaemonPid, _getRestartCount } from './daemonLifecycle';
+import { startDaemon, stopDaemon, handlePillSubmit, handlePillCancel, _getDaemonPid, _getRestartCount, _getSocketPath } from './daemonLifecycle';
 import { getApiKey } from './agentApiKey';
 // Track 5 — Settings
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
@@ -469,5 +469,16 @@ if (process.env.NODE_ENV === 'test') {
     const count = _getRestartCount();
     mainLogger.info('main.test:get-restart-count', { count });
     return count;
+  });
+
+  // ---------------------------------------------------------------------------
+  // DEV/TEST IPC: test:get-daemon-socket
+  // Returns the current daemon Unix socket path (or null if daemon not started).
+  // Used by multi-instance.spec.ts to assert PID-scoped socket uniqueness.
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('test:get-daemon-socket', () => {
+    const socketPath = _getSocketPath();
+    mainLogger.info('main.test:get-daemon-socket', { socketPath });
+    return socketPath;
   });
 }
