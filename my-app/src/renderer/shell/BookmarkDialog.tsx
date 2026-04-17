@@ -62,12 +62,32 @@ export function BookmarkDialog({
     existing?.parentId ?? tree?.roots[0].id ?? 'bookmarks-bar',
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
   const folders = useMemo(() => flattenFolders(tree), [tree]);
 
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
+
+  // Outside-click close. Bound after one rAF so the opening event can never
+  // reach the freshly-mounted scrim and close the dialog in the same frame.
+  useEffect(() => {
+    let cleanup = (): void => {};
+    const raf = requestAnimationFrame(() => {
+      const handler = (e: MouseEvent): void => {
+        if (scrimRef.current && e.target === scrimRef.current) {
+          onClose();
+        }
+      };
+      document.addEventListener('click', handler);
+      cleanup = () => document.removeEventListener('click', handler);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      cleanup();
+    };
+  }, [onClose]);
 
   // Esc closes. Enter saves. Both at the document level so the input doesn't
   // need its own key handler.
@@ -120,13 +140,11 @@ export function BookmarkDialog({
 
   return (
     <div
+      ref={scrimRef}
       className="bookmark-dialog__scrim"
       role="dialog"
       aria-modal="true"
       aria-label={existing ? 'Edit bookmark' : 'Add bookmark'}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bookmark-dialog" onKeyDown={handleFormKeyDown}>
         <div className="bookmark-dialog__header">

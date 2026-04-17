@@ -172,7 +172,7 @@ export function URLBar({
           ]
             .filter(Boolean)
             .join(' ')}
-          onClick={onToggleBookmark}
+          onClick={(e) => { e.stopPropagation(); onToggleBookmark(); }}
           aria-label={isBookmarked ? 'Edit bookmark' : 'Add bookmark'}
           title={isBookmarked ? 'Edit bookmark (Cmd+D)' : 'Bookmark this page (Cmd+D)'}
         >
