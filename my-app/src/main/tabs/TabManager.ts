@@ -30,6 +30,8 @@ const NEW_TAB_URL =
       '</head><body></body></html>',
   );
 // Must stay in sync with --chrome-height in shell.css (tab row 40 + toolbar 36).
+// The renderer can add extra height (e.g. a 32 px bookmarks bar) by calling
+// TabManager.setChromeOffset(offset); positionView() uses BASE + offset.
 const CHROME_HEIGHT = 76;
 const BLOCKED_SCHEMES = /^(javascript|file|data|vbscript):/i;
 
@@ -57,11 +59,23 @@ export class TabManager {
   private navControllers: Map<string, NavigationController> = new Map();
   private sessionStore: SessionStore;
   private cdpPort: number | null = null;
+  // Extra pixels the renderer added on top of the base chrome (e.g. 32 px
+  // for a visible bookmarks bar). The page-hosting WebContentsView is then
+  // positioned at CHROME_HEIGHT + chromeOffset.
+  private chromeOffset = 0;
 
   constructor(win: BrowserWindow) {
     this.win = win;
     this.sessionStore = new SessionStore();
     this.registerIpcHandlers();
+  }
+
+  setChromeOffset(offset: number): void {
+    const next = Math.max(0, Math.min(512, Math.round(offset)));
+    if (next === this.chromeOffset) return;
+    this.chromeOffset = next;
+    mainLogger.debug('TabManager.setChromeOffset', { offset: next });
+    this.relayout();
   }
 
   // ---------------------------------------------------------------------------
@@ -424,12 +438,28 @@ export class TabManager {
     return this.activeTabId;
   }
 
+  getActiveTabUrl(): string | null {
+    if (!this.activeTabId) return null;
+    const view = this.tabs.get(this.activeTabId);
+    return view ? view.webContents.getURL() : null;
+  }
+
   getTabCount(): number {
     return this.tabs.size;
   }
 
   getTabAtIndex(index: number): string | undefined {
     return this.tabOrder[index];
+  }
+
+  getAllTabSummaries(): Array<{ name: string; url: string }> {
+    return this.tabOrder.map((id) => {
+      const view = this.tabs.get(id)!;
+      return {
+        name: view.webContents.getTitle() || 'New Tab',
+        url: view.webContents.getURL() || '',
+      };
+    });
   }
 
   getState(): TabManagerState {
@@ -463,11 +493,12 @@ export class TabManager {
 
   private positionView(view: WebContentsView): void {
     const [winWidth, winHeight] = this.win.getContentSize();
+    const top = CHROME_HEIGHT + this.chromeOffset;
     view.setBounds({
       x: 0,
-      y: CHROME_HEIGHT,
+      y: top,
       width: winWidth,
-      height: Math.max(0, winHeight - CHROME_HEIGHT),
+      height: Math.max(0, winHeight - top),
     });
   }
 

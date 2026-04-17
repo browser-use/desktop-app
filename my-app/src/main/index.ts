@@ -32,6 +32,9 @@ import { assertString } from './ipc-validators';
 // Track 5 — Settings
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
 import { registerSettingsHandlers, unregisterSettingsHandlers } from './settings/ipc';
+// Wave1 P3 — Bookmarks
+import { BookmarkStore } from './bookmarks/BookmarkStore';
+import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -74,6 +77,7 @@ if (started) {
 let shellWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+let bookmarkStore: BookmarkStore | null = null;
 
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? 'PLACEHOLDER_CLIENT_ID' });
@@ -135,6 +139,15 @@ function openShellAndWire(): BrowserWindow {
 app.whenReady().then(async () => {
   mainLogger.info('main.appReady');
 
+  // Wave1 P3 — Bookmarks: init store + register IPC before the shell loads.
+  bookmarkStore = new BookmarkStore();
+  registerBookmarkHandlers({
+    store: bookmarkStore,
+    getShellWindow: () => shellWindow,
+    getAllTabs: () =>
+      tabManager ? tabManager.getAllTabSummaries() : [],
+  });
+
   // Track 1 IPC: pill:submit — get active CDP URL, send agent_task to daemon
   ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {
     const validatedPrompt = assertString(prompt, 'prompt', 10000);
@@ -156,6 +169,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('pill:hide', async () => {
     mainLogger.info('main.pill:hide');
     hidePill();
+  });
+
+  // Wave1 P3 — Bookmarks: renderer reports total chrome height (base tab-row +
+  // toolbar + bookmarks bar when visible). TabManager reuses this to position
+  // the WebContentsView below the chrome.
+  ipcMain.handle('shell:set-chrome-height', (_e, height: unknown) => {
+    if (typeof height !== 'number' || !Number.isFinite(height)) return;
+    // The renderer sends the *total* chrome height. TabManager stores only the
+    // offset on top of its baseline (76).
+    const BASE = 76;
+    const offset = Math.max(0, height - BASE);
+    tabManager?.setChromeOffset(offset);
   });
 
   // Track 5 — Settings IPC handlers
@@ -226,10 +251,11 @@ app.whenReady().then(async () => {
     }
   })();
 
-  // Flush session on quit
+  // Flush session + bookmarks on quit
   app.on('before-quit', async () => {
     mainLogger.info('main.beforeQuit', { msg: 'Flushing session + stopping daemon' });
     tabManager?.flushSession();
+    bookmarkStore?.flushSync();
     await stopDaemon();
   });
 
@@ -238,6 +264,7 @@ app.whenReady().then(async () => {
   app.on('will-quit', () => {
     unregisterHotkeys();
     unregisterSettingsHandlers();
+    unregisterBookmarkHandlers();
   });
 
   app.on('activate', () => {
@@ -343,6 +370,35 @@ function registerKeyboardShortcuts(): void {
           click: () => {
             mainLogger.debug('shortcuts.togglePill');
             togglePill();
+          },
+        },
+      ],
+    },
+    {
+      label: 'Bookmarks',
+      submenu: [
+        {
+          label: 'Bookmark This Page…',
+          accelerator: 'CommandOrControl+D',
+          click: () => {
+            mainLogger.debug('shortcuts.bookmarkPage');
+            shellWindow?.webContents.send('open-bookmark-dialog');
+          },
+        },
+        {
+          label: 'Show Bookmarks Bar',
+          accelerator: 'CommandOrControl+Shift+B',
+          click: () => {
+            mainLogger.debug('shortcuts.toggleBookmarksBar');
+            shellWindow?.webContents.send('toggle-bookmarks-bar');
+          },
+        },
+        {
+          label: 'Focus Bookmarks Bar',
+          accelerator: 'Alt+B',
+          click: () => {
+            mainLogger.debug('shortcuts.focusBookmarksBar');
+            shellWindow?.webContents.send('focus-bookmarks-bar');
           },
         },
       ],
