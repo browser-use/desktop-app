@@ -6,8 +6,52 @@
  * Tests: Cmd+K open, type, submit, stream events, result, Esc dismiss,
  *        toggle (second Cmd+K closes), target_lost handling.
  *
- * Gated with test.skip() until built artifact + Track B land.
+ * Gated with test.skip() — see unskip plan below.
  * Track H owns this file.
+ *
+ * ---------------------------------------------------------------------------
+ * UNSKIP PLAN (documented by QA iteration, 2026-04-17)
+ * ---------------------------------------------------------------------------
+ *
+ * To run these tests the following must be true:
+ *
+ *  1. LAUNCHER: Switch launchApp() to use node_modules/.bin/electron +
+ *     .vite/build/main.js (dev mode, same pattern as capture.spec.ts and
+ *     preload-path.spec.ts). The current launcher targets the packaged .app
+ *     which has a stale asar (renderer HTML files not found).
+ *
+ *  2. DAEMON STUB: The real Python daemon (daemonLifecycle.ts → DaemonClient)
+ *     must be stubbed so tests don't require a live daemon process.
+ *     Recommended approach — add a DaemonClient factory to index.ts:
+ *
+ *       // index.ts
+ *       const daemonClient = process.env.DAEMON_MOCK === '1'
+ *         ? new MockDaemonClient()   // returns canned agent_step / task_done events
+ *         : new DaemonClient();
+ *
+ *     MockDaemonClient should emit 2+ distinct agent_step events then task_done
+ *     after ~500ms so the streaming + result tests can assert on them.
+ *
+ *  3. CMD+K TRIGGER: Cmd+K is now a Menu accelerator (not globalShortcut).
+ *     In Playwright you can trigger Menu accelerator clicks via:
+ *       electronApp.evaluate(({ Menu, BrowserWindow }) => {
+ *         // find and click 'Toggle Agent Pill' menu item
+ *       });
+ *     OR send the pill:toggle IPC message directly to the pill window.
+ *     The current tests use page.keyboard.press('Meta+k') which won't fire
+ *     Menu accelerators in a test context.
+ *
+ *  4. PILL WINDOW: The pill is a separate BrowserWindow (localhost:5174/pill.html).
+ *     Tests must target it explicitly — app.firstWindow() returns the shell.
+ *     Use the getShellWindow / getPillWindow pattern from capture.spec.ts.
+ *
+ *  5. TARGET_LOST TEST: Requires wiring a 'test:close-active-tab' IPC handler
+ *     in main/index.ts (or TabManager) that closes the active tab and fires
+ *     the target-lost event. Low risk to add behind a DEV_MODE guard.
+ *
+ * When all 5 conditions are met, remove the test.skip() call below and
+ * update the beforeAll to use the dev-mode launcher + DAEMON_MOCK=1.
+ * ---------------------------------------------------------------------------
  */
 
 import { test, expect } from '@playwright/test';
@@ -19,7 +63,10 @@ const RESULT_DISPLAY_SELECTOR = '[data-testid="result-display"]';
 const ERROR_DISPLAY_SELECTOR = '[data-testid="error-display"]';
 
 test.describe('Pill Flow', () => {
-  test.skip(true, 'Awaiting built artifact — unskip after Track B + A integration');
+  // TODO: remove skip when unskip plan (see file header) is fully implemented.
+  // Conditions: dev-mode launcher + MockDaemonClient + Menu accelerator trigger
+  // + separate pill window targeting + test:close-active-tab IPC handler.
+  test.skip(true, 'Unskip plan documented in file header — requires dev launcher + MockDaemonClient + Menu accelerator trigger');
 
   let app: AppHandle;
 
