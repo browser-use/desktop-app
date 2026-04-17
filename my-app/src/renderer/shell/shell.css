@@ -43,11 +43,13 @@
   --color-text-tertiary: var(--color-fg-tertiary);
   --color-accent:        var(--color-accent-default);
   --color-danger:        var(--color-status-danger);
-  /* Active tab needs visible contrast against the tab row bg (--bg-elevated = #111114).
-     --bg-overlay at #16161a is only 5 hex units lighter — imperceptible.
-     Use --slate-8 (#282830) so the active tab clearly stands out, Chrome-style. */
-  --color-tab-active:    var(--slate-8);
+  /* Chrome-parity: tab-row is the DARKEST surface; active tab matches the
+     toolbar bg so the tab visually merges with the toolbar (no seam).
+     Tab-row bg = --bg-sunken, toolbar bg = --bg-elevated, active tab = --bg-elevated. */
+  --color-tab-row-bg:    var(--color-bg-sunken);
+  --color-tab-active:    var(--color-bg-elevated);
   --color-tab-inactive:  transparent;
+  --color-tab-hover:     rgba(255, 255, 255, 0.06);
   --color-loading:       var(--color-accent-default);
 
   /* Radius aliases for shell component code that predates the token system */

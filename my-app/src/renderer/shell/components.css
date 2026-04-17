@@ -25,16 +25,11 @@
 
 .window-chrome__tab-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   height: var(--tab-height);
-  background: var(--color-bg-elevated);
+  padding-top: 4px;
+  background: var(--color-tab-row-bg);
   -webkit-app-region: drag;
-}
-
-/* Unify tab row + toolbar into one continuous chrome area.
-   Active tab (bg-overlay) sits on top of bg-elevated and is visibly lighter. */
-.window-chrome__toolbar {
-  background: var(--color-bg-elevated);
 }
 
 .window-chrome__traffic-light-spacer {
@@ -46,25 +41,31 @@
   -webkit-app-region: drag;
 }
 
+/* Toolbar sits directly below the tab row. Background matches the active tab
+   so the selected tab visually merges into the toolbar (classic Chrome). */
 .window-chrome__toolbar {
   display: flex;
   align-items: center;
   height: var(--toolbar-height);
   padding: 0 8px;
   gap: 4px;
+  background: var(--color-bg-elevated);
   -webkit-app-region: no-drag;
 }
 
 /* ---------------------------------------------------------------------------
    TabStrip
    --------------------------------------------------------------------------- */
+/* The tab strip is itself a drag region — the user grabs the empty space to
+   the right of the last tab / + button to move the window (Chrome parity).
+   Individual tabs and the new-tab button opt back out via no-drag below. */
 .tab-strip {
   display: flex;
   align-items: center;
   flex: 1;
   height: 100%;
   overflow: hidden;
-  -webkit-app-region: no-drag;
+  -webkit-app-region: drag;
 }
 
 .tab-strip__tabs {
@@ -76,6 +77,7 @@
   overflow-y: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-default) transparent;
+  -webkit-app-region: drag;
 }
 
 .tab-strip__tabs::-webkit-scrollbar {
@@ -94,46 +96,54 @@
 .tab-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: var(--tab-min-width);
+  gap: 8px;
+  min-width: 60px;
   max-width: var(--tab-max-width);
-  height: 28px;
-  padding: 0 10px;
-  margin: 4px 2px 0;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: transparent;
+  flex: 0 1 var(--tab-max-width);
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px 8px 0 0;
+  background: var(--color-tab-inactive);
   color: var(--color-fg-secondary);
   cursor: pointer;
   transition:
-    background var(--duration-normal) var(--ease-out),
-    color      var(--duration-normal) var(--ease-out);
-  flex-shrink: 0;
+    background var(--duration-fast) var(--ease-out),
+    color      var(--duration-fast) var(--ease-out);
   position: relative;
+  -webkit-app-region: no-drag;
+}
+
+/* Hairline separator between adjacent inactive tabs (Chrome-style).
+   Hidden when this tab or its left neighbor is active/hovered. */
+.tab-item + .tab-item::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--color-border-default);
+  opacity: 0.6;
+}
+
+.tab-item:hover::before,
+.tab-item--active::before,
+.tab-item:hover + .tab-item::before,
+.tab-item--active + .tab-item::before {
+  opacity: 0;
 }
 
 .tab-item:hover {
-  background: var(--color-surface-interactive-hover);
+  background: var(--color-tab-hover);
   color: var(--color-fg-primary);
 }
 
-/* Active tab: lighter bg — uses --color-tab-active alias (shell.css) which is
-   intentionally brighter than --bg-overlay for real Chrome-like contrast. */
-.tab-item--active {
+/* Active tab matches the toolbar bg — the tab visually merges into the toolbar,
+   which is the defining Chrome look. No accent underline, no border. */
+.tab-item--active,
+.tab-item--active:hover {
   background: var(--color-tab-active);
   color: var(--color-fg-primary);
-}
-
-/* Active tab indicator: muted line — accent is too aggressive on the tab bar */
-.tab-item--active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 8px;
-  right: 8px;
-  height: 2px;
-  background: var(--color-fg-primary);
-  opacity: 0.6;
-  border-radius: 1px 1px 0 0;
 }
 
 .tab-item--drag-over {
@@ -142,8 +152,8 @@
 }
 
 .tab-item__favicon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -151,21 +161,21 @@
 }
 
 .tab-item__favicon img {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
 }
 
-/* Invisible placeholder: holds the 14×14 slot so layout doesn't shift
+/* Invisible placeholder: holds the 16×16 slot so layout doesn't shift
    when a favicon arrives. No visible chrome — a gray square reads as broken. */
 .tab-item__favicon-placeholder {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .tab-item__spinner {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border: 1.5px solid var(--color-border-default);
   border-top-color: var(--color-accent-default);
   border-radius: 50%;
@@ -185,28 +195,29 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.01em;
 }
 
-/* Close button — 28×28 hitbox, visually 16×16 content */
+/* Close button — 20×20 hitbox, visually 16×16. Chrome shows it on hover/active only. */
 .tab-item__close {
   display: none;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--color-fg-secondary);
-  font-size: 14px;
-  line-height: 1;
+  line-height: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   padding: 0;
-  margin-right: -6px;
+  margin-right: -4px;
   transition:
-    background var(--duration-normal) var(--ease-out),
-    color      var(--duration-normal) var(--ease-out);
+    background var(--duration-fast) var(--ease-out),
+    color      var(--duration-fast) var(--ease-out);
 }
 
 .tab-item:hover .tab-item__close,
@@ -215,8 +226,8 @@
 }
 
 .tab-item__close:hover {
-  background: var(--color-surface-interactive-hover);
-  color: var(--color-status-danger);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-fg-primary);
 }
 
 .tab-strip__new-tab {
@@ -225,22 +236,22 @@
   border: none;
   background: transparent;
   color: var(--color-fg-tertiary);
-  font-size: 18px;
-  line-height: 1;
-  border-radius: var(--radius-md);
+  line-height: 0;
+  border-radius: var(--radius-full);
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 4px;
+  margin: 0 4px 2px 6px;
+  -webkit-app-region: no-drag;
   transition:
-    background var(--duration-normal) var(--ease-out),
-    color      var(--duration-normal) var(--ease-out);
+    background var(--duration-fast) var(--ease-out),
+    color      var(--duration-fast) var(--ease-out);
 }
 
 .tab-strip__new-tab:hover {
-  background: var(--color-surface-interactive-hover);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--color-fg-primary);
 }
 
@@ -281,28 +292,35 @@
 }
 
 /* ---------------------------------------------------------------------------
-   URLBar
+   URLBar — Chrome-style omnibox capsule
    --------------------------------------------------------------------------- */
 .url-bar {
   display: flex;
   align-items: center;
   flex: 1;
   position: relative;
-  height: 28px;
-  padding: 0 10px;
-  gap: 6px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-lg);
+  height: 30px;
+  padding: 0 12px;
+  gap: 8px;
+  background: var(--color-bg-overlay);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
   transition:
-    border-color var(--duration-moderate) var(--ease-out),
-    box-shadow   var(--duration-moderate) var(--ease-out);
+    background   var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow   var(--duration-fast) var(--ease-out);
   overflow: hidden;
 }
 
+.url-bar:hover {
+  background: var(--color-bg-overlay);
+  border-color: var(--color-border-subtle);
+}
+
 .url-bar:focus-within {
+  background: var(--color-bg-overlay);
   border-color: var(--color-accent-default);
-  box-shadow: 0 0 0 2px var(--color-accent-default), var(--glow-accent-md);
+  box-shadow: var(--glow-accent-sm);
 }
 
 .url-bar--insecure .url-bar__security {
@@ -324,8 +342,8 @@
   border: none;
   background: transparent;
   color: var(--color-fg-primary);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-family: var(--font-ui);
+  font-size: 13px;
   outline: none;
   min-width: 0;
 }
