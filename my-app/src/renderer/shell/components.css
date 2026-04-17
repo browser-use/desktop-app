@@ -1,4 +1,13 @@
-/* Shell component styles */
+/*
+ * Shell component styles — polished Linear+Obsidian chrome
+ *
+ * Constants:
+ *   TAB_HOVER_TRANSITION   150ms ease-out
+ *   URL_FOCUS_TRANSITION   250ms ease-out
+ *   SCROLLBAR_WIDTH        8px
+ *   CLOSE_BTN_HITBOX       28px (visual 16px)
+ *   TAB_ACCENT_UNDERLINE   2px solid var(--color-accent) at bottom
+ */
 
 /* ---------------------------------------------------------------------------
    WindowChrome
@@ -54,11 +63,22 @@
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
+  /* Custom 8px scrollbar — brand token thumb */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 .tab-strip__tabs::-webkit-scrollbar {
-  display: none;
+  height: 8px;
+}
+
+.tab-strip__tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-strip__tabs::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
 }
 
 .tab-item {
@@ -74,7 +94,8 @@
   background: var(--color-tab-inactive);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  /* 150ms ease-out — per spec */
+  transition: background 150ms ease-out, color 150ms ease-out;
   flex-shrink: 0;
   position: relative;
 }
@@ -84,9 +105,22 @@
   color: var(--color-text-primary);
 }
 
+/* Active tab: no full fill — just accent underline at bottom + subtle bg */
 .tab-item--active {
   background: var(--color-tab-active);
   color: var(--color-text-primary);
+}
+
+/* Accent underline for active tab — clinical shell feel */
+.tab-item--active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--color-accent);
+  border-radius: 1px 1px 0 0;
 }
 
 .tab-item--drag-over {
@@ -140,10 +174,12 @@
   font-size: 12px;
 }
 
+/* Close button — 28×28 hitbox, visually 16×16 content */
 .tab-item__close {
   display: none;
-  width: 16px;
-  height: 16px;
+  /* 28×28 hitbox regardless of visual size */
+  width: 28px;
+  height: 28px;
   border: none;
   background: transparent;
   color: var(--color-text-secondary);
@@ -155,6 +191,9 @@
   align-items: center;
   justify-content: center;
   padding: 0;
+  /* Negative margin to avoid expanding tab width */
+  margin-right: -6px;
+  transition: background 150ms ease-out, color 150ms ease-out;
 }
 
 .tab-item:hover .tab-item__close,
@@ -182,7 +221,7 @@
   align-items: center;
   justify-content: center;
   margin-left: 4px;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 150ms ease-out, color 150ms ease-out;
 }
 
 .tab-strip__new-tab:hover {
@@ -211,7 +250,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 150ms ease-out, color 150ms ease-out;
 }
 
 .nav-buttons__btn:hover:not(:disabled) {
@@ -231,18 +270,23 @@
   display: flex;
   align-items: center;
   flex: 1;
+  /* Positioned so the loading bar can sit at the top */
+  position: relative;
   height: 28px;
   padding: 0 10px;
   gap: 6px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  /* 250ms ease-out focus transition — per spec */
+  transition: border-color 250ms ease-out, box-shadow 250ms ease-out;
+  overflow: hidden;
 }
 
+/* 2px outline ring with 4px offset — brand accent */
 .url-bar:focus-within {
   border-color: var(--color-accent);
-  background: var(--color-surface-hover);
+  box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 4px rgba(200, 241, 53, 0.18);
 }
 
 .url-bar--insecure .url-bar__security {
@@ -274,12 +318,45 @@
   color: var(--color-text-tertiary);
 }
 
+/* Loading bar — thin 2px accent strip at top of URL bar, animated fill */
 .url-bar__loading {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--color-border);
-  border-top-color: var(--color-loading);
-  border-radius: 50%;
-  animation: tab-spin 0.6s linear infinite;
-  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-accent) 30%,
+    var(--color-accent) 70%,
+    transparent 100%
+  );
+  animation: url-bar-loading 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: 0 0 1px 1px;
+}
+
+@keyframes url-bar-loading {
+  0%   { transform: translateX(-100%); opacity: 0.9; }
+  50%  { transform: translateX(0%);    opacity: 1; }
+  100% { transform: translateX(100%);  opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .url-bar__loading {
+    animation: none;
+    /* Static indicator when motion is reduced */
+    width: 40%;
+    left: 30%;
+    opacity: 0.7;
+  }
+  .tab-item,
+  .tab-item__close,
+  .tab-strip__new-tab,
+  .nav-buttons__btn {
+    transition: none;
+  }
+  .url-bar {
+    transition: none;
+  }
 }

@@ -16,12 +16,13 @@
   --color-text-primary: #e8e8e8;
   --color-text-secondary: #888888;
   --color-text-tertiary: #555555;
-  --color-accent: #5e6ad2;
-  --color-accent-hover: #6e7ae2;
-  --color-danger: #e5534b;
+  /* Brand accent: neon yellow-green — matches BRAND.md and design tokens */
+  --color-accent: #c8f135;
+  --color-accent-hover: #d4f74e;
+  --color-danger: #f87171;
   --color-tab-active: #1c1c1c;
   --color-tab-inactive: transparent;
-  --color-loading: #5e6ad2;
+  --color-loading: #c8f135;
 
   --radius-sm: 4px;
   --radius-md: 6px;
