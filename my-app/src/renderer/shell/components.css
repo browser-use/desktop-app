@@ -1,12 +1,14 @@
 /*
  * Shell component styles — polished Linear+Obsidian chrome
+ * All colors via CSS custom properties from theme.global.css + theme.shell.css.
+ * Zero hex literals — every color is a token.
  *
- * Constants:
+ * Constants (structural, not color tokens):
  *   TAB_HOVER_TRANSITION   150ms ease-out
  *   URL_FOCUS_TRANSITION   250ms ease-out
  *   SCROLLBAR_WIDTH        8px
  *   CLOSE_BTN_HITBOX       28px (visual 16px)
- *   TAB_ACCENT_UNDERLINE   2px solid var(--color-accent) at bottom
+ *   TAB_ACCENT_UNDERLINE   2px solid var(--color-fg-primary) at bottom
  */
 
 /* ---------------------------------------------------------------------------
@@ -16,8 +18,8 @@
   display: flex;
   flex-direction: column;
   height: var(--chrome-height);
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-base);
+  border-bottom: 1px solid var(--color-border-default);
   -webkit-app-region: no-drag;
 }
 
@@ -25,14 +27,14 @@
   display: flex;
   align-items: center;
   height: var(--tab-height);
-  background: var(--color-chrome-bg);
+  background: var(--color-bg-elevated);
   -webkit-app-region: drag;
 }
 
-/* Unify tab row + toolbar into one continuous chrome area — matches Chrome.
-   Active tab (#2a2a2e) sits on top of chrome-bg (#1a1a1d) and is visibly lighter. */
+/* Unify tab row + toolbar into one continuous chrome area.
+   Active tab (bg-overlay) sits on top of bg-elevated and is visibly lighter. */
 .window-chrome__toolbar {
-  background: var(--color-chrome-bg);
+  background: var(--color-bg-elevated);
 }
 
 .window-chrome__traffic-light-spacer {
@@ -72,9 +74,8 @@
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  /* Custom 8px scrollbar — brand token thumb */
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
+  scrollbar-color: var(--color-border-default) transparent;
 }
 
 .tab-strip__tabs::-webkit-scrollbar {
@@ -86,7 +87,7 @@
 }
 
 .tab-strip__tabs::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--color-border-default);
   border-radius: 4px;
 }
 
@@ -100,29 +101,28 @@
   padding: 0 10px;
   margin: 4px 2px 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: var(--color-tab-inactive);
-  color: var(--color-text-secondary);
+  background: transparent;
+  color: var(--color-fg-secondary);
   cursor: pointer;
-  /* 150ms ease-out — per spec */
-  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  transition:
+    background var(--duration-normal) var(--ease-out),
+    color      var(--duration-normal) var(--ease-out);
   flex-shrink: 0;
   position: relative;
 }
 
 .tab-item:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+  background: var(--color-surface-interactive-hover);
+  color: var(--color-fg-primary);
 }
 
-/* Active tab: no full fill — just accent underline at bottom + subtle bg */
+/* Active tab: lighter bg + accent underline at bottom */
 .tab-item--active {
-  background: var(--color-tab-active);
-  color: var(--color-text-primary);
+  background: var(--color-bg-overlay);
+  color: var(--color-fg-primary);
 }
 
-/* Active tab indicator: subtle text-colored line, not neon.
-   The accent token (#c8f135) is too aggressive on a dark tab bar;
-   use a muted light line that reads as "this tab is active" without shouting. */
+/* Active tab indicator: muted line — accent is too aggressive on the tab bar */
 .tab-item--active::after {
   content: '';
   position: absolute;
@@ -130,13 +130,13 @@
   left: 8px;
   right: 8px;
   height: 2px;
-  background: var(--color-text-primary);
+  background: var(--color-fg-primary);
   opacity: 0.6;
   border-radius: 1px 1px 0 0;
 }
 
 .tab-item--drag-over {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-default);
   outline-offset: -2px;
 }
 
@@ -165,8 +165,8 @@
 .tab-item__spinner {
   width: 10px;
   height: 10px;
-  border: 1.5px solid var(--color-border);
-  border-top-color: var(--color-loading);
+  border: 1.5px solid var(--color-border-default);
+  border-top-color: var(--color-accent-default);
   border-radius: 50%;
   animation: tab-spin 0.6s linear infinite;
   display: block;
@@ -189,12 +189,11 @@
 /* Close button — 28×28 hitbox, visually 16×16 content */
 .tab-item__close {
   display: none;
-  /* 28×28 hitbox regardless of visual size */
   width: 28px;
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-fg-secondary);
   font-size: 14px;
   line-height: 1;
   border-radius: var(--radius-sm);
@@ -203,9 +202,10 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  /* Negative margin to avoid expanding tab width */
   margin-right: -6px;
-  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  transition:
+    background var(--duration-normal) var(--ease-out),
+    color      var(--duration-normal) var(--ease-out);
 }
 
 .tab-item:hover .tab-item__close,
@@ -214,8 +214,8 @@
 }
 
 .tab-item__close:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-danger);
+  background: var(--color-surface-interactive-hover);
+  color: var(--color-status-danger);
 }
 
 .tab-strip__new-tab {
@@ -223,7 +223,7 @@
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--color-text-tertiary);
+  color: var(--color-fg-tertiary);
   font-size: 18px;
   line-height: 1;
   border-radius: var(--radius-md);
@@ -233,12 +233,14 @@
   align-items: center;
   justify-content: center;
   margin-left: 4px;
-  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  transition:
+    background var(--duration-normal) var(--ease-out),
+    color      var(--duration-normal) var(--ease-out);
 }
 
 .tab-strip__new-tab:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+  background: var(--color-surface-interactive-hover);
+  color: var(--color-fg-primary);
 }
 
 /* ---------------------------------------------------------------------------
@@ -256,18 +258,20 @@
   height: 28px;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-fg-secondary);
   border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), color var(--duration-normal, 150ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  transition:
+    background var(--duration-normal) var(--ease-out),
+    color      var(--duration-normal) var(--ease-out);
 }
 
 .nav-buttons__btn:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+  background: var(--color-surface-interactive-hover);
+  color: var(--color-fg-primary);
 }
 
 .nav-buttons__btn:disabled {
@@ -282,31 +286,30 @@
   display: flex;
   align-items: center;
   flex: 1;
-  /* Positioned so the loading bar can sit at the top */
   position: relative;
   height: 28px;
   padding: 0 10px;
   gap: 6px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
-  /* Modal/overlay fade duration — 250ms per token spec */
-  transition: border-color var(--duration-moderate, 220ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1)), box-shadow var(--duration-moderate, 220ms) var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
+  transition:
+    border-color var(--duration-moderate) var(--ease-out),
+    box-shadow   var(--duration-moderate) var(--ease-out);
   overflow: hidden;
 }
 
-/* 2px outline ring with 4px offset — brand accent */
 .url-bar:focus-within {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 4px rgba(200, 241, 53, 0.18);
+  border-color: var(--color-accent-default);
+  box-shadow: 0 0 0 2px var(--color-accent-default), var(--glow-accent-md);
 }
 
 .url-bar--insecure .url-bar__security {
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 .url-bar--secure .url-bar__security {
-  color: var(--color-text-tertiary);
+  color: var(--color-fg-tertiary);
 }
 
 .url-bar__security {
@@ -319,25 +322,22 @@
   flex: 1;
   border: none;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--color-fg-primary);
   font-family: var(--font-mono);
   font-size: 12px;
-  /* No outline on input — parent .url-bar shows focus ring via :focus-within */
   outline: none;
   min-width: 0;
 }
 
-/* Keyboard-only focus state: defer to parent container ring. Input itself gets
-   no secondary ring to avoid double-ring inside the url-bar border. */
 .url-bar__input:focus-visible {
   outline: none;
 }
 
 .url-bar__input::placeholder {
-  color: var(--color-text-tertiary);
+  color: var(--color-fg-tertiary);
 }
 
-/* Loading bar — thin 2px accent strip at top of URL bar, animated fill */
+/* Loading bar — thin 2px accent strip at top of URL bar */
 .url-bar__loading {
   position: absolute;
   top: 0;
@@ -347,11 +347,11 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    var(--color-accent) 30%,
-    var(--color-accent) 70%,
+    var(--color-accent-default) 30%,
+    var(--color-accent-default) 70%,
     transparent 100%
   );
-  animation: url-bar-loading 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: url-bar-loading 1.4s var(--ease-in-out) infinite;
   border-radius: 0 0 1px 1px;
 }
 
@@ -364,7 +364,6 @@
 @media (prefers-reduced-motion: reduce) {
   .url-bar__loading {
     animation: none;
-    /* Static indicator when motion is reduced */
     width: 40%;
     left: 30%;
     opacity: 0.7;

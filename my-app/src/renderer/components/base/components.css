@@ -23,10 +23,10 @@
   white-space: nowrap;
   text-decoration: none;
   transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    border-color     var(--duration-fast) var(--ease-standard),
-    color            var(--duration-fast) var(--ease-standard),
-    box-shadow       var(--duration-normal) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color     var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out),
+    box-shadow       var(--duration-normal) var(--ease-out),
     transform        var(--duration-fast) var(--ease-spring);
 }
 
@@ -91,6 +91,9 @@
   border-color: var(--color-status-error);
 }
 .agb-btn--danger:hover:not(.agb-btn--disabled) {
+  /* why-not-a-token: danger at 10% alpha is the hover tint for the ghost-danger
+     button variant. A --color-status-danger-hover-bg token would be correct
+     but is not in the current token set. */
   background-color: rgba(248, 113, 113, 0.10);
 }
 
@@ -157,20 +160,22 @@
   border-radius: var(--radius-md);
   background-color: var(--color-bg-elevated);
   transition:
-    border-color var(--duration-normal) var(--ease-standard),
-    box-shadow   var(--duration-normal) var(--ease-standard);
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow   var(--duration-normal) var(--ease-out);
   overflow: hidden;
 }
 
 .agb-input__wrapper:focus-within {
-  /* Neutral focus: lift the border to a readable gray — no neon glow.
-     Input is already visually distinct from the page; a loud accent is unnecessary. */
+  /* Neutral focus: lift border to a readable fg-secondary — no neon glow.
+     Input is already visually distinct; a loud accent is unnecessary. */
   border-color: var(--color-fg-secondary);
   box-shadow: none;
 }
 
 .agb-input__wrapper.agb-input--error {
   border-color: var(--color-status-error);
+  /* why-not-a-token: error glow at 18% alpha is the error input focus state.
+     A --glow-error-sm token would be correct but is not in the token set. */
   box-shadow: 0 0 8px rgba(248, 113, 113, 0.18);
 }
 
@@ -236,7 +241,7 @@
 .agb-modal__scrim {
   position: fixed;
   inset: 0;
-  background-color: var(--color-modal-scrim, rgba(0, 0, 0, 0.6));
+  background-color: var(--color-modal-scrim);
   z-index: var(--z-modal);
   display: flex;
   align-items: center;
@@ -253,7 +258,7 @@
   flex-direction: column;
   max-height: calc(100vh - 80px);
   overflow: hidden;
-  animation: scale-in var(--duration-moderate) var(--ease-spring) forwards;
+  animation: scale-in var(--duration-normal) var(--ease-spring) forwards;
 }
 
 .agb-modal--sm   { width: 360px; }
@@ -296,8 +301,9 @@
   color: var(--color-fg-tertiary);
   flex-shrink: 0;
   margin-top: -2px;
-  transition: background-color var(--duration-fast) var(--ease-standard),
-              color var(--duration-fast) var(--ease-standard);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out);
 }
 
 .agb-modal__close-btn:hover {
@@ -348,7 +354,7 @@
   min-width: 280px;
   max-width: 380px;
   pointer-events: auto;
-  animation: slide-up var(--duration-moderate) var(--ease-spring) forwards;
+  animation: slide-up var(--duration-normal) var(--ease-spring) forwards;
 }
 
 .agb-toast__icon {
@@ -389,17 +395,21 @@
   height: 20px;
   border-radius: var(--radius-xs);
   color: var(--color-fg-tertiary);
-  transition: background-color var(--duration-fast) var(--ease-standard),
-              color var(--duration-fast) var(--ease-standard);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out);
   margin-top: 1px;
 }
 
 .agb-toast__dismiss:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
-/* Variants */
+/* Variants — tinted borders for each status type.
+   why-not-a-token: these alpha variants (30%) of the status colors are
+   toast-specific border tints. A full --color-toast-border-{type} family
+   would be the clean solution; for now they are documented here. */
 .agb-toast--info    { border-color: rgba(96, 165, 250, 0.30); }
 .agb-toast--info    .agb-toast__icon { color: var(--color-status-info); }
 
@@ -413,7 +423,7 @@
 .agb-toast--error   .agb-toast__icon { color: var(--color-status-error); }
 
 .agb-toast--agent {
-  border-color: var(--color-pill-border, rgba(200, 241, 53, 0.25));
+  border-color: var(--color-pill-border, #2e2e38);
   box-shadow: var(--glow-accent);
 }
 .agb-toast--agent .agb-toast__icon { color: var(--color-accent-default); }
@@ -453,8 +463,8 @@
 .agb-card--interactive {
   cursor: pointer;
   transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-normal) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out),
     transform var(--duration-fast) var(--ease-spring);
 }
 .agb-card--interactive:hover {
@@ -502,7 +512,7 @@
   opacity: 0.5;
 }
 
-/* Sizes — consistent 20px height / 6px radius / 11px font / 1.5px border / monospace */
+/* Sizes */
 .agb-keyhint--xs .agb-keyhint__key {
   font-size: 10px;
   font-family: var(--font-mono);
@@ -537,7 +547,6 @@
 .agb-skeleton {
   display: block;
   background-color: var(--color-bg-elevated);
-  /* Shimmer: horizontal sweep via background-position animation */
   background-image: linear-gradient(
     90deg,
     var(--color-bg-elevated) 0%,
@@ -546,12 +555,11 @@
     var(--color-bg-elevated) 100%
   );
   background-size: 200% 100%;
-  animation: skeleton-shimmer 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: skeleton-shimmer 1.6s var(--ease-in-out) infinite;
 }
 
-/* Variant shape aliases (default handled by inline style from props) */
 .agb-skeleton--circle {
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
 }
 
 @keyframes skeleton-shimmer {
@@ -559,7 +567,6 @@
   100% { background-position: -200% center; }
 }
 
-/* Reduced-motion: collapse shimmer to static muted block */
 @media (prefers-reduced-motion: reduce) {
   .agb-skeleton {
     animation: none;

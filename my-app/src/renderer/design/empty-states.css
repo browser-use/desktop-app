@@ -1,8 +1,7 @@
 /*
  * empty-states.css — shared styles for empty + error state components.
- *
- * Imported alongside theme.global.css. Works in both shell and onboarding
- * themes by consuming CSS custom properties from the active theme.
+ * All colors via CSS custom properties from theme.global.css + active theme.
+ * Zero hex literals — every color is a token or has a why-not-a-token comment.
  *
  * Components:
  *   .empty-state            — full-size centered layout (EmptyShellState, ErrorBoundary)
@@ -11,10 +10,10 @@
  *
  * Rules: zero !important, zero Inter references, zero left-outline emphasis.
  *
- * Constants:
- *   MASCOT_FLOAT_DURATION   3s ease-in-out infinite (matches BRAND.md)
- *   OFFLINE_BANNER_BG       rgba(245, 158, 11, 0.15) — warm yellow at 15% alpha
- *   OFFLINE_BANNER_BORDER   rgba(245, 158, 11, 0.35)
+ * Constants (structural, not design tokens):
+ *   MASCOT_FLOAT_DURATION   3s ease-in-out infinite
+ *   OFFLINE_BANNER_BG       warning at 15% alpha — see why-not-a-token below
+ *   OFFLINE_BANNER_BORDER   warning at 35% alpha — see why-not-a-token below
  *   RELOAD_BTN_HEIGHT       34px
  */
 
@@ -32,7 +31,7 @@
   gap: 12px;
   padding: 32px;
   text-align: center;
-  animation: fade-in 220ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: fade-in var(--duration-moderate, 220ms) var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
 /* Compact variant for pill / sidebar contexts */
@@ -48,16 +47,16 @@
 }
 
 .empty-state__heading {
-  font-size: var(--font-size-lg, 15px);
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--color-fg-primary, #f0f0f2);
-  line-height: var(--line-height-snug, 1.35);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-primary);
+  line-height: var(--line-height-snug);
 }
 
 .empty-state__body {
-  font-size: var(--font-size-sm, 12px);
-  color: var(--color-fg-secondary, #8a8f98);
-  line-height: var(--line-height-relaxed, 1.6);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--line-height-relaxed);
   max-width: 280px;
 }
 
@@ -77,8 +76,8 @@
 }
 
 .empty-state__hint-label {
-  font-size: var(--font-size-xs, 11px);
-  color: var(--color-fg-tertiary, #5a5f68);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
 }
 
 /* Reload button — used by ErrorBoundary */
@@ -88,23 +87,23 @@
   justify-content: center;
   height: 34px;
   padding-inline: 16px;
-  border-radius: var(--radius-md, 7px);
-  background-color: var(--color-bg-elevated, #111114);
-  border: 1px solid var(--color-border-default, #282830);
-  color: var(--color-fg-primary, #f0f0f2);
-  font-family: var(--font-ui, system-ui, sans-serif);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-fg-primary);
+  font-family: var(--font-ui);
   font-size: var(--font-size-sm, 12px);
   font-weight: var(--font-weight-medium, 500);
   cursor: pointer;
   margin-top: 8px;
   transition:
-    background-color var(--duration-fast, 80ms) var(--ease-standard, cubic-bezier(0.2,0,0,1)),
-    border-color     var(--duration-fast, 80ms) var(--ease-standard, cubic-bezier(0.2,0,0,1));
+    background-color var(--duration-fast, 80ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    border-color     var(--duration-fast, 80ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .empty-state__reload-btn:hover {
-  background-color: var(--color-bg-overlay, #16161a);
-  border-color: var(--color-border-strong, #3a3a44);
+  background-color: var(--color-bg-overlay);
+  border-color: var(--color-border-strong);
 }
 
 /* ---------------------------------------------------------------------------
@@ -120,18 +119,20 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  /* Warm yellow — status-warning at 15% alpha */
+  /* why-not-a-token: warning at 15% / 35% alpha are the offline banner tints.
+     A --color-status-warning-muted token family would be correct but is not
+     in the current token set. The exact alpha values are intentional. */
   background-color: rgba(245, 158, 11, 0.15);
   border-bottom: 1px solid rgba(245, 158, 11, 0.35);
-  color: var(--color-fg-primary, #f0f0f2);
+  color: var(--color-fg-primary);
   font-size: var(--font-size-sm, 12px);
   font-family: var(--font-ui, system-ui, sans-serif);
   z-index: var(--z-sticky, 200);
-  animation: slide-down 180ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: slide-down var(--duration-normal, 180ms) var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
 .offline-banner__icon {
-  color: var(--color-status-warning, #f59e0b);
+  color: var(--color-status-warning);
   flex-shrink: 0;
 }
 
@@ -146,20 +147,24 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: var(--radius-xs, 3px);
+  border-radius: var(--radius-xs);
   background: transparent;
   border: none;
-  color: var(--color-fg-tertiary, #5a5f68);
+  color: var(--color-fg-tertiary);
   cursor: pointer;
   flex-shrink: 0;
   transition:
-    background-color var(--duration-fast, 80ms) var(--ease-standard, cubic-bezier(0.2,0,0,1)),
-    color            var(--duration-fast, 80ms) var(--ease-standard, cubic-bezier(0.2,0,0,1));
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out);
 }
 
 .offline-banner__dismiss:hover {
+  /* why-not-a-token: alpha-white dismiss hover over the yellow banner bg.
+     Using --color-surface-interactive-hover (rgba 7%) would be semantically
+     correct; kept as inline alpha-white to match the pill glass pattern
+     where the banner itself is already a colored surface. */
   background-color: rgba(255, 255, 255, 0.08);
-  color: var(--color-fg-primary, #f0f0f2);
+  color: var(--color-fg-primary);
 }
 
 /* ---------------------------------------------------------------------------

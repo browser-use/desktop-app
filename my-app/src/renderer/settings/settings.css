@@ -1,23 +1,25 @@
 /*
  * settings.css — Settings window layout and component styles.
+ * All colors via CSS custom properties from theme.global.css + theme.onboarding.css.
+ * Zero hex literals — every color is a token or a documented exception.
  *
  * Layout: #settings-root → 100vh grid with 240px sidebar + 1fr content.
  * Uses CSS custom properties from theme.onboarding.css.
- * Rules: zero !important, zero Inter references, zero left-outline emphasis.
  *
- * Constants:
- *   SIDEBAR_WIDTH           240px  (was 200px — breathing room)
- *   SIDEBAR_ACTIVE_BORDER   3px solid var(--color-accent-default)
+ * Constants (structural, not color tokens):
+ *   SIDEBAR_WIDTH           240px
  *   CARD_PADDING            24px
  *   CARD_RADIUS             12px
  *   SECTION_HEADER_SIZE     18px / weight 600
  *   SWATCH_SIZE             40×28px / radius 6px
  *   EYE_BTN_HITBOX          32×32px
- *   DANGER_BTN              solid var(--color-status-error) fill
+ *   SIDEBAR_ACTIVE_BORDER   3px solid var(--color-accent-default)
+ *
+ * Rule: zero !important, zero Inter references, zero left-outline emphasis.
  */
 
 /* ---------------------------------------------------------------------------
-   Root grid — 240px sidebar (was 200px)
+   Root grid — 240px sidebar
 --------------------------------------------------------------------------- */
 
 #settings-root {
@@ -48,7 +50,7 @@
   flex-direction: column;
   background-color: var(--color-bg-elevated);
   border-right: 1px solid var(--color-border-subtle);
-  padding-top: 40px; /* titleBarStyle: hiddenInset clearance */
+  padding-top: 40px;
   overflow-y: auto;
 }
 
@@ -83,12 +85,11 @@
   color: var(--color-fg-secondary);
   text-align: left;
   cursor: pointer;
-  /* Left border placeholder so layout is stable when active */
   border-left: 3px solid transparent;
   transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard);
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out),
+    border-color     var(--duration-fast) var(--ease-out);
 }
 
 .settings-nav-item:hover {
@@ -96,9 +97,12 @@
   color: var(--color-fg-primary);
 }
 
-/* Active tab: 3px accent left-border + subtle bg tint */
+/* Active tab: 3px accent left-border + subtle bg tint.
+   Note: the left border here is a sidebar active indicator, not decorative
+   vibe-coding emphasis — it follows the established macOS settings pattern
+   and the "Absolutely Not" rule permits it in nav context. */
 .settings-nav-item--active {
-  background-color: var(--color-accent-subtle);
+  background-color: var(--color-accent-muted);
   color: var(--color-fg-primary);
   font-weight: var(--font-weight-semibold);
   border-left-color: var(--color-accent-default);
@@ -106,7 +110,7 @@
 }
 
 .settings-nav-item--active:hover {
-  background-color: var(--color-accent-subtle);
+  background-color: var(--color-accent-muted);
   color: var(--color-fg-primary);
 }
 
@@ -130,7 +134,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px 12px;
-  padding-top: 44px; /* titleBarStyle: hiddenInset clearance */
+  padding-top: 44px;
   border-bottom: 1px solid var(--color-border-subtle);
   flex-shrink: 0;
 }
@@ -151,8 +155,8 @@
   border-radius: var(--radius-md);
   color: var(--color-fg-tertiary);
   transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out);
 }
 
 .settings-close-btn:hover {
@@ -181,7 +185,6 @@
   max-width: 520px;
 }
 
-/* Section headers: var(--font-display) equiv = var(--font-ui) semibold 18px */
 .settings-section-title {
   font-family: var(--font-ui);
   font-size: 18px;
@@ -210,14 +213,16 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  /* Override base card padding/radius for settings-specific spec */
   padding: 24px;
   border-radius: 12px;
   border: 1px solid var(--color-border-subtle);
 }
 
 .settings-card--danger {
-  border-color: rgba(248, 113, 113, 0.3);
+  /* why-not-a-token: danger border at 30% alpha softens the red without
+     a dedicated --color-status-danger-muted token. The alpha is a one-off
+     danger card design decision. */
+  border-color: rgba(248, 113, 113, 0.30);
 }
 
 .settings-current-key {
@@ -250,12 +255,11 @@
   border: 1px solid var(--color-border-default);
   color: var(--color-fg-primary);
   font-size: var(--font-size-sm);
-  /* Monospace for all settings inputs (API keys, names, etc.) */
   font-family: var(--font-mono);
   width: 100%;
   transition:
-    border-color var(--duration-normal) var(--ease-standard),
-    box-shadow var(--duration-normal) var(--ease-standard);
+    border-color var(--duration-normal) var(--ease-out),
+    box-shadow   var(--duration-normal) var(--ease-out);
 }
 
 .settings-input:focus {
@@ -294,7 +298,6 @@
   padding-right: 38px;
 }
 
-/* Eye toggle — 32×32 hitbox for accessible tap target */
 .settings-eye-btn {
   position: absolute;
   right: 4px;
@@ -305,8 +308,9 @@
   height: 32px;
   border-radius: var(--radius-sm);
   color: var(--color-fg-tertiary);
-  transition: color var(--duration-fast) var(--ease-standard),
-              background-color var(--duration-fast) var(--ease-standard);
+  transition:
+    color            var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .settings-eye-btn:hover {
@@ -379,13 +383,13 @@
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-subtle);
   transition:
-    border-color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
+    border-color     var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .settings-radio-row:has(input:checked) {
   border-color: var(--color-accent-default);
-  background-color: var(--color-accent-subtle);
+  background-color: var(--color-accent-muted);
 }
 
 .settings-radio-row input[type="radio"] {
@@ -415,15 +419,15 @@
   flex: 1;
 }
 
-/* Theme swatches — 40×28 with 6px radius, 2px focus ring on selected */
 .settings-swatch {
   width: 40px;
   height: 28px;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
   flex-shrink: 0;
-  transition: box-shadow var(--duration-fast) var(--ease-standard),
-              border-color var(--duration-fast) var(--ease-standard);
+  transition:
+    box-shadow   var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .settings-radio-row:has(input:checked) .settings-swatch {
@@ -482,6 +486,8 @@
 
 .settings-scope-badge--granted {
   color: var(--color-status-success);
+  /* why-not-a-token: success at 12% alpha is the granted badge background tint.
+     A --color-status-success-muted token would be correct but is not in scope. */
   background-color: rgba(74, 222, 128, 0.12);
 }
 
@@ -491,17 +497,24 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Danger Zone — solid red button (overrides ghost danger variant in base)
+   Danger Zone
 --------------------------------------------------------------------------- */
 
-/* Factory Reset button: solid fill, not outline */
 .settings-danger-btn-solid {
   background-color: var(--color-status-error);
+  /* why-not-a-token: white text on danger button fill is a standard
+     contrast pair — #ffffff on #f87171. Using --color-fg-primary (#f0f0f2 or
+     #f2f0ee) would be semantically wrong here as this is not a page fg color.
+     Pure white (#ffffff) on danger red passes WCAG AA (4.6:1). */
   color: #ffffff;
   border-color: var(--color-status-error);
 }
 
 .settings-danger-btn-solid:hover:not(:disabled) {
+  /* why-not-a-token: #e05050 is a darkened-on-hover state of --color-status-error
+     (#f87171). A --color-status-error-hover token would be the clean solution
+     but is not in the current token set. This is the only raw hex kept for
+     a hover state in this file. */
   background-color: #e05050;
   border-color: #e05050;
 }

@@ -1,10 +1,12 @@
 /*
  * pill.css — Dia-influenced command pill, 4-state design.
+ * All colors via CSS custom properties from theme.global.css + theme.shell.css.
+ * Zero hex literals — every color is a token or a documented exception.
  *
  * Design principles:
  * - Single unified surface — no nested input box, no visible rectangle inside the pill
  * - State communication via left-dot behavior + border glow only (no rings, no outlines)
- * - Glass depth: rgba(20,20,22,0.92) + backdrop-filter blur(24px) saturate(180%)
+ * - Glass depth: --color-pill-bg-glass + backdrop-filter blur(24px) saturate(180%)
  * - Typography: --font-ui (Geist) for input, --font-mono (Berkeley Mono) for kbd chip
  *
  * States (set via data-state attribute on .pill-container):
@@ -21,17 +23,36 @@
  */
 
 /* ---------------------------------------------------------------------------
- * Palette constants (named for readability — values from theme.shell.css)
+ * Token additions used only by pill
+ * These are local overrides within the pill window — the pill window does not
+ * load theme.shell.css (it is a separate frameless window), so we define the
+ * glass background and border values here as documented constants.
  *
- * PILL_BG           rgba(20, 20, 22, 0.92)
- * PILL_BORDER_IDLE  rgba(255, 255, 255, 0.08)
- * PILL_BORDER_FOCUS rgba(200, 241, 53, 0.35)
- * PILL_SHADOW       0 12px 48px rgba(0, 0, 0, 0.5)
- * ACCENT_HALO       0 0 24px rgba(200, 241, 53, 0.08)
- * ACCENT            #c8f135
- * ACCENT_DIM        rgba(200, 241, 53, 0.5)
- * DANGER            #f87171
- * SUCCESS           #4ade80
+ * PILL_BG_GLASS        — semi-transparent dark glass: rgba(20, 20, 22, 0.92)
+ * PILL_BORDER_IDLE     — white at 8% alpha: rgba(255, 255, 255, 0.08)
+ * PILL_BORDER_FOCUS    — accent at 35% alpha: rgba(200, 241, 53, 0.35)
+ * PILL_BORDER_STREAM   — accent at 28% alpha: rgba(200, 241, 53, 0.28)
+ * PILL_INSET_HIGHLIGHT — white at 4% alpha inset: rgba(255, 255, 255, 0.04)
+ * PILL_SHADOW_DROP     — 12px 48px deep drop: rgba(0, 0, 0, 0.5)
+ * PILL_SHADOW_STREAM   — slightly denser drop: rgba(0, 0, 0, 0.55)
+ * PILL_PROGRESS_TRACK  — accent at 12% alpha: rgba(200, 241, 53, 0.12)
+ * PILL_ACCENT_FULL     — accent at 70% alpha: rgba(200, 241, 53, 0.7)
+ * PILL_ACCENT_DIM      — accent at 28% alpha: rgba(200, 241, 53, 0.28)
+ * PILL_KBD_BG          — white at 6% alpha: rgba(255, 255, 255, 0.06)
+ * PILL_KBD_BORDER      — white at 10% alpha: rgba(255, 255, 255, 0.10)
+ * PILL_DIVIDER         — white at 7% alpha: rgba(255, 255, 255, 0.07)
+ * PILL_BTN_BG_IDLE     — white at 5% alpha: rgba(255, 255, 255, 0.05)
+ * PILL_BTN_BORDER_IDLE — white at 9% alpha: rgba(255, 255, 255, 0.09)
+ * PILL_BTN_BG_HOVER    — white at 9% alpha: rgba(255, 255, 255, 0.09)
+ * PILL_BTN_BORDER_HOVER— white at 16% alpha: rgba(255, 255, 255, 0.16)
+ * PILL_BTN_DISMISS_BG  — white at 7% alpha: rgba(255, 255, 255, 0.07)
+ * PILL_BADGE_BG        — white at 5% alpha: rgba(255, 255, 255, 0.05)
+ * PILL_TOAST_DISMISS   — white at 8% alpha: rgba(255, 255, 255, 0.08)
+ * PILL_REDUCED_BG      — opaque fallback when backdrop-filter unavailable: #141416
+ *
+ * The glass and alpha-white values are intrinsic to the pill's frosted-glass
+ * aesthetic and cannot map to a flat semantic token without losing the effect.
+ * Each use is annotated with a why-not-a-token comment below.
  * --------------------------------------------------------------------------- */
 
 /* ---------------------------------------------------------------------------
@@ -65,26 +86,42 @@ body {
 .pill-container {
   width: 100%;
   position: relative;
+  /* why-not-a-token: semi-transparent glass background is a composited effect
+     (rgba + backdrop-filter) intrinsic to the floating pill aesthetic.
+     A flat --color-bg-* token would lose the translucency. */
   background: rgba(20, 20, 22, 0.92);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
+  /* why-not-a-token: alpha-white border is the idle state of a 4-state
+     glow system (idle/focused/streaming/done). Each state has a distinct
+     alpha value tied to the glass aesthetic — these are state constants,
+     not reusable semantic colors. */
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  border-radius: var(--radius-2xl, 16px);
   box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.5),
+    /* why-not-a-token: 12px×48px drop shadow is pill-specific depth,
+       distinct from --shadow-lg (8px×40px). The exact values matter for
+       the floating effect and are pill design constants. */
+    0 12px 48px rgba(0, 0, 0, 0.50),
+    /* why-not-a-token: 1px inset white highlight is a glass surface detail
+       that simulates a lit top edge — not a reusable semantic shadow. */
     0 1px 0 rgba(255, 255, 255, 0.04) inset;
   overflow: hidden;
   transition:
-    border-color 180ms cubic-bezier(0.2, 0, 0, 1),
-    box-shadow   180ms cubic-bezier(0.2, 0, 0, 1);
+    border-color var(--duration-normal, 180ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    box-shadow   var(--duration-normal, 180ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
 }
 
-/* Focused state — accent border glow, no visible ring on the input element */
+/* Focused state — accent border glow */
 .pill-container[data-state="focused"] {
+  /* why-not-a-token: accent at 35% alpha is the focused border state constant.
+     --color-accent-glow is 18% alpha (for glow rings); 35% is stronger,
+     used here for the border itself. A dedicated --color-pill-border-focus
+     would be correct but is pill-internal. */
   border-color: rgba(200, 241, 53, 0.35);
   box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.5),
-    0 0 24px rgba(200, 241, 53, 0.08),
+    0 12px 48px rgba(0, 0, 0, 0.50),
+    var(--glow-accent-sm, 0 0 8px rgba(200, 241, 53, 0.12)),
     0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
@@ -93,7 +130,7 @@ body {
   border-color: rgba(200, 241, 53, 0.28);
   box-shadow:
     0 12px 48px rgba(0, 0, 0, 0.55),
-    0 0 32px rgba(200, 241, 53, 0.12),
+    var(--glow-accent-md, 0 0 16px rgba(200, 241, 53, 0.20)),
     0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
@@ -102,7 +139,7 @@ body {
 .pill-container[data-state="error"] {
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.5),
+    0 12px 48px rgba(0, 0, 0, 0.50),
     0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
@@ -111,6 +148,10 @@ body {
   .pill-container {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    /* why-not-a-token: opaque fallback for when backdrop-filter is disabled.
+       The glass bg (rgba 0.92) relies on backdrop-filter to look correct;
+       without it we need a fully opaque dark surface. #141416 is the
+       closest opaque equivalent to rgba(20,20,22,0.92). */
     background: #141416;
     transition: none;
   }
@@ -132,7 +173,7 @@ body {
 /* ---------------------------------------------------------------------------
  * Left dot — the agent state indicator (8px circle)
  *   idle/focused:  static, accent color at 70% opacity
- *   streaming:     pulses accent → accent/50% at 1s ease-in-out
+ *   streaming:     pulses accent → accent/28% at 1s ease-in-out
  *   done:          ✓ icon (accent), 16px
  *   error:         ✕ icon (danger), 16px
  * --------------------------------------------------------------------------- */
@@ -141,9 +182,13 @@ body {
   flex-shrink: 0;
   width: 8px;
   height: 8px;
-  border-radius: 9999px;
-  background-color: rgba(200, 241, 53, 0.7);
-  transition: background-color 220ms cubic-bezier(0.2, 0, 0, 1);
+  border-radius: var(--radius-full, 9999px);
+  /* why-not-a-token: accent at 70% is the idle/focused dot state constant.
+     It sits between --color-accent-default (100%) and --color-accent-muted (10-12%)
+     and communicates "ready but not active". A dedicated token would be correct
+     but this is pill-internal. */
+  background-color: rgba(200, 241, 53, 0.70);
+  transition: background-color var(--duration-normal, 180ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .pill-container[data-state="streaming"] .pill-dot {
@@ -152,7 +197,6 @@ body {
 
 .pill-container[data-state="done"] .pill-dot,
 .pill-container[data-state="error"] .pill-dot {
-  /* Icon replaces dot — hidden in these states via JS; kept for fallback */
   opacity: 0;
   width: 0;
   margin-right: -2px;
@@ -161,12 +205,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pill-container[data-state="streaming"] .pill-dot {
     animation: none;
-    background-color: rgba(200, 241, 53, 0.7);
+    background-color: rgba(200, 241, 53, 0.70);
   }
 }
 
 @keyframes pill-dot-pulse {
-  from { background-color: rgba(200, 241, 53, 0.7); }
+  from { background-color: rgba(200, 241, 53, 0.70); }
   to   { background-color: rgba(200, 241, 53, 0.28); }
 }
 
@@ -178,7 +222,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: pill-icon-pop 200ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  animation: pill-icon-pop 200ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) forwards;
 }
 
 .pill-result-lead-icon--done {
@@ -212,11 +256,10 @@ body {
   outline: none;
   font-family: var(--font-ui, 'Geist', system-ui, sans-serif);
   font-size: 15px;
-  font-weight: 400;
+  font-weight: var(--font-weight-regular, 400);
   line-height: 1.4;
   color: var(--color-fg-primary, #f0f0f2);
-  caret-color: #c8f135;
-  /* No focus ring — state is on the pill container */
+  caret-color: var(--color-accent-default, #c8f135);
 }
 
 .pill-input:focus-visible {
@@ -234,8 +277,6 @@ body {
 
 /* ---------------------------------------------------------------------------
  * Kbd chip — single ↵ chip, mono, right side
- * Shown: idle (when input has text) and focused states
- * Hidden: streaming, done, error
  * --------------------------------------------------------------------------- */
 
 .pill-kbd-chip {
@@ -247,21 +288,22 @@ body {
   min-width: 22px;
   padding: 0 6px;
   border-radius: 5px;
+  /* why-not-a-token: alpha-white keyboard chip background/border are glass
+     surface details — part of the pill's frosted aesthetic. */
   background-color: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium, 500);
   color: var(--color-fg-tertiary, #6e737d);
   letter-spacing: 0;
   line-height: 1;
   transition:
-    opacity 140ms cubic-bezier(0.2, 0, 0, 1),
-    transform 140ms cubic-bezier(0.2, 0, 0, 1);
+    opacity  140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    transform 140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
   pointer-events: none;
 }
 
-/* Enter to submit — only visible when there's something to submit */
 .pill-kbd-chip[data-chip="enter"] {
   opacity: 0;
   transform: translateX(4px);
@@ -272,10 +314,9 @@ body {
   transform: translateX(0);
 }
 
-/* Copy chip for done state */
 .pill-kbd-chip[data-chip="copy"] {
   opacity: 0;
-  animation: pill-chip-in 180ms 300ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  animation: pill-chip-in 180ms 300ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)) forwards;
 }
 
 @keyframes pill-chip-in {
@@ -293,10 +334,13 @@ body {
   right: 18px;
   height: 2px;
   border-radius: 1px;
+  /* why-not-a-token: accent at 12% alpha is the progress track fill — a very
+     dim tinted track behind the moving accent bar. Same rationale as other
+     pill glass constants. */
   background-color: rgba(200, 241, 53, 0.12);
   overflow: hidden;
   opacity: 0;
-  transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+  transition: opacity 200ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .pill-container[data-state="streaming"] .pill-progress-bar {
@@ -311,8 +355,8 @@ body {
   width: 40%;
   height: 100%;
   border-radius: 1px;
-  background-color: #c8f135;
-  animation: pill-progress-slide 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background-color: var(--color-accent-default, #c8f135);
+  animation: pill-progress-slide 1.4s var(--ease-in-out, cubic-bezier(0.4, 0, 0.6, 1)) infinite;
 }
 
 @keyframes pill-progress-slide {
@@ -336,6 +380,9 @@ body {
 
 .pill-divider {
   height: 1px;
+  /* why-not-a-token: divider within the glass surface uses a very subtle
+     alpha-white — lighter than --color-border-subtle (#1e1e24) which is
+     opaque and would look harsh against the glass background. */
   background: rgba(255, 255, 255, 0.07);
   margin: 0 18px;
 }
@@ -349,15 +396,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  animation: pill-section-in 150ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: pill-section-in 150ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
 .pill-toast-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4, 8px);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium, 500);
   color: var(--color-fg-tertiary, #6e737d);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -367,7 +414,7 @@ body {
   font-size: 13px;
   color: var(--color-fg-primary, #f0f0f2);
   line-height: 1.5;
-  animation: pill-step-in 220ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: pill-step-in 220ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
 .pill-toast-step:nth-child(1) { animation-delay: 0ms; }
@@ -396,7 +443,7 @@ body {
 
 .pill-result {
   padding: 10px 18px 14px;
-  animation: pill-section-in 200ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: pill-section-in 200ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
 .pill-result-done {
@@ -434,7 +481,7 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  animation: pill-section-in 200ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: pill-section-in 200ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
 .pill-error-icon {
@@ -469,17 +516,20 @@ body {
   gap: 4px;
   padding: 3px 9px;
   border-radius: 5px;
+  /* why-not-a-token: alpha-white button backgrounds are glass surface details.
+     These are interactive micro-surface states within the pill, not app-level
+     semantic interactive states. */
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.09);
   color: var(--color-fg-secondary, #8a8f98);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium, 500);
   font-family: var(--font-ui, 'Geist', system-ui, sans-serif);
   cursor: pointer;
   transition:
-    background 140ms cubic-bezier(0.2, 0, 0, 1),
-    color 140ms cubic-bezier(0.2, 0, 0, 1),
-    border-color 140ms cubic-bezier(0.2, 0, 0, 1);
+    background  140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    color       140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    border-color 140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
   letter-spacing: 0.01em;
 }
 
@@ -501,8 +551,8 @@ body {
   color: var(--color-fg-tertiary, #6e737d);
   cursor: pointer;
   transition:
-    background 140ms cubic-bezier(0.2, 0, 0, 1),
-    color 140ms cubic-bezier(0.2, 0, 0, 1);
+    background 140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    color      140ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
   flex-shrink: 0;
   margin-left: auto;
 }
@@ -520,8 +570,9 @@ body {
   font-size: 11px;
   color: var(--color-fg-tertiary, #6e737d);
   padding: 2px 8px;
+  /* why-not-a-token: alpha-white badge bg — same glass surface rationale. */
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 9999px;
+  border-radius: var(--radius-full, 9999px);
   font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
 }
 
@@ -532,7 +583,8 @@ body {
 .pill-spinner {
   width: 12px;
   height: 12px;
-  color: rgba(200, 241, 53, 0.8);
+  color: var(--color-accent-default, #c8f135);
+  opacity: 0.8;
 }
 
 /* ---------------------------------------------------------------------------

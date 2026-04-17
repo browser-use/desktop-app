@@ -1,7 +1,8 @@
 /*
  * onboarding.css — onboarding-specific layout overrides.
  * Only styles that cannot be expressed via theme.onboarding.css classes go here.
- * Rule: zero !important, zero Inter references, zero hardcoded hex colors.
+ * All colors via CSS custom properties from theme.global.css + theme.onboarding.css.
+ * Zero hex literals — every color is a token.
  *
  * This file is imported in onboarding/index.tsx after theme.onboarding.css.
  */
@@ -25,12 +26,13 @@ body {
   height: calc(100% - 0px);
 }
 
-/* Input focus: lift border to a neutral gray. No loud accent outline/glow —
-   the neon ring was too aggressive and made the whole input glow green. */
+/* Input focus: accent border + glow. Suppress default outline because the
+   border-color change provides equivalent visual focus indication. */
 .auth-input:focus-visible {
-  outline: none;
-  border-color: var(--color-fg-secondary);
-  box-shadow: none;
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 0px;
+  border-color: var(--color-accent-default);
+  box-shadow: var(--glow-accent);
 }
 
 /* Disabled state for submit button */

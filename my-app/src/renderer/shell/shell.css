@@ -1,4 +1,15 @@
-/* Shell global styles — Linear+Obsidian dark */
+/*
+ * shell.css — Shell window global styles.
+ * All color values use CSS custom properties from theme.global.css + theme.shell.css.
+ * Zero hex literals permitted here — use tokens only.
+ *
+ * Shell dimensions (layout constants — not colors, kept as px):
+ *   --chrome-height    72px
+ *   --tab-height       36px
+ *   --toolbar-height   36px
+ *   --tab-min-width    120px
+ *   --tab-max-width    220px
+ */
 
 *,
 *::before,
@@ -9,33 +20,37 @@
 }
 
 :root {
-  --color-bg: #0d0d0d;
-  --color-chrome-bg: #1a1a1d;      /* tab-row frame, distinct from page bg */
-  --color-surface: #141414;
-  --color-surface-hover: rgba(255, 255, 255, 0.05);
-  --color-border: #262626;
-  --color-text-primary: #e8e8e8;
-  --color-text-secondary: #888888;
-  --color-text-tertiary: #686868;
-  --color-accent: #c8f135;
-  --color-accent-hover: #d4f74e;
-  --color-danger: #f87171;
-  --color-tab-active: #2a2a2e;     /* noticeably lighter than chrome — Chrome-style 2-tone */
-  --color-tab-inactive: transparent;
-  --color-loading: #c8f135;
+  /* Layout constants — these are structural, not design tokens */
+  --chrome-height:   72px;
+  --tab-height:      36px;
+  --toolbar-height:  36px;
+  --tab-min-width:   120px;
+  --tab-max-width:   220px;
 
+  /*
+   * Shell legacy aliases — components.css was written against these names
+   * before the token system existed. They are aliased here to semantic tokens
+   * so existing component code continues to work without a full rewrite.
+   * Do NOT add new aliases — use the canonical semantic tokens instead.
+   */
+  --color-bg:            var(--color-bg-base);
+  --color-chrome-bg:     var(--color-bg-elevated);
+  --color-surface:       var(--color-bg-elevated);
+  --color-surface-hover: var(--color-surface-interactive-hover);
+  --color-border:        var(--color-border-default);
+  --color-text-primary:  var(--color-fg-primary);
+  --color-text-secondary: var(--color-fg-secondary);
+  --color-text-tertiary: var(--color-fg-tertiary);
+  --color-accent:        var(--color-accent-default);
+  --color-danger:        var(--color-status-danger);
+  --color-tab-active:    var(--color-bg-overlay);
+  --color-tab-inactive:  transparent;
+  --color-loading:       var(--color-accent-default);
+
+  /* Radius aliases for shell component code that predates the token system */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-
-  --font-ui: 'Geist', 'SF Pro Display', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
-
-  --chrome-height: 72px;
-  --tab-height: 36px;
-  --toolbar-height: 36px;
-  --tab-min-width: 120px;
-  --tab-max-width: 220px;
 }
 
 html,
@@ -43,8 +58,8 @@ body,
 #root {
   height: 100%;
   width: 100%;
-  background: var(--color-bg);
-  color: var(--color-text-primary);
+  background: var(--color-bg-base);
+  color: var(--color-fg-primary);
   font-family: var(--font-ui);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
@@ -61,9 +76,9 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--color-border-default);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-tertiary);
+  background: var(--color-fg-tertiary);
 }
