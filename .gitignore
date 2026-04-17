@@ -26,6 +26,10 @@ my-app/tests/debug/
 # Harness runtime artifacts (session signals, ephemeral)
 .harness/
 
+# Visual capture outputs (ephemeral, manifest-driven)
+my-app/tests/visual/captures/
+my-app/tests/visual/diff/
+
 # Env / secrets
 .env
 .env.local
