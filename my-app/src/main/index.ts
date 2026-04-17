@@ -368,6 +368,31 @@ function registerKeyboardShortcuts(): void {
         },
         { type: 'separator' },
         {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+=',
+          click: () => {
+            mainLogger.debug('shortcuts.zoomIn');
+            tabManager?.zoomInActive();
+          },
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: () => {
+            mainLogger.debug('shortcuts.zoomOut');
+            tabManager?.zoomOutActive();
+          },
+        },
+        {
+          label: 'Actual Size',
+          accelerator: 'CommandOrControl+0',
+          click: () => {
+            mainLogger.debug('shortcuts.zoomReset');
+            tabManager?.zoomResetActive();
+          },
+        },
+        { type: 'separator' },
+        {
           label: 'Next Tab',
           accelerator: 'CommandOrControl+Shift+]',
           click: () => {

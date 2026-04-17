@@ -18,7 +18,17 @@ import { SessionStore, PersistedSession, PersistedTab } from './SessionStore';
 import { parseNavigationInput } from '../navigation';
 import { mainLogger } from '../logger';
 
-const NEW_TAB_URL = 'https://www.google.com';
+// Chrome's chrome://newtab is a local page — zero network, instant paint.
+// We mirror that with a dark-themed data: URL so a new tab opens instantly
+// instead of waiting on google.com. The body is intentionally empty; the
+// URL bar is auto-focused (see createTab) so the user can type right away.
+const NEW_TAB_URL =
+  'data:text/html;charset=utf-8,' +
+  encodeURIComponent(
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>New Tab</title>' +
+      '<style>html,body{margin:0;height:100vh;background:#0a0a0d}</style>' +
+      '</head><body></body></html>',
+  );
 const CHROME_HEIGHT = 72; // shell toolbar height in pixels
 const BLOCKED_SCHEMES = /^(javascript|file|data|vbscript):/i;
 
@@ -173,7 +183,8 @@ export class TabManager {
     const session = this.sessionStore.load();
     if (session.tabs.length === 0) {
       mainLogger.info('TabManager.restoreSession.empty', { msg: 'No saved tabs, opening new tab' });
-      this.createTab(NEW_TAB_URL);
+      // No args → user-initiated path: URL bar is auto-focused on cold start.
+      this.createTab();
       return;
     }
 
@@ -214,6 +225,10 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   createTab(url?: string, id?: string): string {
+    // A user-initiated new tab passes no URL (Cmd+T, + button, IPC with no
+    // argument). Session restore + new-window handoffs pass a concrete URL.
+    // Only the former should steal keyboard focus into the URL bar.
+    const isUserInitiated = url === undefined;
     const tabId = id ?? uuidv4();
     let targetUrl = url ?? NEW_TAB_URL;
 
@@ -237,6 +252,15 @@ export class TabManager {
     this.tabOrder.push(tabId);
     this.navControllers.set(tabId, new NavigationController(view));
 
+    // Enable trackpad pinch-zoom on page content. Electron's default limits are
+    // (1, 1), which disables the gesture. (1, 3) matches Chrome's pinch range.
+    view.webContents.setVisualZoomLevelLimits(1, 3).catch((err) => {
+      mainLogger.warn('TabManager.setVisualZoomLevelLimits.failed', {
+        tabId,
+        error: (err as Error).message,
+      });
+    });
+
     this.attachViewEvents(tabId, view);
     this.positionView(view);
 
@@ -245,6 +269,14 @@ export class TabManager {
     this.activateTab(tabId);
     this.saveSession();
     this.broadcastState();
+
+    // Focus the URL bar so the user can type immediately. activateTab just
+    // called view.webContents.focus(), so we pull OS focus back to the shell
+    // window and then fire the same IPC Cmd+L uses.
+    if (isUserInitiated && !this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
+      this.win.webContents.focus();
+      this.win.webContents.send('focus-url-bar');
+    }
 
     return tabId;
   }
@@ -271,8 +303,10 @@ export class TabManager {
       if (newActive) {
         this.activateTab(newActive);
       } else {
-        // No tabs left — open a new one
-        this.createTab(NEW_TAB_URL);
+        // No tabs left — close the window (Chrome parity: Cmd+W on last tab quits).
+        mainLogger.info('TabManager.closeTab.lastTab', { msg: 'Closing window' });
+        this.saveSession();
+        if (!this.win.isDestroyed()) this.win.close();
         return;
       }
     }
@@ -357,6 +391,31 @@ export class TabManager {
   }
 
   // ---------------------------------------------------------------------------
+  // Zoom (Chrome-parity Cmd+=, Cmd+-, Cmd+0 on active tab)
+  // ---------------------------------------------------------------------------
+  // Electron zoom-level steps of 0.5 correspond roughly to Chrome's 10% stops
+  // (factor = 1.2^level). Clamp to [-3, 5] to match Chrome's 25%–500% range.
+  private adjustActiveZoom(delta: number): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    const current = view.webContents.getZoomLevel();
+    const next = Math.max(-3, Math.min(5, current + delta));
+    view.webContents.setZoomLevel(next);
+    mainLogger.debug('TabManager.zoom', { tabId: this.activeTabId, level: next });
+  }
+
+  zoomInActive():   void { this.adjustActiveZoom(0.5); }
+  zoomOutActive():  void { this.adjustActiveZoom(-0.5); }
+  zoomResetActive(): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    view.webContents.setZoomLevel(0);
+    mainLogger.debug('TabManager.zoom.reset', { tabId: this.activeTabId });
+  }
+
+  // ---------------------------------------------------------------------------
   // State accessors
   // ---------------------------------------------------------------------------
 
@@ -417,6 +476,19 @@ export class TabManager {
 
   private attachViewEvents(tabId: string, view: WebContentsView): void {
     const wc = view.webContents;
+
+    // Ctrl+wheel (and macOS trackpad pinch, which Chromium translates to
+    // Ctrl+wheel) fires 'zoom-changed'. Electron ships no default handler for
+    // this event — the app must adjust the zoom level itself, otherwise pinch
+    // does nothing. Half-level steps match Chrome's ~10% stops; range is the
+    // same clamp used by Cmd+=/Cmd+- (roughly 25%–500%).
+    wc.on('zoom-changed', (_e, zoomDirection) => {
+      const current = wc.getZoomLevel();
+      const delta = zoomDirection === 'in' ? 0.5 : -0.5;
+      const next = Math.max(-3, Math.min(5, current + delta));
+      wc.setZoomLevel(next);
+      mainLogger.debug('TabManager.tab.zoomChanged', { tabId, direction: zoomDirection, level: next });
+    });
 
     wc.on('page-title-updated', (_e, title) => {
       mainLogger.debug('TabManager.tab.titleUpdated', { tabId, title });
