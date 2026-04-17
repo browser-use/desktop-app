@@ -79,11 +79,16 @@ tasks:
     cmds:
       - docker compose exec daemon bash
 
-  dev:
-    desc: Start daemon + browser together (full dev stack)
+  up:
+    desc: Start everything (daemon + browser). The one command to run the full stack.
     cmds:
       - task: daemon:up
       - task: start
+
+  down:
+    desc: Stop everything (daemon container + any orphan processes)
+    cmds:
+      - task: daemon:down
 
   # ----- quality gates ------------------------------------------------------
 
