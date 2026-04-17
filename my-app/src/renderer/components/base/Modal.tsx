@@ -179,6 +179,7 @@ export const Modal = forwardRef<HTMLDivElement, ModalProps>(
                 </p>
               )}
               <button
+                type="button"
                 className={`${BLOCK}__close-btn`}
                 onClick={onClose}
                 aria-label="Close dialog"
