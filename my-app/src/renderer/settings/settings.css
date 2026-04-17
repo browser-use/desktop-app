@@ -1,19 +1,29 @@
 /*
  * settings.css — Settings window layout and component styles.
  *
- * Layout: #settings-root → 100vh grid with 200px sidebar + 1fr content.
+ * Layout: #settings-root → 100vh grid with 240px sidebar + 1fr content.
  * Uses CSS custom properties from theme.onboarding.css.
  * Rules: zero !important, zero Inter references, zero left-outline emphasis.
+ *
+ * Constants:
+ *   SIDEBAR_WIDTH           240px  (was 200px — breathing room)
+ *   SIDEBAR_ACTIVE_BORDER   3px solid var(--color-accent-default)
+ *   CARD_PADDING            24px
+ *   CARD_RADIUS             12px
+ *   SECTION_HEADER_SIZE     18px / weight 600
+ *   SWATCH_SIZE             40×28px / radius 6px
+ *   EYE_BTN_HITBOX          32×32px
+ *   DANGER_BTN              solid var(--color-status-error) fill
  */
 
 /* ---------------------------------------------------------------------------
-   Root grid
+   Root grid — 240px sidebar (was 200px)
 --------------------------------------------------------------------------- */
 
 #settings-root {
   height: 100vh;
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 240px 1fr;
   overflow: hidden;
   background-color: var(--color-bg-base);
   color: var(--color-fg-primary);
@@ -73,9 +83,12 @@
   color: var(--color-fg-secondary);
   text-align: left;
   cursor: pointer;
+  /* Left border placeholder so layout is stable when active */
+  border-left: 3px solid transparent;
   transition:
     background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
 }
 
 .settings-nav-item:hover {
@@ -83,15 +96,18 @@
   color: var(--color-fg-primary);
 }
 
+/* Active tab: 3px accent left-border + subtle bg tint */
 .settings-nav-item--active {
   background-color: var(--color-accent-subtle);
-  color: var(--color-accent-default);
+  color: var(--color-fg-primary);
   font-weight: var(--font-weight-semibold);
+  border-left-color: var(--color-accent-default);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 .settings-nav-item--active:hover {
   background-color: var(--color-accent-subtle);
-  color: var(--color-accent-default);
+  color: var(--color-fg-primary);
 }
 
 /* ---------------------------------------------------------------------------
@@ -165,11 +181,14 @@
   max-width: 520px;
 }
 
+/* Section headers: var(--font-display) equiv = var(--font-ui) semibold 18px */
 .settings-section-title {
-  font-size: var(--font-size-base);
+  font-family: var(--font-ui);
+  font-size: 18px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg-primary);
   line-height: var(--line-height-tight);
+  margin-bottom: 8px;
 }
 
 .settings-section-title--danger {
@@ -180,16 +199,21 @@
   font-size: var(--font-size-sm);
   color: var(--color-fg-secondary);
   line-height: var(--line-height-relaxed);
+  margin-top: -8px;
 }
 
 /* ---------------------------------------------------------------------------
-   Cards
+   Cards — 24px padding, 12px radius, subtle border
 --------------------------------------------------------------------------- */
 
 .settings-card {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* Override base card padding/radius for settings-specific spec */
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-subtle);
 }
 
 .settings-card--danger {
@@ -226,7 +250,8 @@
   border: 1px solid var(--color-border-default);
   color: var(--color-fg-primary);
   font-size: var(--font-size-sm);
-  font-family: var(--font-ui);
+  /* Monospace for all settings inputs (API keys, names, etc.) */
+  font-family: var(--font-mono);
   width: 100%;
   transition:
     border-color var(--duration-normal) var(--ease-standard),
@@ -269,18 +294,24 @@
   padding-right: 38px;
 }
 
+/* Eye toggle — 32×32 hitbox for accessible tap target */
 .settings-eye-btn {
   position: absolute;
-  right: 10px;
+  right: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
   color: var(--color-fg-tertiary);
-  transition: color var(--duration-fast) var(--ease-standard);
+  transition: color var(--duration-fast) var(--ease-standard),
+              background-color var(--duration-fast) var(--ease-standard);
 }
 
 .settings-eye-btn:hover {
   color: var(--color-fg-primary);
+  background-color: var(--color-bg-overlay);
 }
 
 /* ---------------------------------------------------------------------------
@@ -384,12 +415,20 @@
   flex: 1;
 }
 
+/* Theme swatches — 40×28 with 6px radius, 2px focus ring on selected */
 .settings-swatch {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
+  width: 40px;
+  height: 28px;
+  border-radius: 6px;
   border: 1px solid var(--color-border-default);
   flex-shrink: 0;
+  transition: box-shadow var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard);
+}
+
+.settings-radio-row:has(input:checked) .settings-swatch {
+  border-color: var(--color-accent-default);
+  box-shadow: 0 0 0 2px var(--color-accent-default);
 }
 
 /* ---------------------------------------------------------------------------
@@ -452,8 +491,20 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Danger Zone
+   Danger Zone — solid red button (overrides ghost danger variant in base)
 --------------------------------------------------------------------------- */
+
+/* Factory Reset button: solid fill, not outline */
+.settings-danger-btn-solid {
+  background-color: var(--color-status-error);
+  color: #ffffff;
+  border-color: var(--color-status-error);
+}
+
+.settings-danger-btn-solid:hover:not(:disabled) {
+  background-color: #e05050;
+  border-color: #e05050;
+}
 
 .settings-danger-row {
   display: flex;

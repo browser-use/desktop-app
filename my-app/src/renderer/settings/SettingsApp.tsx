@@ -16,6 +16,7 @@ import {
   ToastProvider,
   useToast,
   Spinner,
+  KeyHint,
 } from '../components/base';
 
 // ---------------------------------------------------------------------------
@@ -561,9 +562,21 @@ function DangerZoneTab(): React.ReactElement {
           <Button
             variant="danger"
             size="sm"
+            className="settings-danger-btn-solid"
             onClick={() => setShowConfirm(true)}
             loading={resetting}
           >
+            {/* Warning glyph — 12px, stroked, no fill */}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+              <path
+                d="M6 1.5L11 10.5H1L6 1.5Z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+              />
+              <line x1="6" y1="5" x2="6" y2="7.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <circle cx="6" cy="9" r="0.6" fill="currentColor" />
+            </svg>
             Factory Reset
           </Button>
         </div>
@@ -646,21 +659,24 @@ function SettingsInner(): React.ReactElement {
           <h1 className="settings-title">
             {TABS.find((t) => t.id === activeTab)?.label ?? 'Settings'}
           </h1>
-          <button
-            type="button"
-            className="settings-close-btn"
-            onClick={handleClose}
-            aria-label="Close settings"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path
-                d="M1 1l12 12M13 1L1 13"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <KeyHint keys={['Esc']} size="xs" aria-label="Esc to close" />
+            <button
+              type="button"
+              className="settings-close-btn"
+              onClick={handleClose}
+              aria-label="Close settings"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path
+                  d="M1 1l12 12M13 1L1 13"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
         </header>
 
         {/* Tab content */}
