@@ -15,6 +15,9 @@ import { Button, Modal } from '../components/base';
 // Types
 // ---------------------------------------------------------------------------
 
+// NOTE: the former `hostedApp` entry was removed — it mapped to a silent
+// no-op in the main process and presented a false-positive "cleared" state
+// to the user. See Issue #200.
 type ClearDataType =
   | 'history'
   | 'cookies'
@@ -22,8 +25,7 @@ type ClearDataType =
   | 'downloads'
   | 'passwords'
   | 'autofill'
-  | 'siteSettings'
-  | 'hostedApp';
+  | 'siteSettings';
 
 interface ClearDataResult {
   cleared: ClearDataType[];
@@ -76,7 +78,6 @@ const ADVANCED_EXTRA_CHECKBOXES: CheckboxDef[] = [
   { type: 'passwords',    label: 'Passwords and other sign-in data', description: 'Clears saved passwords and auth cache.' },
   { type: 'autofill',     label: 'Autofill form data',            description: 'Clears saved form entries.' },
   { type: 'siteSettings', label: 'Site settings',                 description: 'Clears permissions, IndexedDB, service workers, localStorage.' },
-  { type: 'hostedApp',    label: 'Hosted app data',               description: 'Clears data stored by installed hosted apps.' },
 ];
 
 const DEFAULT_BASIC_SELECTED: Record<ClearDataType, boolean> = {
@@ -87,7 +88,6 @@ const DEFAULT_BASIC_SELECTED: Record<ClearDataType, boolean> = {
   passwords: false,
   autofill: false,
   siteSettings: false,
-  hostedApp: false,
 };
 
 // ---------------------------------------------------------------------------

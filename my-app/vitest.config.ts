@@ -35,6 +35,10 @@ export default defineConfig({
       'tests/unit/zoom/**/*.spec.ts',
       'tests/unit/shell/**/*.spec.tsx',
       'tests/unit/share/**/*.spec.ts',
+      // Sign-out store wiring + ClearDataController wiring
+      // (Issues #216 / #200 — sign-out 'clear' and clear-data actually remove data)
+      'tests/unit/identity/SignOutController.spec.ts',
+      'tests/unit/privacy/**/*.spec.ts',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file

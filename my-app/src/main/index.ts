@@ -49,6 +49,9 @@ import { getEngine, setEngine, type EngineId } from './hl/engine';
 // Track 5 — Settings
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
 import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDialogFromMenu } from './settings/ipc';
+// Issue #200 — ClearDataController needs the password store + download manager
+// wired in so the passwords/downloads checkboxes actually wipe app-local data.
+import { setPrivacyStoreDeps } from './privacy/ClearDataController';
 // Wave1 P3 — Bookmarks
 import { BookmarkStore } from './bookmarks/BookmarkStore';
 import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
@@ -242,6 +245,10 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   tabManager.setTabGroupStore(tabGroupStore);
   downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
+  // Issue #200: keep ClearDataController's downloadManager pointer fresh so
+  // "Clear browsing data → Download history" wipes the current instance's
+  // in-memory list, not a stale one from a previous shell.
+  setPrivacyStoreDeps({ downloadManager });
 
   // Wire bookmark-aware URL matching into the navigation heuristic.
   if (bookmarkStore) {
@@ -410,6 +417,8 @@ function openGuestShell(): BrowserWindow {
   });
   downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
+  // Issue #200: same reason as openShellAndWire — keep the privacy dep live.
+  setPrivacyStoreDeps({ downloadManager });
 
   if (searchEngineStore) {
     tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
@@ -831,6 +840,15 @@ app.whenReady().then(async () => {
 
   // Track 5 — Settings IPC handlers
   registerSettingsHandlers({ accountStore, keychainStore });
+
+  // Issue #200 — let ClearDataController reach the password store + download
+  // manager so the "Passwords" / "Download history" checkboxes actually wipe
+  // app-local data. `downloadManager` is null here (constructed inside
+  // openShellAndWire below) — we re-apply the dep inside the shell factory.
+  setPrivacyStoreDeps({
+    passwordStore: passwordStore,
+    downloadManager: downloadManager,
+  });
 
   // Issue #84 — NTP Customization store + IPC
   const ntpStore = new NtpCustomizationStore();
@@ -2221,7 +2239,15 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
 
 ipcMain.handle('identity:sign-out', async (_event, mode: SignOutMode) => {
   mainLogger.info('main.identity:sign-out', { mode });
-  return performSignOut(mode, accountStore, keychainStore);
+  // Issue #216 — pass app-local stores so "Clear data" actually wipes
+  // bookmarks.json / history.json / passwords.json / autofill.json instead
+  // of only the Electron session caches.
+  return performSignOut(mode, accountStore, keychainStore, {
+    bookmarkStore: bookmarkStore ?? undefined,
+    historyStore:  historyStore  ?? undefined,
+    passwordStore: passwordStore ?? undefined,
+    autofillStore: autofillStore ?? undefined,
+  });
 });
 
 ipcMain.handle('identity:turn-off-sync', async () => {

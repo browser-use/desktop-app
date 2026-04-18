@@ -128,9 +128,11 @@ interface PasswordListEntry {
   updatedAt: number;
 }
 
+// Issue #200: `hostedApp` was removed after its checkbox was wired to a
+// silent no-op in the main process.
 type ClearDataTypeId =
   | 'history' | 'cookies' | 'cache' | 'downloads'
-  | 'passwords' | 'autofill' | 'siteSettings' | 'hostedApp';
+  | 'passwords' | 'autofill' | 'siteSettings';
 
 interface ClearBrowsingDataResult {
   cleared: ClearDataTypeId[];

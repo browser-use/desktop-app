@@ -6,13 +6,22 @@
  * call — that would cause checking "history" alone to also wipe cookies and
  * cache. Each clear is independent; failures are captured per-type.
  *
- * Stubs (downloads, autofill, hostedApp) return `note: 'no-op'` until those
- * app-local stores exist.
+ * Issue #200 fix: `passwords` and `downloads` used to be no-ops despite
+ * being exposed as working checkboxes. They now delete app-local stores:
+ *   - passwords → `PasswordStore.deleteAllPasswords()` + `session.clearAuthCache`
+ *   - downloads → `DownloadManager.clearAll()` (history list only — the
+ *                  downloaded files on disk are not touched)
+ *
+ * The `hostedApp` checkbox used to map to a silent no-op. It has been
+ * removed from the renderer AND from the public DataType union so no
+ * caller can request it and get a false-positive "cleared" receipt.
  */
 
 import { session } from 'electron';
 import { mainLogger } from '../logger';
 import { clearAutofillData } from '../autofill/ipc';
+import type { PasswordStore } from '../passwords/PasswordStore';
+import type { DownloadManager } from '../downloads/DownloadManager';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,7 +35,6 @@ export const DATA_TYPES = [
   'passwords',
   'autofill',
   'siteSettings',
-  'hostedApp',
 ] as const;
 
 export type DataType = typeof DATA_TYPES[number];
@@ -56,11 +64,38 @@ const SITE_SETTINGS_STORAGES = ['indexdb', 'localstorage', 'websql', 'servicewor
 const CACHE_STORAGES         = ['cachestorage', 'shadercache'] as const;
 const COOKIE_STORAGES        = ['cookies'] as const;
 
-const NOTE_NOOP_DOWNLOADS = 'downloads store not yet implemented; no-op';
-const NOTE_NOOP_HOSTEDAPP = 'hosted-app data store not yet implemented; no-op';
 const NOTE_RANGE_IGNORED_CACHE     = 'time range ignored — clearCache wipes all cache';
 const NOTE_RANGE_IGNORED_HISTORY   = 'time range ignored — clearHistory wipes all history';
-const NOTE_RANGE_IGNORED_PASSWORDS = 'time range ignored — clearAuthCache wipes all auth';
+const NOTE_RANGE_IGNORED_PASSWORDS = 'time range ignored — auth + saved passwords wiped wholesale';
+const NOTE_FILES_KEPT_DOWNLOADS    = 'download history cleared; downloaded files on disk are kept';
+
+// ---------------------------------------------------------------------------
+// Store dependencies — injected by main/index.ts at app.whenReady() time.
+//
+// These are module-level rather than passed to `clearBrowsingData()` because
+// the existing settings IPC handler already sits between the renderer and the
+// controller; threading the stores through every call site would churn more
+// surface than the bug warrants. Tests call `setPrivacyStoreDeps(...)`
+// directly to inject stubs.
+// ---------------------------------------------------------------------------
+
+interface PrivacyStoreDeps {
+  passwordStore:   PasswordStore    | null;
+  downloadManager: DownloadManager  | null;
+}
+
+let _deps: PrivacyStoreDeps = {
+  passwordStore:   null,
+  downloadManager: null,
+};
+
+export function setPrivacyStoreDeps(deps: Partial<PrivacyStoreDeps>): void {
+  _deps = { ..._deps, ...deps };
+  mainLogger.info('privacy.setPrivacyStoreDeps', {
+    hasPasswordStore:   !!_deps.passwordStore,
+    hasDownloadManager: !!_deps.downloadManager,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Per-type clear implementations
@@ -95,8 +130,27 @@ async function clearCacheAll(): Promise<{ note?: string }> {
 }
 
 async function clearPasswords(): Promise<{ note?: string }> {
+  if (!_deps.passwordStore) {
+    // Surface rather than silently succeed — the "Passwords" checkbox must
+    // not appear to work if the store is not wired.
+    throw new Error('PasswordStore not initialised — cannot clear saved passwords');
+  }
+  // Delete the on-disk credentials + never-save list, then also flush the
+  // browser's cached HTTP auth credentials for origins that used basic /
+  // digest auth.
+  _deps.passwordStore.deleteAllPasswords();
   await session.defaultSession.clearAuthCache();
   return { note: NOTE_RANGE_IGNORED_PASSWORDS };
+}
+
+function clearDownloadHistory(): { note?: string } {
+  if (!_deps.downloadManager) {
+    throw new Error('DownloadManager not initialised — cannot clear download history');
+  }
+  // NOTE: this wipes the in-memory download list only. Files already saved
+  // to disk are deliberately left alone — Chrome behaves the same way.
+  _deps.downloadManager.clearAll();
+  return { note: NOTE_FILES_KEPT_DOWNLOADS };
 }
 
 async function clearSiteSettings(startTimeMs?: number): Promise<{ note?: string }> {
@@ -141,7 +195,7 @@ export async function clearBrowsingData(req: ClearDataRequest): Promise<ClearDat
           outcome = await clearCacheAll();
           break;
         case 'downloads':
-          outcome = { note: NOTE_NOOP_DOWNLOADS };
+          outcome = clearDownloadHistory();
           break;
         case 'passwords':
           outcome = await clearPasswords();
@@ -152,9 +206,6 @@ export async function clearBrowsingData(req: ClearDataRequest): Promise<ClearDat
           break;
         case 'siteSettings':
           outcome = await clearSiteSettings(startTimeMs);
-          break;
-        case 'hostedApp':
-          outcome = { note: NOTE_NOOP_HOSTEDAPP };
           break;
         default: {
           const _exhaustive: never = type;

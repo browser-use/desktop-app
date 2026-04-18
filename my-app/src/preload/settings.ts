@@ -34,6 +34,8 @@ export interface OAuthScopeStatus {
   granted: boolean;
 }
 
+// Issue #200: `hostedApp` was removed after its checkbox was wired to a
+// silent no-op in the main process (see src/main/privacy/ClearDataController).
 export type ClearDataType =
   | 'history'
   | 'cookies'
@@ -41,8 +43,7 @@ export type ClearDataType =
   | 'downloads'
   | 'passwords'
   | 'autofill'
-  | 'siteSettings'
-  | 'hostedApp';
+  | 'siteSettings';
 
 export interface ClearDataResult {
   cleared: ClearDataType[];

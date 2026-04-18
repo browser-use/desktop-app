@@ -459,7 +459,13 @@ export class DownloadManager {
     this.broadcastState();
   }
 
-  private clearAll(): void {
+  /**
+   * Wipe the app-local download history (in-memory list only — does NOT
+   * touch files already saved to disk). Exposed publicly so callers like
+   * `ClearDataController` ("Clear browsing data" → downloads) and
+   * `SignOutController` ("Clear data" mode) can invoke it directly.
+   */
+  clearAll(): void {
     for (const [id, eItem] of this.electronItems) {
       eItem.cancel();
       this.clearThrottle(id);

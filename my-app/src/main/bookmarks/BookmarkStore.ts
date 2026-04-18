@@ -311,6 +311,26 @@ export class BookmarkStore {
     return state;
   }
 
+  /**
+   * Remove every bookmark and folder under both roots, leaving the two
+   * top-level folders ("Bookmarks bar" + "Other bookmarks") empty.
+   *
+   * Used by sign-out "Clear data" and the privacy "Clear browsing data"
+   * path. The root folders themselves are never deleted — their ids are
+   * load-bearing.
+   */
+  deleteAll(): void {
+    const barCount = this.state.roots[0].children?.length ?? 0;
+    const otherCount = this.state.roots[1].children?.length ?? 0;
+    this.state.roots[0].children = [];
+    this.state.roots[1].children = [];
+    this.schedulePersist();
+    mainLogger.info('BookmarkStore.deleteAll', {
+      barCleared: barCount,
+      otherCleared: otherCount,
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Import / Export — Netscape HTML bookmark format
   // ---------------------------------------------------------------------------
