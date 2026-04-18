@@ -37,6 +37,7 @@ const TAB_CONTENT      = 'content'          as const;
 const TAB_PERMISSIONS  = 'permissions'     as const;
 const TAB_ADDRESSES    = 'addresses'        as const;
 const TAB_PAYMENTS     = 'payments'         as const;
+const TAB_DOWNLOADS    = 'downloads'        as const;
 
 type TabId =
   | typeof TAB_API_KEY
@@ -51,6 +52,7 @@ type TabId =
   | typeof TAB_PERMISSIONS
   | typeof TAB_ADDRESSES
   | typeof TAB_PAYMENTS
+  | typeof TAB_DOWNLOADS
   | typeof TAB_DANGER;
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -66,6 +68,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: TAB_PERMISSIONS, label: 'Permissions' },
   { id: TAB_ADDRESSES,   label: 'Addresses' },
   { id: TAB_PAYMENTS,    label: 'Payments' },
+  { id: TAB_DOWNLOADS,   label: 'Downloads' },
   { id: TAB_DANGER,     label: 'Danger Zone' },
 ];
 
@@ -194,6 +197,13 @@ declare global {
       }>;
       applyAutoRevokePermissions: (revocations: Array<{ origin: string; permissionType: string }>) => Promise<number>;
       optOutAutoRevoke: (origin: string, permissionType: string) => Promise<void>;
+      getDownloadFolder: () => Promise<string>;
+      setDownloadFolder: () => Promise<string>;
+      getAskBeforeSave: () => Promise<boolean>;
+      setAskBeforeSave: (enabled: boolean) => Promise<void>;
+      getFileTypeAssociations: () => Promise<Record<string, boolean>>;
+      setFileTypeAssociation: (ext: string, enabled: boolean) => Promise<void>;
+      removeFileTypeAssociation: (ext: string) => Promise<void>;
     };
   }
 }
@@ -2581,6 +2591,152 @@ function PaymentsTab(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// Downloads tab
+// ---------------------------------------------------------------------------
+
+const COMMON_FILE_TYPES: Array<{ ext: string; label: string }> = [
+  { ext: 'pdf',  label: 'PDF documents (.pdf)' },
+  { ext: 'zip',  label: 'ZIP archives (.zip)' },
+  { ext: 'dmg',  label: 'Disk images (.dmg)' },
+  { ext: 'pkg',  label: 'Installer packages (.pkg)' },
+  { ext: 'mp4',  label: 'Video files (.mp4)' },
+  { ext: 'mp3',  label: 'Audio files (.mp3)' },
+  { ext: 'csv',  label: 'CSV spreadsheets (.csv)' },
+  { ext: 'txt',  label: 'Text files (.txt)' },
+];
+
+function DownloadsTab(): React.ReactElement {
+  const toast = useToast();
+  const [downloadFolder, setDownloadFolder] = useState('');
+  const [askBeforeSave, setAskBeforeSave] = useState(false);
+  const [fileTypeAssoc, setFileTypeAssoc] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void Promise.all([
+      window.settingsAPI.getDownloadFolder(),
+      window.settingsAPI.getAskBeforeSave(),
+      window.settingsAPI.getFileTypeAssociations(),
+    ]).then(([folder, ask, assoc]) => {
+      setDownloadFolder(folder);
+      setAskBeforeSave(ask);
+      setFileTypeAssoc(assoc);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  async function handleChangeFolderClick(): Promise<void> {
+    try {
+      const newFolder = await window.settingsAPI.setDownloadFolder();
+      if (newFolder !== null) {
+        setDownloadFolder(newFolder);
+        toast.show({ variant: 'success', title: 'Download folder updated' });
+      }
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to change folder', message: (err as Error).message });
+    }
+  }
+
+  async function handleAskBeforeSaveToggle(checked: boolean): Promise<void> {
+    setAskBeforeSave(checked);
+    try {
+      await window.settingsAPI.setAskBeforeSave(checked);
+      toast.show({
+        variant: 'success',
+        title: checked ? 'Will prompt for save location' : 'Saving to download folder automatically',
+      });
+    } catch (err) {
+      setAskBeforeSave(!checked);
+      toast.show({ variant: 'error', title: 'Failed to update setting', message: (err as Error).message });
+    }
+  }
+
+  async function handleFileTypeToggle(ext: string, checked: boolean): Promise<void> {
+    setFileTypeAssoc((prev) => ({ ...prev, [ext]: checked }));
+    try {
+      await window.settingsAPI.setFileTypeAssociation(ext, checked);
+    } catch (err) {
+      setFileTypeAssoc((prev) => ({ ...prev, [ext]: !checked }));
+      toast.show({ variant: 'error', title: 'Failed to update setting', message: (err as Error).message });
+    }
+  }
+
+  const displayFolder = downloadFolder || '(System default downloads folder)';
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Downloads</h2>
+      <p className="settings-section-desc">
+        Choose where downloads are saved and when to be prompted.
+      </p>
+
+      {loading ? (
+        <Spinner />
+      ) : (
+        <>
+          <Card variant="default" padding="md" className="settings-card">
+            <div className="settings-toggle-row">
+              <div className="settings-toggle-info">
+                <span className="settings-toggle-label">Download location</span>
+                <span className="settings-toggle-desc" style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                  {displayFolder}
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => void handleChangeFolderClick()}>
+                Change…
+              </Button>
+            </div>
+          </Card>
+
+          <Card variant="default" padding="md" className="settings-card">
+            <div className="settings-toggle-row">
+              <div className="settings-toggle-info">
+                <span className="settings-toggle-label">Ask where to save each file before downloading</span>
+                <span className="settings-toggle-desc">
+                  When enabled, a save dialog appears for every download. When disabled,
+                  files are saved directly to the download folder.
+                </span>
+              </div>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={askBeforeSave}
+                  onChange={(e) => void handleAskBeforeSaveToggle(e.target.checked)}
+                />
+                <span className="settings-toggle-track" />
+              </label>
+            </div>
+          </Card>
+
+          <Card variant="default" padding="md" className="settings-card">
+            <div style={{ marginBottom: 12 }}>
+              <span className="settings-toggle-label">Open files of these types automatically</span>
+              <p className="settings-toggle-desc" style={{ marginTop: 4 }}>
+                Files of the selected types will be opened after downloading completes.
+              </p>
+            </div>
+            {COMMON_FILE_TYPES.map(({ ext, label }) => (
+              <div key={ext} className="settings-toggle-row" style={{ paddingTop: 8, paddingBottom: 8 }}>
+                <div className="settings-toggle-info">
+                  <span className="settings-toggle-label" style={{ fontWeight: 400 }}>{label}</span>
+                </div>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={fileTypeAssoc[ext] === true}
+                    onChange={(e) => void handleFileTypeToggle(ext, e.target.checked)}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Inner app (uses useToast — must be inside ToastProvider)
 // ---------------------------------------------------------------------------
 
@@ -2644,6 +2800,7 @@ function SettingsInner(): React.ReactElement {
     [TAB_PERMISSIONS]: <PermissionsTab />,
     [TAB_ADDRESSES]:   <AddressesTab />,
     [TAB_PAYMENTS]:    <PaymentsTab />,
+    [TAB_DOWNLOADS]:   <DownloadsTab />,
     [TAB_CONTENT]:    <ContentCategoriesTab />,
     [TAB_DANGER]:     <DangerZoneTab />,
   };

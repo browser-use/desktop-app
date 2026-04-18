@@ -3,10 +3,11 @@
  * and emits IPC events to the shell renderer for the download bubble UI.
  */
 
-import { BrowserWindow, ipcMain, session, shell, app } from 'electron';
+import { BrowserWindow, dialog, ipcMain, session, shell, app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { mainLogger } from '../logger';
+import { readPrefs } from '../settings/ipc';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,6 +98,24 @@ export class DownloadManager {
       const url = item.getURL();
       const totalBytes = item.getTotalBytes();
 
+      // Apply download folder / ask-before-save preferences
+      const prefs = readPrefs();
+      const customFolder = typeof prefs.defaultDownloadFolder === 'string' ? prefs.defaultDownloadFolder : '';
+      if (prefs.askBeforeSave === true) {
+        item.pause();
+        const defaultPath = path.join(customFolder || app.getPath('downloads'), filename);
+        void dialog.showSaveDialog(this.win, { defaultPath }).then((result) => {
+          if (result.canceled || !result.filePath) {
+            item.cancel();
+          } else {
+            item.setSavePath(result.filePath);
+            item.resume();
+          }
+        }).catch(() => { item.cancel(); });
+      } else if (customFolder) {
+        item.setSavePath(path.join(customFolder, filename));
+      }
+
       mainLogger.info('DownloadManager.willDownload', {
         id,
         filename,
@@ -185,11 +204,18 @@ export class DownloadManager {
 
           if (dlItem.openWhenDone && dlItem.savePath) {
             shell.openPath(dlItem.savePath).catch((err) => {
-              mainLogger.warn('DownloadManager.openWhenDone.failed', {
-                id,
-                error: err,
-              });
+              mainLogger.warn('DownloadManager.openWhenDone.failed', { id, error: err });
             });
+          } else if (!dlItem.openWhenDone && dlItem.savePath) {
+            // Auto-open by file type association — use final saved path, not initial filename
+            const ext = path.extname(dlItem.savePath).toLowerCase().slice(1);
+            const fileTypeAssociations = (readPrefs().fileTypeAssociations as Record<string, boolean>) ?? {};
+            if (ext && fileTypeAssociations[ext] === true) {
+              mainLogger.info('DownloadManager.autoOpen', { id, ext });
+              shell.openPath(dlItem.savePath).catch((err) => {
+                mainLogger.warn('DownloadManager.autoOpen.failed', { id, ext, error: err });
+              });
+            }
           }
         } else {
           dlItem.status = 'cancelled';

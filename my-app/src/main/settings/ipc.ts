@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, ipcMain, session } from 'electron';
+import { app, dialog, ipcMain, session } from 'electron';
 import { mainLogger } from '../logger';
 import type { AccountStore } from '../identity/AccountStore';
 import type { KeychainStore } from '../identity/KeychainStore';
@@ -91,8 +91,15 @@ const CH_GET_HTTPS_FIRST     = 'settings:get-https-first';
 const CH_SET_HTTPS_FIRST     = 'settings:set-https-first';
 const CH_GET_DNT_ENABLED     = 'settings:get-dnt-enabled';
 const CH_SET_DNT_ENABLED     = 'settings:set-dnt-enabled';
-const CH_GET_GPC_ENABLED     = 'settings:get-gpc-enabled';
-const CH_SET_GPC_ENABLED     = 'settings:set-gpc-enabled';
+const CH_GET_GPC_ENABLED          = 'settings:get-gpc-enabled';
+const CH_SET_GPC_ENABLED          = 'settings:set-gpc-enabled';
+const CH_GET_DOWNLOAD_FOLDER      = 'settings:get-download-folder';
+const CH_SET_DOWNLOAD_FOLDER      = 'settings:set-download-folder';
+const CH_GET_ASK_BEFORE_SAVE      = 'settings:get-ask-before-save';
+const CH_SET_ASK_BEFORE_SAVE      = 'settings:set-ask-before-save';
+const CH_GET_FILE_TYPE_ASSOC      = 'settings:get-file-type-associations';
+const CH_SET_FILE_TYPE_ASSOC      = 'settings:set-file-type-association';
+const CH_REMOVE_FILE_TYPE_ASSOC   = 'settings:remove-file-type-association';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -671,6 +678,80 @@ export function refreshPrivacyHeaders(): void {
   mainLogger.info('privacy.refreshHeaders.installed');
 }
 
+// ---------------------------------------------------------------------------
+// Downloads settings handlers
+// ---------------------------------------------------------------------------
+
+function handleGetDownloadFolder(): string {
+  mainLogger.info(CH_GET_DOWNLOAD_FOLDER);
+  const prefs = readPrefs();
+  const folder = typeof prefs.defaultDownloadFolder === 'string' ? prefs.defaultDownloadFolder : '';
+  mainLogger.info(`${CH_GET_DOWNLOAD_FOLDER}.ok`, { folder: folder || '(default)' });
+  return folder;
+}
+
+async function handleSetDownloadFolder(): Promise<string | null> {
+  mainLogger.info(CH_SET_DOWNLOAD_FOLDER);
+  const result = await dialog.showOpenDialog({
+    title: 'Select download folder',
+    defaultPath: app.getPath('downloads'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    mainLogger.info(`${CH_SET_DOWNLOAD_FOLDER}.canceled`);
+    return null;
+  }
+  const folder = result.filePaths[0];
+  mergePrefs({ defaultDownloadFolder: folder });
+  mainLogger.info(`${CH_SET_DOWNLOAD_FOLDER}.ok`, { folder });
+  return folder;
+}
+
+function handleGetAskBeforeSave(): boolean {
+  mainLogger.info(CH_GET_ASK_BEFORE_SAVE);
+  const prefs = readPrefs();
+  const enabled = prefs.askBeforeSave === true;
+  mainLogger.info(`${CH_GET_ASK_BEFORE_SAVE}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetAskBeforeSave(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') throw new Error('askBeforeSave must be a boolean');
+  mainLogger.info(CH_SET_ASK_BEFORE_SAVE, { enabled });
+  mergePrefs({ askBeforeSave: enabled });
+  mainLogger.info(`${CH_SET_ASK_BEFORE_SAVE}.ok`, { enabled });
+}
+
+function handleGetFileTypeAssociations(): Record<string, boolean> {
+  mainLogger.info(CH_GET_FILE_TYPE_ASSOC);
+  const prefs = readPrefs();
+  const assoc = (prefs.fileTypeAssociations as Record<string, boolean>) ?? {};
+  mainLogger.info(`${CH_GET_FILE_TYPE_ASSOC}.ok`, { count: Object.keys(assoc).length });
+  return assoc;
+}
+
+function handleSetFileTypeAssociation(_event: Electron.IpcMainInvokeEvent, ext: string, enabled: boolean): void {
+  if (typeof ext !== 'string' || !ext) throw new Error('ext must be a non-empty string');
+  if (typeof enabled !== 'boolean') throw new Error('enabled must be a boolean');
+  const normalized = ext.toLowerCase().replace(/^\./, '');
+  mainLogger.info(CH_SET_FILE_TYPE_ASSOC, { ext: normalized, enabled });
+  const prefs = readPrefs();
+  const existing = (prefs.fileTypeAssociations as Record<string, boolean>) ?? {};
+  mergePrefs({ fileTypeAssociations: { ...existing, [normalized]: enabled } });
+  mainLogger.info(`${CH_SET_FILE_TYPE_ASSOC}.ok`, { ext: normalized });
+}
+
+function handleRemoveFileTypeAssociation(_event: Electron.IpcMainInvokeEvent, ext: string): void {
+  if (typeof ext !== 'string' || !ext) throw new Error('ext must be a non-empty string');
+  const normalized = ext.toLowerCase().replace(/^\./, '');
+  mainLogger.info(CH_REMOVE_FILE_TYPE_ASSOC, { ext: normalized });
+  const prefs = readPrefs();
+  const existing = { ...((prefs.fileTypeAssociations as Record<string, boolean>) ?? {}) };
+  delete existing[normalized];
+  mergePrefs({ fileTypeAssociations: existing });
+  mainLogger.info(`${CH_REMOVE_FILE_TYPE_ASSOC}.ok`, { ext: normalized });
+}
+
 function handleCloseWindow(): void {
   mainLogger.info(CH_CLOSE_WINDOW);
   const win = getSettingsWindow();
@@ -717,12 +798,19 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_SET_HTTPS_FIRST,    handleSetHttpsFirst);
   ipcMain.handle(CH_GET_DNT_ENABLED,    handleGetDntEnabled);
   ipcMain.handle(CH_SET_DNT_ENABLED,    handleSetDntEnabled);
-  ipcMain.handle(CH_GET_GPC_ENABLED,    handleGetGpcEnabled);
-  ipcMain.handle(CH_SET_GPC_ENABLED,    handleSetGpcEnabled);
+  ipcMain.handle(CH_GET_GPC_ENABLED,         handleGetGpcEnabled);
+  ipcMain.handle(CH_SET_GPC_ENABLED,         handleSetGpcEnabled);
+  ipcMain.handle(CH_GET_DOWNLOAD_FOLDER,     handleGetDownloadFolder);
+  ipcMain.handle(CH_SET_DOWNLOAD_FOLDER,     handleSetDownloadFolder);
+  ipcMain.handle(CH_GET_ASK_BEFORE_SAVE,     handleGetAskBeforeSave);
+  ipcMain.handle(CH_SET_ASK_BEFORE_SAVE,     handleSetAskBeforeSave);
+  ipcMain.handle(CH_GET_FILE_TYPE_ASSOC,     handleGetFileTypeAssociations);
+  ipcMain.handle(CH_SET_FILE_TYPE_ASSOC,     handleSetFileTypeAssociation);
+  ipcMain.handle(CH_REMOVE_FILE_TYPE_ASSOC,  handleRemoveFileTypeAssociation);
 
   refreshPrivacyHeaders();
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 34 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -753,6 +841,13 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_SET_DNT_ENABLED);
   ipcMain.removeHandler(CH_GET_GPC_ENABLED);
   ipcMain.removeHandler(CH_SET_GPC_ENABLED);
+  ipcMain.removeHandler(CH_GET_DOWNLOAD_FOLDER);
+  ipcMain.removeHandler(CH_SET_DOWNLOAD_FOLDER);
+  ipcMain.removeHandler(CH_GET_ASK_BEFORE_SAVE);
+  ipcMain.removeHandler(CH_SET_ASK_BEFORE_SAVE);
+  ipcMain.removeHandler(CH_GET_FILE_TYPE_ASSOC);
+  ipcMain.removeHandler(CH_SET_FILE_TYPE_ASSOC);
+  ipcMain.removeHandler(CH_REMOVE_FILE_TYPE_ASSOC);
 
   _accountStore  = null;
   _keychainStore = null;
