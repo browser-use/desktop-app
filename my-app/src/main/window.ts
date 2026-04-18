@@ -72,7 +72,8 @@ export interface ShellWindowOptions {
 export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
   const bounds = loadBounds();
   const titleSuffix = opts?.titleSuffix ?? '';
-  mainLogger.info('window.createShellWindow', { bounds, titleSuffix });
+  const incognito = opts?.incognito ?? false;
+  mainLogger.info('window.createShellWindow', { bounds, titleSuffix, incognito });
 
   const win = new BrowserWindow({
     x: bounds.x,
@@ -83,7 +84,7 @@ export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
     minHeight: MIN_HEIGHT,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: '#0d0d0d',
+    backgroundColor: incognito ? '#1a1a2e' : '#0d0d0d',
     webPreferences: {
       preload: path.join(__dirname, 'shell.js'),
       contextIsolation: true,
@@ -129,9 +130,16 @@ export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
     win.loadFile(htmlPath);
   }
 
-  // Debounced bounds persistence
+  win.webContents.setZoomLevel(0);
+  win.webContents.on('zoom-changed', () => {
+    win.webContents.setZoomLevel(0);
+  });
+
+  // Debounced bounds persistence — incognito windows do NOT persist bounds
+  // to avoid leaking usage patterns.
   let boundsTimer: ReturnType<typeof setTimeout> | null = null;
   const debouncedSave = () => {
+    if (incognito) return;
     if (boundsTimer) clearTimeout(boundsTimer);
     boundsTimer = setTimeout(() => saveBounds(win), DEBOUNCE_MS);
   };
@@ -140,11 +148,11 @@ export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
   win.on('move', debouncedSave);
   win.on('close', () => {
     if (boundsTimer) clearTimeout(boundsTimer);
-    saveBounds(win);
-    mainLogger.info('window.close', { windowId: win.id });
+    if (!incognito) saveBounds(win);
+    mainLogger.info('window.close', { windowId: win.id, incognito });
   });
   win.on('closed', () => {
-    mainLogger.info('window.closed', { msg: 'Shell window destroyed' });
+    mainLogger.info('window.closed', { msg: 'Shell window destroyed', incognito });
   });
   win.webContents.on('crashed' as any, (_e: Event, killed: boolean) => {
     mainLogger.error('window.crashed', { windowId: win.id, killed });

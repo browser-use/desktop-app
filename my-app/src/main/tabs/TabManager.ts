@@ -66,6 +66,7 @@ import {
   CERT_ERROR_PROCEED_PREFIX,
   CERT_ERROR_BACK_PREFIX,
 } from '../errors/NetworkErrorController';
+import type { TabGroupStore } from './TabGroupStore';
 
 // Forge VitePlugin globals for the new-tab page (injected at build time)
 declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
@@ -134,6 +135,8 @@ declare const HISTORY_VITE_DEV_SERVER_URL: string | undefined;
 declare const HISTORY_VITE_NAME: string | undefined;
 declare const DOWNLOADS_VITE_DEV_SERVER_URL: string | undefined;
 declare const DOWNLOADS_VITE_NAME: string | undefined;
+declare const BOOKMARKS_VITE_DEV_SERVER_URL: string | undefined;
+declare const BOOKMARKS_VITE_NAME: string | undefined;
 declare const CHROME_PAGES_VITE_DEV_SERVER_URL: string | undefined;
 declare const CHROME_PAGES_VITE_NAME: string | undefined;
 
@@ -144,6 +147,16 @@ const SKIP_HISTORY_RE = /^(data:|about:|chrome:|devtools:|view-source:)/i;
 const NEWTAB_URL_RE = /newtab\.html$/;
 
 export class TabManager {
+  // ---------------------------------------------------------------------------
+  // Static instance registry — lets callers look up by window id and broadcast
+  // to all active windows.
+  // ---------------------------------------------------------------------------
+  static readonly instances = new Map<number, TabManager>();
+
+  static getAllInstances(): TabManager[] {
+    return Array.from(TabManager.instances.values());
+  }
+
   private win: BrowserWindow;
   private tabs: Map<string, WebContentsView> = new Map();
   private tabOrder: string[] = [];
@@ -157,6 +170,7 @@ export class TabManager {
   private onClosedTabsChanged: (() => void) | null = null;
   private onTabClosed: ((tabId: string) => void) | null = null;
   private onWebContentsCreated: ((wc: import("electron").WebContents) => void) | null = null;
+  private onMoveTabToNewWindow: ((url: string, title: string) => void) | null = null;
   // Extra pixels the renderer added on top of the base chrome (e.g. 32 px
   // for a visible bookmarks bar). The page-hosting WebContentsView is then
   // positioned at CHROME_HEIGHT + chromeOffset.
@@ -178,13 +192,21 @@ export class TabManager {
   private zoomStore: ZoomStore;
   private mutedSitesStore: MutedSitesStore;
   private urlMatchFn: UrlMatchFn | null = null;
+  private searchUrlTemplate: string | null = null;
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
+  private tabGroupStore: TabGroupStore | null = null;
   readonly isGuest: boolean;
   private readonly partition: string | null;
 
+  /** Returns the Electron session partition name used by this TabManager's tabs, or null for the default session. */
+  getGuestPartition(): string | null {
+    return this.partition;
+  }
+
   constructor(win: BrowserWindow, opts?: { dataDir?: string; partition?: string; guest?: boolean }) {
     this.win = win;
+    TabManager.instances.set(win.id, this);
     this.isGuest = opts?.guest ?? false;
     this.partition = opts?.partition ?? null;
     this.sessionStore = new SessionStore(opts?.dataDir);
@@ -213,6 +235,14 @@ export class TabManager {
   /** Called by DeviceManager to attach select-bluetooth-device on new tabs */
   setOnWebContentsCreated(cb: ((wc: import("electron").WebContents) => void) | null): void {
     this.onWebContentsCreated = cb;
+  }
+
+  setTabGroupStore(store: TabGroupStore | null): void {
+    this.tabGroupStore = store;
+  }
+
+  setOnMoveTabToNewWindow(cb: ((url: string, title: string) => void) | null): void {
+    this.onMoveTabToNewWindow = cb;
   }
 
   setHistoryStore(store: HistoryStore): void {
@@ -268,6 +298,29 @@ export class TabManager {
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
     this.urlMatchFn = fn;
+  }
+
+  /** Update the search URL template (e.g. 'https://www.google.com/search?q=%s'). */
+  setSearchUrlTemplate(url: string | null): void {
+    this.searchUrlTemplate = url;
+    mainLogger.info('TabManager.setSearchUrlTemplate', { url: url ?? '(reset to default)' });
+  }
+
+  private isFullscreen = false;
+
+  setFullscreen(fullscreen: boolean): void {
+    if (this.isFullscreen === fullscreen) return;
+    this.isFullscreen = fullscreen;
+    mainLogger.debug('TabManager.setFullscreen', { fullscreen });
+    this.relayout();
+  }
+
+  setContentVisible(visible: boolean): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    mainLogger.debug('TabManager.setContentVisible', { visible, activeTabId: this.activeTabId });
+    view.setVisible(visible);
   }
 
   setChromeOffset(offset: number): void {
@@ -457,11 +510,45 @@ export class TabManager {
     // Focus the URL bar so the user can type immediately. activateTab just
     // called view.webContents.focus(), so we pull OS focus back to the shell
     // window and then fire the same IPC Cmd+L uses.
+    // Re-send after did-finish-load because Electron refocuses the tab's
+    // webContents when the page finishes loading, stealing focus back.
     if (isUserInitiated && !this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
-      this.win.webContents.focus();
-      this.win.webContents.send('focus-url-bar');
+      const focusUrlBar = (): void => {
+        if (!this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
+          this.win.webContents.focus();
+          this.win.webContents.send("focus-url-bar");
+        }
+      };
+      focusUrlBar();
+      view.webContents.once("did-finish-load", focusUrlBar);
     }
 
+    return tabId;
+  }
+
+  createBackgroundTab(url: string): string {
+    const tabId = uuidv4();
+    const webPrefs: Electron.WebPreferences = {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    };
+    if (this.partition) webPrefs.partition = this.partition;
+    const view = new WebContentsView({ webPreferences: webPrefs });
+    this.win.contentView.addChildView(view);
+    this.tabs.set(tabId, view);
+    this.tabOrder.push(tabId);
+    this.navControllers.set(tabId, new NavigationController(view));
+    view.webContents.setVisualZoomLevelLimits(1, 3).catch(() => {});
+    this.attachViewEvents(tabId, view);
+    this.positionView(view);
+    view.setVisible(false);
+    this.onWebContentsCreated?.(view.webContents);
+    view.webContents.loadURL(url);
+    // Do NOT activate — stays in background
+    this.saveSession();
+    this.broadcastState();
+    mainLogger.info('TabManager.createBackgroundTab', { tabId, url });
     return tabId;
   }
 
@@ -505,6 +592,12 @@ export class TabManager {
     this.lastFindQuery.delete(tabId);
     this.pinnedTabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
+
+    // Remove tab from its group before any early return so the store is always clean.
+    if (this.tabGroupStore?.getGroupForTab(tabId)) {
+      this.tabGroupStore.removeTabFromGroup(tabId);
+      this.broadcastTabGroups();
+    }
 
     if (this.activeTabId === tabId) {
       const newActive = this.tabOrder[this.tabOrder.length - 1] ?? null;
@@ -700,7 +793,7 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   navigate(tabId: string, input: string): void {
-    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined);
+    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined, this.searchUrlTemplate ?? undefined);
     const chromeMatch = CHROME_URL_RE.exec(url);
     if (chromeMatch) {
       const page = chromeMatch[1].toLowerCase();
@@ -789,6 +882,7 @@ export class TabManager {
     const preloadMap: Record<string, string> = {
       history: 'history.js',
       downloads: 'downloads.js',
+      bookmarks: 'bookmarks.js',
     };
     const preloadFile = CHROME_PAGES_PAGES.has(page) ? 'chrome.js' : (preloadMap[page] ?? 'history.js');
     const preloadPath = path.join(__dirname, preloadFile);
@@ -827,6 +921,13 @@ export class TabManager {
       } else {
         const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
         url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
+      }
+    } else if (page === 'bookmarks') {
+      if (typeof BOOKMARKS_VITE_DEV_SERVER_URL !== 'undefined' && BOOKMARKS_VITE_DEV_SERVER_URL) {
+        url = BOOKMARKS_VITE_DEV_SERVER_URL + '/src/renderer/bookmarks/bookmarks.html';
+      } else {
+        const name = typeof BOOKMARKS_VITE_NAME !== 'undefined' ? BOOKMARKS_VITE_NAME : 'bookmarks';
+        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'bookmarks.html');
       }
     } else if (CHROME_PAGES_PAGES.has(page)) {
       let baseUrl: string;
@@ -1463,7 +1564,7 @@ export class TabManager {
 
   private positionView(view: WebContentsView): void {
     const [winWidth, winHeight] = this.win.getContentSize();
-    const top = CHROME_HEIGHT + this.chromeOffset;
+    const top = this.isFullscreen ? 0 : CHROME_HEIGHT + this.chromeOffset;
     const contentWidth = Math.max(0, winWidth - this.sidePanelWidth);
     const x = this.sidePanelPosition === 'left' ? this.sidePanelWidth : 0;
     view.setBounds({
@@ -1736,6 +1837,20 @@ export class TabManager {
       this.createTab(url);
     });
 
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      if (url && !BLOCKED_SCHEMES.test(url)) {
+        const background =
+          disposition === 'background-tab' ||
+          disposition === 'other';
+        if (background) {
+          this.createBackgroundTab(url);
+        } else {
+          this.createTab(url);
+        }
+      }
+      return { action: 'deny' };
+    });
+
     // Find-in-page results stream back here. We only broadcast the final
     // update (result.finalUpdate === true) so the renderer doesn't flicker
     // through intermediate match counts as Chromium scans the document.
@@ -1929,6 +2044,17 @@ export class TabManager {
     this.win.webContents.send(channel, payload);
   }
 
+  /** Broadcast tab-group updates to every open window so all shells stay in sync. */
+  private broadcastTabGroups(): void {
+    if (!this.tabGroupStore) return;
+    const groups = this.tabGroupStore.listGroups();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('tab-groups:updated', groups);
+      }
+    }
+  }
+
 
   // ---------------------------------------------------------------------------
   // Pinned tabs (Issue #3)
@@ -2044,6 +2170,29 @@ export class TabManager {
       },
     }));
 
+    if (this.tabGroupStore) {
+      const existingGroup = this.tabGroupStore.getGroupForTab(tabId);
+      if (existingGroup) {
+        menu.append(new MenuItem({
+          label: 'Remove from Group',
+          click: () => {
+            this.tabGroupStore!.removeTabFromGroup(tabId);
+            this.broadcastTabGroups();
+          },
+        }));
+      } else {
+        menu.append(new MenuItem({
+          label: 'Add to New Group',
+          click: () => {
+            const colors: Array<import('./TabGroupStore').TabGroup['color']> = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            this.tabGroupStore!.createGroup('New group', color, [tabId]);
+            this.broadcastTabGroups();
+          },
+        }));
+      }
+    }
+
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
@@ -2104,6 +2253,20 @@ export class TabManager {
         this.safeSend('bookmark-all-tabs-request', {});
       },
     }));
+
+    if (this.onMoveTabToNewWindow) {
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({
+        label: 'Move Tab to New Window',
+        enabled: tabCount > 1,
+        click: () => {
+          const tabUrl = view.webContents.getURL();
+          const tabTitle = view.webContents.getTitle();
+          this.closeTab(tabId);
+          this.onMoveTabToNewWindow?.(tabUrl, tabTitle);
+        },
+      }));
+    }
 
     menu.popup({ window: this.win });
   }
@@ -2212,8 +2375,8 @@ export class TabManager {
       return this.createTab(url);
     });
 
-    ipcMain.handle('tabs:close', (_e, tabId: string) => {
-      this.closeTab(tabId);
+    ipcMain.handle('tabs:close', (_e, tabId: string, force = false) => {
+      this.closeTab(tabId, force);
     });
 
     ipcMain.handle('tabs:activate', (_e, tabId: string) => {
@@ -2381,9 +2544,38 @@ export class TabManager {
         isSecure: url.startsWith('https://'),
       };
     });
+
+    ipcMain.handle('security:get-cookie-count', async () => {
+      const url = this.getActiveTabUrl() ?? '';
+      if (!url) return 0;
+      try {
+        const activeView = this.activeTabId ? this.tabs.get(this.activeTabId) : null;
+        const session = activeView
+          ? activeView.webContents.session
+          : this.win.webContents.session;
+        const cookies = await session.cookies.get({ url });
+        return cookies.length;
+      } catch {
+        return 0;
+      }
+    });
   }
 
   destroy(): void {
+    TabManager.instances.delete(this.win.id);
+
+    // Only unregister process-wide IPC handlers when the last TabManager
+    // instance is being destroyed. With multiple windows open (e.g. from
+    // tab-detach), closing one window must not tear down IPC handlers that
+    // are still needed by the remaining windows.
+    if (TabManager.instances.size > 0) {
+      mainLogger.info('TabManager.destroy.skipIpcRemoval', {
+        remainingInstances: TabManager.instances.size,
+        msg: 'Other windows still open — preserving shared IPC handlers',
+      });
+      return;
+    }
+
     ipcMain.removeHandler('tabs:create');
     ipcMain.removeHandler('tabs:close');
     ipcMain.removeHandler('tabs:activate');
@@ -2419,5 +2611,6 @@ export class TabManager {
     ipcMain.removeHandler('find:stop');
     ipcMain.removeHandler('find:get-last-query');
     ipcMain.removeHandler('security:get-page-info');
+    ipcMain.removeHandler('security:get-cookie-count');
   }
 }

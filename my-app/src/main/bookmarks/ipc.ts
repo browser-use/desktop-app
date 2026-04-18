@@ -4,7 +4,9 @@
  * every mutation so the renderer can refresh the bar + star state.
  */
 
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, ipcMain, dialog, app } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 import { BookmarkStore, Visibility } from './BookmarkStore';
 import { assertString, assertOneOf } from '../ipc-validators';
 import { mainLogger } from '../logger';
@@ -23,6 +25,8 @@ const CHANNELS = [
   'bookmarks:set-visibility',
   'bookmarks:get-visibility',
   'bookmarks:bookmark-all-tabs',
+  'bookmarks:export-html',
+  'bookmarks:import-html',
 ] as const;
 
 export interface BookmarksIpcOptions {
@@ -107,9 +111,12 @@ export function registerBookmarkHandlers(opts: BookmarksIpcOptions): void {
 
   ipcMain.handle('bookmarks:get-visibility', () => store.getVisibility());
 
-  ipcMain.handle('bookmarks:bookmark-all-tabs', (_e, payload: { folderName: string }) => {
+  ipcMain.handle('bookmarks:bookmark-all-tabs', (_e, payload: { folderName: string; parentId?: string }) => {
     const folderName = assertString(payload?.folderName, 'folderName', 512);
-    const folder = store.addFolder({ name: folderName });
+    const parentId = payload?.parentId
+      ? assertString(payload.parentId, 'parentId', 128)
+      : undefined;
+    const folder = store.addFolder({ name: folderName, parentId });
     for (const t of getAllTabs()) {
       if (!t.url || /^(data:|about:)/i.test(t.url)) continue;
       store.addBookmark({ name: t.name || t.url, url: t.url, parentId: folder.id });
@@ -117,6 +124,47 @@ export function registerBookmarkHandlers(opts: BookmarksIpcOptions): void {
     broadcast();
     mainLogger.info('BookmarkStore.bookmarkAllTabs', { folderId: folder.id });
     return folder;
+  });
+
+  ipcMain.handle('bookmarks:export-html', async () => {
+    const win = getShellWindow();
+    const defaultPath = path.join(
+      app.getPath('downloads'),
+      `bookmarks_${new Date().toISOString().slice(0, 10)}.html`,
+    );
+    const { canceled, filePath } = await dialog.showSaveDialog(win ?? undefined, {
+      title: 'Export Bookmarks',
+      defaultPath,
+      filters: [{ name: 'HTML Files', extensions: ['html', 'htm'] }],
+    });
+    if (canceled || !filePath) return { ok: false };
+    const html = store.exportNetscapeHtml();
+    fs.writeFileSync(filePath, html, 'utf-8');
+    mainLogger.info('bookmarks:export-html', { filePath });
+    return { ok: true, filePath };
+  });
+
+  ipcMain.handle('bookmarks:import-html', async () => {
+    const win = getShellWindow();
+    const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined, {
+      title: 'Import Bookmarks',
+      filters: [{ name: 'HTML Files', extensions: ['html', 'htm'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths[0]) return { ok: false, imported: 0, skipped: 0 };
+    const MAX_IMPORT_BYTES = 50 * 1024 * 1024; // 50 MB guard against memory exhaustion
+    try {
+      if (fs.statSync(filePaths[0]).size > MAX_IMPORT_BYTES) {
+        return { ok: false, imported: 0, skipped: 0 };
+      }
+    } catch {
+      return { ok: false, imported: 0, skipped: 0 };
+    }
+    const html = fs.readFileSync(filePaths[0], 'utf-8');
+    const result = store.importNetscapeHtml(html);
+    broadcast();
+    mainLogger.info('bookmarks:import-html', { filePath: filePaths[0], ...result });
+    return { ok: true, ...result };
   });
 }
 

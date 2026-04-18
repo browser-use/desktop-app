@@ -13,13 +13,28 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { TabState } from '../../main/tabs/TabManager';
+import type { TabGroup } from '../../main/tabs/TabGroupStore';
 import { TabHoverCard } from './TabHoverCard';
 
 declare const electronAPI: {
   tabs: {
+    create: (url?: string) => Promise<string>;
+    close: (tabId: string, force?: boolean) => Promise<void>;
     showContextMenu: (tabId: string) => Promise<void>;
     muteTab: (tabId: string) => Promise<void>;
+    pin: (tabId: string) => Promise<void>;
+    unpin: (tabId: string) => Promise<void>;
     captureThumbnail: (tabId: string) => Promise<string | null>;
+    moveToNewWindow: (tabId: string) => Promise<boolean>;
+  };
+  tabGroups: {
+    list: () => Promise<TabGroup[]>;
+    create: (p: { name: string; color: string; tabIds: string[] }) => Promise<TabGroup>;
+    update: (p: { id: string; patch: object }) => Promise<void>;
+    addTab: (p: { groupId: string; tabId: string }) => Promise<void>;
+    removeTab: (p: { tabId: string }) => Promise<void>;
+    delete: (p: { id: string }) => Promise<void>;
+    onUpdated: (cb: (groups: TabGroup[]) => void) => () => void;
   };
 };
 
@@ -65,8 +80,9 @@ interface TabItemProps {
   tab: TabState;
   index: number;
   isActive: boolean;
+  isSelected: boolean;
   isIconOnly: boolean;
-  onActivate: () => void;
+  onTabClick: (e: React.MouseEvent) => void;
   onClose: (e: React.MouseEvent) => void;
   onDragStart: (e: React.DragEvent, tabId: string, index: number) => void;
   onDragOver: (e: React.DragEvent, index: number) => void;
@@ -76,6 +92,7 @@ interface TabItemProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   tabRef: (el: HTMLDivElement | null) => void;
   onMuteToggle: (e: React.MouseEvent) => void;
+  groupColor?: string;
   onHoverStart: (tab: TabState, rect: DOMRect) => void;
   onHoverEnd: () => void;
 }
@@ -84,8 +101,9 @@ function TabItem({
   tab,
   index,
   isActive,
+  isSelected,
   isIconOnly,
-  onActivate,
+  onTabClick,
   onClose,
   onDragStart,
   onDragOver,
@@ -95,6 +113,7 @@ function TabItem({
   onKeyDown,
   tabRef,
   onMuteToggle,
+  groupColor,
   onHoverStart,
   onHoverEnd,
 }: TabItemProps): React.ReactElement {
@@ -130,14 +149,19 @@ function TabItem({
         isDragOver ? 'tab-item--drag-over' : '',
         isPinned ? 'tab-item--pinned' : '',
         isIconOnly && !isPinned ? 'tab-item--icon-only' : '',
+        groupColor ? 'tab-item--grouped' : '',
+        isSelected ? 'tab-item--selected' : '',
       ]
         .filter(Boolean)
         .join(' ')}
+      style={groupColor ? { '--tab-group-color': groupColor } as React.CSSProperties : undefined}
       role="tab"
       aria-selected={isActive}
+      data-selected={isSelected || undefined}
       tabIndex={isActive ? 0 : -1}
       draggable
-      onClick={onActivate}
+      onClick={onTabClick}
+      onAuxClick={(e) => { if (e.button === 1) { e.stopPropagation(); onClose(e); } }}
       onKeyDown={onKeyDown}
       onDragStart={(e) => onDragStart(e, tab.id, index)}
       onDragOver={(e) => onDragOver(e, index)}
@@ -311,6 +335,46 @@ function TabSearchDropdown({
 }
 
 // ---------------------------------------------------------------------------
+// Group chip color map
+// ---------------------------------------------------------------------------
+const GROUP_COLOR_MAP: Record<TabGroup['color'], string> = {
+  grey: '#9e9e9e',
+  blue: '#1a73e8',
+  red: '#d32f2f',
+  yellow: '#f9a825',
+  green: '#2e7d32',
+  pink: '#e91e63',
+  purple: '#7b1fa2',
+  cyan: '#0097a7',
+};
+
+// ---------------------------------------------------------------------------
+// GroupChip
+// ---------------------------------------------------------------------------
+interface GroupChipProps {
+  group: TabGroup;
+  onToggleCollapse: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, group: TabGroup) => void;
+}
+
+function GroupChip({ group, onToggleCollapse, onContextMenu }: GroupChipProps): React.ReactElement {
+  const color = GROUP_COLOR_MAP[group.color];
+  return (
+    <div
+      className={`tab-group-chip tab-group-chip--${group.color}`}
+      style={{ '--group-color': color } as React.CSSProperties}
+      onClick={() => onToggleCollapse(group.id)}
+      onContextMenu={(e) => onContextMenu(e, group)}
+      title={group.collapsed ? `Expand group: ${group.name || '…'}` : `Collapse group: ${group.name || '…'}`}
+    >
+      <span className="tab-group-chip__dot" />
+      <span className="tab-group-chip__name">{group.name || '…'}</span>
+      <span className="tab-group-chip__arrow">{group.collapsed ? '›' : '‹'}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // TabStrip
 // ---------------------------------------------------------------------------
 interface HoverState {
@@ -330,6 +394,11 @@ export function TabStrip({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [iconOnlySet, setIconOnlySet] = useState<Set<string>>(new Set());
   const [searchOpen, setSearchOpen] = useState(false);
+  const [groups, setGroups] = useState<TabGroup[]>([]);
+  const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(new Set());
+  const [lastClickedTabId, setLastClickedTabId] = useState<string | null>(null);
   const [hoverState, setHoverState] = useState<HoverState | null>(null);
   const dragTabId = useRef<string | null>(null);
   const tabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -343,6 +412,19 @@ export function TabStrip({
       tabRefs.current.delete(index);
     }
   }, []);
+
+  // Prune stale selections and reset anchor index when tabs are removed.
+  useEffect(() => {
+    const currentIds = new Set(tabs.map((t) => t.id));
+    setSelectedTabIds((prev) => {
+      const next = new Set([...prev].filter((id) => currentIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+    setLastClickedTabId((prev) => {
+      if (prev === null) return null;
+      return tabs.some((t) => t.id === prev) ? prev : null;
+    });
+  }, [tabs]);
 
   // ---------------------------------------------------------------------------
   // ResizeObserver: measure each tab's rendered width and update icon-only state
@@ -376,6 +458,13 @@ export function TabStrip({
     return () => ro.disconnect();
   }, [tabs]);
 
+  // Load groups on mount and subscribe to updates
+  useEffect(() => {
+    electronAPI.tabGroups.list().then(setGroups).catch(() => {});
+    const unsub = electronAPI.tabGroups.onUpdated(setGroups);
+    return unsub;
+  }, []);
+
   // Show search button when any non-pinned tab is narrower than the threshold
   const showSearchBtn = (() => {
     let show = false;
@@ -386,6 +475,18 @@ export function TabStrip({
     });
     return show || iconOnlySet.size > 0;
   })();
+
+  // Escape clears multi-selection
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedTabIds.size > 0) {
+        setSelectedTabIds(new Set());
+        setLastClickedTabId(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedTabIds]);
 
   // Close search dropdown when clicking outside
   useEffect(() => {
@@ -401,24 +502,97 @@ export function TabStrip({
     return () => window.removeEventListener('mousedown', handler);
   }, [searchOpen]);
 
+  const handleTabClick = useCallback(
+    (e: React.MouseEvent, tab: TabState, index: number) => {
+      if (navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey) {
+        // Toggle this tab in the selection without changing active tab
+        e.stopPropagation();
+        setSelectedTabIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(tab.id)) {
+            next.delete(tab.id);
+          } else {
+            next.add(tab.id);
+          }
+          return next;
+        });
+        setLastClickedTabId(tab.id);
+      } else if (e.shiftKey && lastClickedTabId !== null) {
+        // Select range from anchor tab to current tab
+        e.stopPropagation();
+        const anchorIndex = tabs.findIndex((t) => t.id === lastClickedTabId);
+        if (anchorIndex !== -1) {
+          const start = Math.min(anchorIndex, index);
+          const end = Math.max(anchorIndex, index);
+          const rangeIds = new Set<string>();
+          for (let i = start; i <= end; i++) {
+            if (tabs[i]) rangeIds.add(tabs[i].id);
+          }
+          setSelectedTabIds(rangeIds);
+        }
+      } else {
+        // Normal click: clear selection and activate
+        setSelectedTabIds(new Set());
+        setLastClickedTabId(tab.id);
+        onActivate(tab.id);
+      }
+    },
+    [tabs, lastClickedTabId, onActivate],
+  );
+
+  const handleCloseSelected = useCallback(() => {
+    // Pinned tabs cannot be closed via bulk close — filter them out.
+    const closableIds = tabs
+      .filter((t) => selectedTabIds.has(t.id) && !t.pinned)
+      .map((t) => t.id);
+    closableIds.forEach((id) => onClose(id));
+    setSelectedTabIds(new Set());
+    setLastClickedTabId(null);
+  }, [tabs, selectedTabIds, onClose]);
+
   const handleTabKeyDown = useCallback(
     (e: React.KeyboardEvent, tab: TabState, index: number) => {
       const count = tabs.length;
       let targetIndex = -1;
 
+      // Skip tabs hidden by collapsed groups
+      const collapsedTabIds = new Set<string>();
+      for (const g of groups) {
+        if (g.collapsed) {
+          for (const tid of g.tabIds) collapsedTabIds.add(tid);
+        }
+      }
+      const isVisible = (i: number) => i >= 0 && i < count && !collapsedTabIds.has(tabs[i].id);
+
       switch (e.key) {
-        case 'ArrowRight':
-          targetIndex = (index + 1) % count;
+        case 'ArrowRight': {
+          let next = (index + 1) % count;
+          for (let i = 0; i < count; i++) {
+            if (isVisible(next)) { targetIndex = next; break; }
+            next = (next + 1) % count;
+          }
           break;
-        case 'ArrowLeft':
-          targetIndex = (index - 1 + count) % count;
+        }
+        case 'ArrowLeft': {
+          let next = (index - 1 + count) % count;
+          for (let i = 0; i < count; i++) {
+            if (isVisible(next)) { targetIndex = next; break; }
+            next = (next - 1 + count) % count;
+          }
           break;
-        case 'Home':
-          targetIndex = 0;
+        }
+        case 'Home': {
+          for (let i = 0; i < count; i++) {
+            if (isVisible(i)) { targetIndex = i; break; }
+          }
           break;
-        case 'End':
-          targetIndex = count - 1;
+        }
+        case 'End': {
+          for (let i = count - 1; i >= 0; i--) {
+            if (isVisible(i)) { targetIndex = i; break; }
+          }
           break;
+        }
         case 'Enter':
         case ' ':
           e.preventDefault();
@@ -440,10 +614,9 @@ export function TabStrip({
         onActivate(targetTab.id);
         const el = tabRefs.current.get(targetIndex);
         el?.focus();
-        console.log('[TabStrip] Arrow key navigation to index:', targetIndex, 'tab:', targetTab.title);
       }
     },
-    [tabs, onActivate, onClose],
+    [tabs, groups, onActivate, onClose],
   );
 
   const handleDragStart = useCallback(
@@ -463,10 +636,13 @@ export function TabStrip({
     [],
   );
 
+  const droppedRef = useRef(false);
+
   const handleDrop = useCallback(
     (e: React.DragEvent, toIndex: number) => {
       e.preventDefault();
       setDragOverIndex(null);
+      droppedRef.current = true;
       if (dragTabId.current) {
         onMove(dragTabId.current, toIndex);
         dragTabId.current = null;
@@ -475,50 +651,162 @@ export function TabStrip({
     [onMove],
   );
 
-  const handleDragEnd = useCallback(() => {
+  // Detach threshold: if the drag ends more than 80px below the tab strip top, treat it as detach.
+  const DETACH_Y_THRESHOLD = 80;
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    const tabId = dragTabId.current;
+    const wasDroppedInStrip = droppedRef.current;
     setDragOverIndex(null);
     dragTabId.current = null;
+    droppedRef.current = false;
+
+    if (tabId && !wasDroppedInStrip && e.clientY > DETACH_Y_THRESHOLD) {
+      electronAPI.tabs.moveToNewWindow(tabId).catch(() => {/* ignore */});
+    }
   }, []);
 
+  const handleGroupContextMenu = useCallback((e: React.MouseEvent, group: TabGroup) => {
+    e.preventDefault();
+    const menu = [
+      {
+        label: 'New Tab in Group',
+        action: () => {
+          electronAPI.tabs.create().then((newTabId) => {
+            return electronAPI.tabGroups.addTab({ groupId: group.id, tabId: newTabId });
+          }).catch(() => {});
+        },
+      },
+      {
+        label: 'Rename',
+        action: () => {
+          setRenameGroupId(group.id);
+          setRenameValue(group.name);
+        },
+      },
+      {
+        label: 'Ungroup',
+        action: () => {
+          electronAPI.tabGroups.delete({ id: group.id });
+        },
+      },
+      {
+        label: 'Close Group',
+        action: () => {
+          const tabIdsToClose = [...group.tabIds];
+          electronAPI.tabGroups.delete({ id: group.id });
+          tabIdsToClose.forEach((tid) => electronAPI.tabs.close(tid, true));
+        },
+      },
+    ];
+    const nativeMenu = document.createElement('div');
+    nativeMenu.className = 'tab-group-context-menu';
+    nativeMenu.style.cssText = `position:fixed;z-index:9999;left:${e.clientX}px;top:${e.clientY}px;background:var(--color-bg-elevated,#fff);border:1px solid var(--color-border-default,#ccc);border-radius:6px;padding:4px 0;box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:140px;`;
+    // Declare dismiss before btn.onclick so the onclick closure can reference it.
+    let dismiss: (ev: MouseEvent) => void;
+    menu.forEach((item) => {
+      const btn = document.createElement('button');
+      btn.textContent = item.label;
+      btn.style.cssText = 'display:block;width:100%;padding:6px 14px;text-align:left;background:none;border:none;cursor:pointer;font-size:13px;color:var(--color-fg-primary,#111);';
+      btn.onmouseenter = () => { btn.style.background = 'var(--color-bg-hover,rgba(0,0,0,.06))'; };
+      btn.onmouseleave = () => { btn.style.background = 'none'; };
+      btn.onclick = () => {
+        item.action();
+        document.body.removeChild(nativeMenu);
+        document.removeEventListener('mousedown', dismiss);
+      };
+      nativeMenu.appendChild(btn);
+    });
+    document.body.appendChild(nativeMenu);
+    dismiss = (ev: MouseEvent) => {
+      if (!nativeMenu.contains(ev.target as Node)) {
+        if (document.body.contains(nativeMenu)) document.body.removeChild(nativeMenu);
+        document.removeEventListener('mousedown', dismiss);
+      }
+    };
+    document.addEventListener('mousedown', dismiss);
+  }, [onClose]);
+
   return (
-    <div className="tab-strip" role="presentation" onDragEnd={handleDragEnd}>
+    <div className="tab-strip" role="presentation" onDragEnd={(e) => handleDragEnd(e)}>
       <div
         ref={tabsContainerRef}
         className="tab-strip__tabs"
         role="tablist"
         aria-label="Browser tabs"
       >
-        {tabs.map((tab, index) => (
-          <TabItem
-            key={tab.id}
-            tab={tab}
-            index={index}
-            isActive={tab.id === activeTabId}
-            isIconOnly={iconOnlySet.has(tab.id)}
-            onActivate={() => onActivate(tab.id)}
-            onClose={(e) => {
-              e.stopPropagation();
-              onClose(tab.id);
-            }}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            isDragOver={dragOverIndex === index}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              electronAPI.tabs.showContextMenu(tab.id);
-            }}
-            onKeyDown={(e) => handleTabKeyDown(e, tab, index)}
-            tabRef={setTabRef(index)}
-            onMuteToggle={(e) => {
-              e.stopPropagation();
-              onMuteToggle(tab.id);
-            }}
-            onHoverStart={(t, rect) => setHoverState({ tab: t, rect })}
-            onHoverEnd={() => setHoverState(null)}
-          />
-        ))}
+        {(() => {
+          const groupMap = new Map<string, TabGroup>(groups.map((g) => [g.id, g]));
+          const collapsedGroupIds = new Set(groups.filter((g) => g.collapsed).map((g) => g.id));
+          const tabToGroup = new Map<string, TabGroup>();
+          for (const g of groups) {
+            for (const tid of g.tabIds) tabToGroup.set(tid, g);
+          }
+          const renderedGroupChips = new Set<string>();
+          const elements: React.ReactNode[] = [];
+
+          tabs.forEach((tab, index) => {
+            const group = tabToGroup.get(tab.id);
+            if (group) {
+              if (!renderedGroupChips.has(group.id)) {
+                renderedGroupChips.add(group.id);
+                elements.push(
+                  <GroupChip
+                    key={`grp-chip-${group.id}`}
+                    group={group}
+                    onToggleCollapse={(id) => {
+                      const g = groupMap.get(id);
+                      if (g) electronAPI.tabGroups.update({ id, patch: { collapsed: !g.collapsed } });
+                    }}
+                    onContextMenu={(e, g) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleGroupContextMenu(e, g);
+                    }}
+                  />,
+                );
+              }
+              if (collapsedGroupIds.has(group.id) && tab.id !== activeTabId) return;
+            }
+
+            const groupColor = group ? GROUP_COLOR_MAP[group.color] : undefined;
+            elements.push(
+              <TabItem
+                key={tab.id}
+                tab={tab}
+                index={index}
+                isActive={tab.id === activeTabId}
+                isSelected={selectedTabIds.has(tab.id)}
+                isIconOnly={iconOnlySet.has(tab.id)}
+                onTabClick={(e) => handleTabClick(e, tab, index)}
+                onClose={(e) => {
+                  e.stopPropagation();
+                  onClose(tab.id);
+                }}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                isDragOver={dragOverIndex === index}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  electronAPI.tabs.showContextMenu(tab.id);
+                }}
+                onKeyDown={(e) => handleTabKeyDown(e, tab, index)}
+                tabRef={setTabRef(index)}
+                onMuteToggle={(e) => {
+                  e.stopPropagation();
+                  onMuteToggle(tab.id);
+                }}
+                groupColor={groupColor}
+                onHoverStart={(t, rect) => setHoverState({ tab: t, rect })}
+                onHoverEnd={() => setHoverState(null)}
+              />,
+            );
+          });
+
+          return elements;
+        })()}
         {/* + button sits right after the last tab (Chrome-style), not pinned right */}
         <button
           type="button"
@@ -537,6 +825,57 @@ export function TabStrip({
           </svg>
         </button>
       </div>
+
+      {/* Multi-select bulk-action toolbar — appears when 2+ tabs are selected */}
+      {selectedTabIds.size > 0 && (
+        <div className="tab-strip__multiselect-bar">
+          <span className="tab-strip__multiselect-count">
+            {selectedTabIds.size} selected
+          </span>
+          <button
+            type="button"
+            className="tab-strip__multiselect-btn"
+            onClick={handleCloseSelected}
+            title={`Close ${selectedTabIds.size} tab${selectedTabIds.size > 1 ? 's' : ''}`}
+          >
+            Close {selectedTabIds.size} tab{selectedTabIds.size > 1 ? 's' : ''}
+          </button>
+          <button
+            type="button"
+            className="tab-strip__multiselect-btn tab-strip__multiselect-btn--secondary"
+            onClick={() => {
+              const selected = tabs.filter((t) => selectedTabIds.has(t.id));
+              const anyUnmuted = selected.some((t) => !t.muted);
+              selected.forEach((t) => {
+                if (anyUnmuted ? !t.muted : t.muted) {
+                  electronAPI.tabs.muteTab(t.id).catch(() => {});
+                }
+              });
+              setSelectedTabIds(new Set());
+            }}
+            title="Mute/unmute selected tabs"
+          >
+            {tabs.filter((t) => selectedTabIds.has(t.id)).some((t) => !t.muted) ? 'Mute' : 'Unmute'}
+          </button>
+          <button
+            type="button"
+            className="tab-strip__multiselect-btn tab-strip__multiselect-btn--secondary"
+            onClick={() => {
+              const selected = tabs.filter((t) => selectedTabIds.has(t.id));
+              const anyUnpinned = selected.some((t) => !t.pinned);
+              selected.forEach((t) => {
+                if (anyUnpinned ? !t.pinned : t.pinned) {
+                  (anyUnpinned ? electronAPI.tabs.pin : electronAPI.tabs.unpin)(t.id).catch(() => {});
+                }
+              });
+              setSelectedTabIds(new Set());
+            }}
+            title="Pin/unpin selected tabs"
+          >
+            {tabs.filter((t) => selectedTabIds.has(t.id)).some((t) => !t.pinned) ? 'Pin' : 'Unpin'}
+          </button>
+        </div>
+      )}
 
       {/* Tab search button — appears when tabs are too narrow to read titles */}
       {showSearchBtn && (
@@ -563,6 +902,37 @@ export function TabStrip({
           onActivate={onActivate}
           onClose={() => setSearchOpen(false)}
         />
+      )}
+
+      {renameGroupId && (
+        <div className="tab-group-rename-overlay" onClick={() => setRenameGroupId(null)}>
+          <div className="tab-group-rename-dialog" onClick={(e) => e.stopPropagation()}>
+            <input
+              className="tab-group-rename-input"
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  electronAPI.tabGroups.update({ id: renameGroupId, patch: { name: renameValue } });
+                  setRenameGroupId(null);
+                } else if (e.key === 'Escape') {
+                  setRenameGroupId(null);
+                }
+              }}
+              placeholder="Group name"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                electronAPI.tabGroups.update({ id: renameGroupId, patch: { name: renameValue } });
+                setRenameGroupId(null);
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
       )}
 
       {hoverState && (

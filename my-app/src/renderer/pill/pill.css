@@ -615,10 +615,14 @@ body {
  * --------------------------------------------------------------------------- */
 
 .pill-palette {
-  padding: 6px 0 8px;
+  padding: 6px 6px 6px;
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
   animation: pill-section-in 150ms var(--ease-decelerate, cubic-bezier(0, 0, 0.2, 1)) forwards;
 }
 
@@ -627,7 +631,8 @@ body {
   grid-template-columns: 16px 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: 8px 18px;
+  padding: 8px 12px;
+  border-radius: 8px;
   font-size: 13px;
   color: var(--color-fg-primary, #f0f0f2);
   cursor: pointer;
@@ -650,6 +655,14 @@ body {
 
 .pill-palette-row--agent .pill-palette-icon {
   color: var(--color-accent-default, #c8f135);
+}
+
+.pill-palette-current-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-default, #c8f135);
 }
 
 .pill-palette-title {
