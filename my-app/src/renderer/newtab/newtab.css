@@ -10,7 +10,7 @@
   padding: 0 24px;
   background: var(--color-bg-base);
   color: var(--color-fg-primary);
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-family: var(--font-ui);
   gap: 48px;
 }
 
@@ -25,7 +25,7 @@
   width: 100%;
   padding: 14px 20px;
   border-radius: var(--radius-lg, 12px);
-  border: 1px solid var(--color-border, var(--slate-8));
+  border: 1px solid var(--color-border-default);
   background: var(--color-bg-elevated);
   color: var(--color-fg-primary);
   font-size: 15px;
@@ -38,7 +38,7 @@
 }
 
 .newtab__input:focus {
-  border-color: var(--accent-base);
+  border-color: var(--color-accent-default);
 }
 
 /* ---- Quick-link tiles ---- */

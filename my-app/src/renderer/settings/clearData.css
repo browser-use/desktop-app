@@ -182,28 +182,3 @@
   margin-top: 4px;
   border-top: 1px solid var(--color-border-subtle);
 }
-
-/* ---------------------------------------------------------------------------
-   Privacy section (Settings tab)
---------------------------------------------------------------------------- */
-
-.settings-privacy-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-privacy-label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg-primary);
-  margin-bottom: 4px;
-}
-
-.settings-privacy-desc {
-  font-size: var(--font-size-xs);
-  color: var(--color-fg-secondary);
-  line-height: var(--line-height-relaxed);
-  max-width: 360px;
-}

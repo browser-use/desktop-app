@@ -69,7 +69,7 @@
   align-items: center;
   flex: 1;
   height: 100%;
-  
+
   -webkit-app-region: drag;
 }
 
@@ -1454,7 +1454,7 @@
 }
 
 .password-prompt-bar__btn--secondary:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
@@ -1473,7 +1473,7 @@
 }
 
 .password-prompt-bar__dismiss:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
@@ -1548,7 +1548,7 @@
 
 .permission-bar__btn--primary {
   background: var(--color-accent-default);
-  color: var(--color-fg-on-accent);
+  color: var(--color-fg-inverse);
   border-color: var(--color-accent-default);
 }
 
@@ -1563,7 +1563,7 @@
 }
 
 .permission-bar__btn--secondary:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
@@ -1584,7 +1584,7 @@
 }
 
 .permission-bar__dismiss:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
@@ -1656,7 +1656,7 @@
 }
 
 .device-picker-bar__dismiss:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
@@ -1686,11 +1686,11 @@
 }
 
 .device-picker-bar__item:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
 }
 
 .device-picker-bar__item--selected {
-  background: var(--color-bg-selected, var(--color-bg-hover));
+  background: var(--color-surface-interactive-active);
 }
 
 .device-picker-bar__radio {
@@ -1740,12 +1740,12 @@
 }
 
 .app-menu-btn:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-interactive-hover);
   color: var(--color-fg-primary);
 }
 
 .app-menu-btn:active {
-  background: var(--color-bg-pressed);
+  background: var(--color-surface-interactive-active);
 }
 
 @media (prefers-reduced-motion: reduce) {

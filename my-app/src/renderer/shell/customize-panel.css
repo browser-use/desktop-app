@@ -163,7 +163,7 @@
 }
 
 .customize-panel__option-swatch--default {
-  background: linear-gradient(135deg, var(--slate-2), var(--slate-4));
+  background: linear-gradient(135deg, var(--color-bg-base), var(--color-bg-elevated));
   border: 1px solid var(--color-border-subtle);
 }
 
@@ -293,7 +293,7 @@
 
 .customize-panel__toggle--on .customize-panel__toggle-thumb {
   transform: translateX(16px);
-  background: var(--slate-1);
+  background: var(--color-bg-sunken);
 }
 
 /* ---------------------------------------------------------------------------
