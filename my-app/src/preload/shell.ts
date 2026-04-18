@@ -111,6 +111,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     showForwardHistory: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:show-forward-history', tabId),
+
+    moveToNewWindow: (tabId: string): Promise<boolean> =>
+      ipcRenderer.invoke('tabs:move-to-new-window', tabId),
   },
 
   // CDP info for agent integration
