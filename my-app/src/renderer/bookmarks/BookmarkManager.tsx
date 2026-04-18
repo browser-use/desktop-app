@@ -226,6 +226,7 @@ export function BookmarkManager() {
   const [renameValue, setRenameValue] = useState('');
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameCancelledRef = useRef(false);
 
   // ── Load data ──
   useEffect(() => {
@@ -313,6 +314,10 @@ export function BookmarkManager() {
   }, []);
 
   const commitRename = useCallback(() => {
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false;
+      return;
+    }
     if (renamingId && renameValue.trim()) {
       bookmarksAPI.rename({ id: renamingId, newName: renameValue.trim() }).catch(console.error);
     }
@@ -466,7 +471,10 @@ export function BookmarkManager() {
                     onBlur={commitRename}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') commitRename();
-                      if (e.key === 'Escape') setRenamingId(null);
+                      if (e.key === 'Escape') {
+                        renameCancelledRef.current = true;
+                        setRenamingId(null);
+                      }
                     }}
                   />
                 ) : (
