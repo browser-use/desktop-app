@@ -304,6 +304,16 @@ function openShellAndWire(profileId?: string): BrowserWindow {
 
   shellWindow.on('resize', () => tabManager?.relayout());
 
+  // Issue #13 — Fullscreen: hide chrome, edge-peek reveal
+  shellWindow.on('enter-full-screen', () => {
+    tabManager?.setFullscreen(true);
+    shellWindow?.webContents.send('fullscreen-changed', { isFullscreen: true });
+  });
+  shellWindow.on('leave-full-screen', () => {
+    tabManager?.setFullscreen(false);
+    shellWindow?.webContents.send('fullscreen-changed', { isFullscreen: false });
+  });
+
   // DEV/TEST: expose tabManager on the Node.js global object so E2E tests can
   // reach it via electronApp.evaluate() calls (which run in the same Node.js
   // process and share the global scope).  The BrowserWindow proxy returned by

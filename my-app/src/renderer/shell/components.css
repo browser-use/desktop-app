@@ -27,6 +27,21 @@
   -webkit-app-region: no-drag;
 }
 
+.window-chrome--fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  transform: translateY(-100%);
+  transition: transform 0.2s ease;
+  min-height: var(--chrome-height);
+}
+
+.window-chrome--fullscreen:hover {
+  transform: translateY(0);
+}
+
 .window-chrome__tab-row {
   display: flex;
   align-items: flex-end;

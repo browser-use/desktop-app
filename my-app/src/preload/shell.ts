@@ -662,6 +662,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('open-tab-search', handler);
       return () => ipcRenderer.removeListener('open-tab-search', handler);
     },
+
+    // Issue #13 — Fullscreen
+    fullscreenChanged: (cb: (payload: { isFullscreen: boolean }) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { isFullscreen: boolean }) => cb(payload);
+      ipcRenderer.on('fullscreen-changed', handler);
+      return () => ipcRenderer.removeListener('fullscreen-changed', handler);
+    },
   },
 
   // Profiles — current profile info + switch

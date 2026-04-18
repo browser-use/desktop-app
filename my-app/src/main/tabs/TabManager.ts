@@ -270,6 +270,15 @@ export class TabManager {
     this.urlMatchFn = fn;
   }
 
+  private isFullscreen = false;
+
+  setFullscreen(fullscreen: boolean): void {
+    if (this.isFullscreen === fullscreen) return;
+    this.isFullscreen = fullscreen;
+    mainLogger.debug('TabManager.setFullscreen', { fullscreen });
+    this.relayout();
+  }
+
   setChromeOffset(offset: number): void {
     const next = Math.max(0, Math.min(512, Math.round(offset)));
     if (next === this.chromeOffset) return;
@@ -1489,7 +1498,7 @@ export class TabManager {
 
   private positionView(view: WebContentsView): void {
     const [winWidth, winHeight] = this.win.getContentSize();
-    const top = CHROME_HEIGHT + this.chromeOffset;
+    const top = this.isFullscreen ? 0 : CHROME_HEIGHT + this.chromeOffset;
     const contentWidth = Math.max(0, winWidth - this.sidePanelWidth);
     const x = this.sidePanelPosition === 'left' ? this.sidePanelWidth : 0;
     view.setBounds({
