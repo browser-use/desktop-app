@@ -220,7 +220,7 @@ function DownloadRow({
                   <rect x="8" y="3" width="2.5" height="8" rx="0.5" fill="currentColor" />
                 </svg>
               </button>
-            ) : (
+            ) : !(dl.warningLevel && !dl.warningDismissed) && (
               <button
                 className="download-row__action-btn"
                 title="Resume"
