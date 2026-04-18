@@ -4,12 +4,15 @@
  * Handles loading, enabling, disabling, and removing extensions.
  * Persists extension state (enabled/disabled, paths) to a JSON file in userData.
  * Uses session.defaultSession.loadExtension / removeExtension under the hood.
+ * Delegates MV3-specific lifecycle to ManifestV3Runtime.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, session } from 'electron';
 import { mainLogger } from '../logger';
+import { ManifestV3Runtime } from './mv3/ManifestV3Runtime';
+import type { MV3ExtensionInfo } from './mv3/ManifestV3Runtime';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +29,7 @@ export interface ExtensionRecord {
   hostPermissions: string[];
   hostAccess: 'all-sites' | 'specific-sites' | 'on-click';
   icons: Record<string, string>;
+  manifestVersion: number;
 }
 
 interface PersistedState {
@@ -52,10 +56,12 @@ const LOG_PREFIX = 'ExtensionManager';
 export class ExtensionManager {
   private statePath: string;
   private state: PersistedState;
+  readonly mv3Runtime: ManifestV3Runtime;
 
   constructor() {
     this.statePath = path.join(app.getPath('userData'), STATE_FILE_NAME);
     this.state = this.loadState();
+    this.mv3Runtime = new ManifestV3Runtime();
     mainLogger.info(`${LOG_PREFIX}.init`, {
       statePath: this.statePath,
       extensionCount: this.state.extensions.length,
@@ -103,6 +109,32 @@ export class ExtensionManager {
   }
 
   // -------------------------------------------------------------------------
+  // MV3 lifecycle hook — called after Electron loads an extension
+  // -------------------------------------------------------------------------
+
+  private notifyMV3Loaded(extensionId: string, extensionPath: string): MV3ExtensionInfo | null {
+    mainLogger.info(`${LOG_PREFIX}.notifyMV3Loaded`, { extensionId, extensionPath });
+    const info = this.mv3Runtime.onExtensionLoaded(extensionId, extensionPath);
+    if (info) {
+      mainLogger.info(`${LOG_PREFIX}.notifyMV3Loaded.mv3Active`, {
+        extensionId,
+        isServiceWorker: info.isServiceWorker,
+        hasDeclarativeNetRequest: info.hasDeclarativeNetRequest,
+        hasActionApi: info.hasActionApi,
+        hasActiveTab: info.hasActiveTab,
+      });
+    }
+    return info;
+  }
+
+  private notifyMV3Unloaded(extensionId: string): void {
+    if (this.mv3Runtime.isMV3Extension(extensionId)) {
+      mainLogger.info(`${LOG_PREFIX}.notifyMV3Unloaded`, { extensionId });
+      this.mv3Runtime.onExtensionUnloaded(extensionId);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Startup: load all enabled extensions into the session
   // -------------------------------------------------------------------------
 
@@ -137,6 +169,7 @@ export class ExtensionManager {
           id: ext.id,
           name: ext.name,
         });
+        this.notifyMV3Loaded(ext.id, record.path);
       } catch (err) {
         mainLogger.error(`${LOG_PREFIX}.loadAllEnabled.loadFailed`, {
           id: record.id,
@@ -162,6 +195,7 @@ export class ExtensionManager {
     for (const record of this.state.extensions) {
       const live = loadedMap.get(record.id);
       const manifest = live?.manifest as Record<string, unknown> | undefined;
+      const manifestVersion = (manifest?.manifest_version as number) ?? 2;
 
       results.push({
         id: record.id,
@@ -174,6 +208,7 @@ export class ExtensionManager {
         hostPermissions: (manifest?.host_permissions as string[]) ?? [],
         hostAccess: (record.hostAccess as ExtensionRecord['hostAccess']) ?? 'on-click',
         icons: this.extractIcons(manifest, record.path),
+        manifestVersion,
       });
     }
 
@@ -212,6 +247,7 @@ export class ExtensionManager {
     }
 
     this.saveState();
+    this.notifyMV3Loaded(ext.id, resolvedPath);
 
     const manifest = ext.manifest as Record<string, unknown>;
     const record: ExtensionRecord = {
@@ -225,6 +261,7 @@ export class ExtensionManager {
       hostPermissions: (manifest?.host_permissions as string[]) ?? [],
       hostAccess: 'on-click',
       icons: this.extractIcons(manifest, resolvedPath),
+      manifestVersion: (manifest?.manifest_version as number) ?? 2,
     };
 
     mainLogger.info(`${LOG_PREFIX}.loadUnpacked.ok`, {
@@ -251,6 +288,7 @@ export class ExtensionManager {
 
     record.enabled = true;
     this.saveState();
+    this.notifyMV3Loaded(id, record.path);
     mainLogger.info(`${LOG_PREFIX}.enableExtension.ok`, { id });
   }
 
@@ -259,6 +297,8 @@ export class ExtensionManager {
 
     const record = this.state.extensions.find((e) => e.id === id);
     if (!record) throw new Error(`Extension not found: ${id}`);
+
+    this.notifyMV3Unloaded(id);
 
     try {
       session.defaultSession.removeExtension(id);
@@ -276,6 +316,8 @@ export class ExtensionManager {
 
   removeExtension(id: string): void {
     mainLogger.info(`${LOG_PREFIX}.removeExtension`, { id });
+
+    this.notifyMV3Unloaded(id);
 
     try {
       session.defaultSession.removeExtension(id);
@@ -297,6 +339,8 @@ export class ExtensionManager {
     const record = this.state.extensions.find((e) => e.id === id);
     if (!record) throw new Error(`Extension not found: ${id}`);
 
+    this.notifyMV3Unloaded(id);
+
     try {
       session.defaultSession.removeExtension(id);
     } catch {
@@ -307,6 +351,7 @@ export class ExtensionManager {
       allowFileAccess: true,
     });
 
+    this.notifyMV3Loaded(id, record.path);
     mainLogger.info(`${LOG_PREFIX}.updateExtension.ok`, { id });
   }
 
@@ -334,6 +379,27 @@ export class ExtensionManager {
   getExtensionDetails(id: string): ExtensionRecord | null {
     const all = this.listExtensions();
     return all.find((e) => e.id === id) ?? null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Tab lifecycle — forward to MV3 runtime for activeTab revocation
+  // -------------------------------------------------------------------------
+
+  onTabNavigated(tabId: number): void {
+    this.mv3Runtime.onTabNavigated(tabId);
+  }
+
+  onTabClosed(tabId: number): void {
+    this.mv3Runtime.onTabClosed(tabId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Cleanup
+  // -------------------------------------------------------------------------
+
+  dispose(): void {
+    mainLogger.info(`${LOG_PREFIX}.dispose`);
+    this.mv3Runtime.dispose();
   }
 
   // -------------------------------------------------------------------------

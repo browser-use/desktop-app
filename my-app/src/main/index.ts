@@ -65,6 +65,8 @@ import { registerPermissionHandlers, unregisterPermissionHandlers } from './perm
 import { ExtensionManager } from './extensions/ExtensionManager';
 import { registerExtensionsHandlers, unregisterExtensionsHandlers } from './extensions/ipc';
 import { openExtensionsWindow } from './extensions/ExtensionsWindow';
+// Issue #72 — Manifest V3 runtime
+import { registerMV3Handlers, unregisterMV3Handlers } from './extensions/mv3/ipc';
 // Issue #40 — History
 import { HistoryStore } from './history/HistoryStore';
 import { registerHistoryHandlers, unregisterHistoryHandlers } from './history/ipc';
@@ -486,6 +488,7 @@ app.whenReady().then(async () => {
   // Issue #71 — Extensions: init manager + register IPC
   extensionManager = new ExtensionManager();
   registerExtensionsHandlers(extensionManager);
+  registerMV3Handlers(extensionManager);
   void extensionManager.loadAllEnabled();
 
   // Issue #95 — Settings zoom override IPC (needs tabManager access)
@@ -589,9 +592,8 @@ app.whenReady().then(async () => {
     unregisterProfileHandlers();
     unregisterPermissionHandlers();
     unregisterExtensionsHandlers();
-    // ExtensionManager currently has no dispose()/destroy() hook; its
-    // internal MV3 runtime tears itself down via its own lifecycle. If a
-    // top-level cleanup is ever added, wire it in here.
+    unregisterMV3Handlers();
+    extensionManager?.dispose();
     downloadManager?.destroy();
     downloadManager = null;
   });

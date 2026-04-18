@@ -3,6 +3,7 @@ export { ServiceWorkerManager } from './ServiceWorkerManager';
 export { DeclarativeNetRequestEngine } from './DeclarativeNetRequestEngine';
 export { ActionAPIBridge } from './ActionAPIBridge';
 export { ManifestValidator } from './ManifestValidator';
+export { registerMV3Handlers, unregisterMV3Handlers } from './ipc';
 export * from './constants';
 
 export type { MV3ExtensionInfo } from './ManifestV3Runtime';
