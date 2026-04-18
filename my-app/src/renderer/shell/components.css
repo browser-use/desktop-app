@@ -306,6 +306,21 @@
 
 .tab-item__audio-icon {
   color: var(--color-accent-default);
+  display: block;
+}
+
+.tab-item__audio-icon--muted {
+  color: var(--color-fg-tertiary);
+}
+
+/* When the favicon slot is acting as an audio/mute toggle button */
+.tab-item__favicon--audio {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.tab-item__favicon--audio:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .tab-item__favicon {

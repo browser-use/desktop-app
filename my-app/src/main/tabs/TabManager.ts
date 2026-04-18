@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { NavigationController } from './NavigationController';
 import { SessionStore, PersistedSession, PersistedTab } from './SessionStore';
 import { ZoomStore, extractOrigin, zoomLevelToPercent, type ZoomEntry } from './ZoomStore';
+import { MutedSitesStore } from './MutedSitesStore';
 import { parseNavigationInput, UrlMatchFn } from '../navigation';
 import path from 'node:path';
 import { mainLogger } from '../logger';
@@ -88,6 +89,7 @@ export interface TabState {
   zoomLevel: number;
   pinned: boolean;
   audible: boolean;
+  muted: boolean;
 }
 
 export interface TabManagerState {
@@ -164,6 +166,7 @@ export class TabManager {
   private caretBrowsingToggle: (() => void) | null = null;
   private sendingF7 = false;
   private zoomStore: ZoomStore;
+  private mutedSitesStore: MutedSitesStore;
   private urlMatchFn: UrlMatchFn | null = null;
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
@@ -179,6 +182,7 @@ export class TabManager {
     // `opts.dataDir` plumbing is a no-op for it today. Tracked as a
     // follow-up with the rest of the profile-scoped stores.
     this.zoomStore = new ZoomStore();
+    this.mutedSitesStore = new MutedSitesStore();
     this.registerIpcHandlers();
     mainLogger.info('TabManager.init', {
       isGuest: this.isGuest,
@@ -1428,6 +1432,7 @@ export class TabManager {
         zoomLevel: view.webContents.getZoomLevel(),
         pinned: this.pinnedTabs.has(id),
         audible: view.webContents.isCurrentlyAudible(),
+        muted: view.webContents.isAudioMuted(),
       };
     });
     return { tabs, activeTabId: this.activeTabId, cdpPort: this.cdpPort };
@@ -1519,6 +1524,7 @@ export class TabManager {
         clearPendingUpgrade(tabId);
       }
       this.applyPersistedZoom(wc);
+      this.applyPersistedMute(wc);
       this.sendTabUpdate(tabId);
       this.saveSession();
       if (tabId === this.activeTabId) this.broadcastZoom();
@@ -1735,6 +1741,14 @@ export class TabManager {
     // swallows the keystroke in the renderer before the NSMenu accelerator
     // fires, so a webpage-focused Cmd+K would otherwise never reach togglePill.
     this.attachGlobalKeyHandlers(wc);
+
+    // Issue #7 — audio playback state changes: update tab state so the
+    // renderer can show/hide the speaker icon without waiting for a full reload.
+    wc.on('audio-output-device-changed' as any, () => {
+      mainLogger.debug('TabManager.tab.audioOutputChanged', { tabId });
+      this.sendTabUpdate(tabId);
+      this.broadcastState();
+    });
   }
 
   /**
@@ -1804,6 +1818,7 @@ export class TabManager {
       zoomLevel: view.webContents.getZoomLevel(),
       pinned: this.pinnedTabs.has(tabId),
       audible: view.webContents.isCurrentlyAudible(),
+      muted: view.webContents.isAudioMuted(),
     };
     this.safeSend('tab-updated', state);
   }
@@ -1953,8 +1968,24 @@ export class TabManager {
     menu.append(new MenuItem({
       label: isMuted ? 'Unmute Tab' : 'Mute Tab',
       click: () => {
-        view.webContents.setAudioMuted(!isMuted);
-        mainLogger.info('TabManager.tabContextMenu.toggleMute', { tabId, muted: !isMuted });
+        this.toggleMuteTab(tabId);
+      },
+    }));
+
+    let isSiteMuted = false;
+    try {
+      const origin = new URL(url).origin;
+      isSiteMuted = this.mutedSitesStore.isMutedOrigin(origin);
+    } catch { /* non-standard URL, skip */ }
+    menu.append(new MenuItem({
+      label: isSiteMuted ? 'Unmute Site' : 'Mute Site',
+      enabled: !!url && !url.startsWith('about:') && !url.startsWith('chrome:'),
+      click: () => {
+        if (isSiteMuted) {
+          this.unmuteSite(tabId);
+        } else {
+          this.muteSite(tabId);
+        }
       },
     }));
 
@@ -1994,6 +2025,101 @@ export class TabManager {
     }));
 
     menu.popup({ window: this.win });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab mute (Issue #7)
+  // ---------------------------------------------------------------------------
+
+  muteTab(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) {
+      mainLogger.warn('TabManager.muteTab.unknown', { tabId });
+      return;
+    }
+    view.webContents.setAudioMuted(true);
+    mainLogger.info('TabManager.muteTab', { tabId });
+    this.sendTabUpdate(tabId);
+    this.broadcastState();
+  }
+
+  unmuteTab(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) {
+      mainLogger.warn('TabManager.unmuteTab.unknown', { tabId });
+      return;
+    }
+    view.webContents.setAudioMuted(false);
+    mainLogger.info('TabManager.unmuteTab', { tabId });
+    this.sendTabUpdate(tabId);
+    this.broadcastState();
+  }
+
+  toggleMuteTab(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) return;
+    const isMuted = view.webContents.isAudioMuted();
+    if (isMuted) {
+      this.unmuteTab(tabId);
+    } else {
+      this.muteTab(tabId);
+    }
+  }
+
+  muteSite(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) return;
+    const url = view.webContents.getURL();
+    try {
+      const origin = new URL(url).origin;
+      this.mutedSitesStore.muteOrigin(origin);
+      // Apply to all tabs on this origin
+      for (const [id, v] of this.tabs) {
+        try {
+          const tabOrigin = new URL(v.webContents.getURL()).origin;
+          if (tabOrigin === origin) {
+            v.webContents.setAudioMuted(true);
+            this.sendTabUpdate(id);
+          }
+        } catch { /* ignore */ }
+      }
+      this.broadcastState();
+      mainLogger.info('TabManager.muteSite', { tabId, origin });
+    } catch (err) {
+      mainLogger.warn('TabManager.muteSite.parseError', { tabId, url, error: (err as Error).message });
+    }
+  }
+
+  unmuteSite(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) return;
+    const url = view.webContents.getURL();
+    try {
+      const origin = new URL(url).origin;
+      this.mutedSitesStore.unmuteOrigin(origin);
+      // Remove mute from all tabs on this origin (unless tab was individually muted)
+      for (const [id, v] of this.tabs) {
+        try {
+          const tabOrigin = new URL(v.webContents.getURL()).origin;
+          if (tabOrigin === origin) {
+            v.webContents.setAudioMuted(false);
+            this.sendTabUpdate(id);
+          }
+        } catch { /* ignore */ }
+      }
+      this.broadcastState();
+      mainLogger.info('TabManager.unmuteSite', { tabId, origin });
+    } catch (err) {
+      mainLogger.warn('TabManager.unmuteSite.parseError', { tabId, url, error: (err as Error).message });
+    }
+  }
+
+  private applyPersistedMute(wc: Electron.WebContents): void {
+    const url = wc.getURL();
+    if (this.mutedSitesStore.isMutedUrl(url)) {
+      wc.setAudioMuted(true);
+      mainLogger.debug('TabManager.applyPersistedMute', { url });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2072,6 +2198,10 @@ export class TabManager {
       return this.getClosedTabs();
     });
 
+
+    ipcMain.handle('tabs:mute-tab', (_e, tabId: string) => {
+      this.toggleMuteTab(tabId);
+    });
 
     ipcMain.handle('tabs:show-context-menu', (_e, tabId: string) => {
       this.showTabContextMenu(tabId);
@@ -2176,6 +2306,7 @@ export class TabManager {
     ipcMain.removeHandler('tabs:reopen-last-closed');
     ipcMain.removeHandler('tabs:reopen-closed-at');
     ipcMain.removeHandler('tabs:get-closed-tabs');
+    ipcMain.removeHandler('tabs:mute-tab');
     ipcMain.removeHandler('tabs:show-context-menu');
     ipcMain.removeHandler('tabs:pin');
     ipcMain.removeHandler('tabs:unpin');

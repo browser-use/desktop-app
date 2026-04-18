@@ -17,6 +17,7 @@ import type { TabState } from '../../main/tabs/TabManager';
 declare const electronAPI: {
   tabs: {
     showContextMenu: (tabId: string) => Promise<void>;
+    muteTab: (tabId: string) => Promise<void>;
   };
 };
 
@@ -50,6 +51,7 @@ interface TabStripProps {
   onClose: (tabId: string) => void;
   onNewTab: () => void;
   onMove: (tabId: string, toIndex: number) => void;
+  onMuteToggle: (tabId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +71,7 @@ interface TabItemProps {
   onContextMenu: (e: React.MouseEvent) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   tabRef: (el: HTMLDivElement | null) => void;
+  onMuteToggle: (e: React.MouseEvent) => void;
 }
 
 function TabItem({
@@ -85,6 +88,7 @@ function TabItem({
   onContextMenu,
   onKeyDown,
   tabRef,
+  onMuteToggle,
 }: TabItemProps): React.ReactElement {
   const isPinned = tab.pinned;
   const favicon = faviconSrc(tab);
@@ -113,10 +117,20 @@ function TabItem({
       title={isPinned || isIconOnly ? tab.title : undefined}
     >
       {/* Favicon / loading spinner / audio indicator */}
-      <span className="tab-item__favicon" aria-hidden="true">
+      <span
+        className={"tab-item__favicon" + ((tab.audible || tab.muted) && !tab.isLoading ? ' tab-item__favicon--audio' : '')}
+        aria-hidden="true"
+        onClick={(tab.audible || tab.muted) && !tab.isLoading ? onMuteToggle : undefined}
+        title={(tab.audible || tab.muted) && !tab.isLoading ? (tab.muted ? 'Unmute tab' : 'Mute tab') : undefined}
+      >
         {tab.isLoading ? (
           <span className="tab-item__spinner" />
-        ) : isPinned && tab.audible ? (
+        ) : tab.muted ? (
+          <svg className="tab-item__audio-icon tab-item__audio-icon--muted" width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2L4.5 5H2v6h2.5L8 14V2z" fill="currentColor" />
+            <path d="M11 3.5L14.5 7M14.5 3.5L11 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        ) : tab.audible ? (
           <svg className="tab-item__audio-icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M8 2L4.5 5H2v6h2.5L8 14V2z" fill="currentColor" />
             <path d="M11 5.5c.8.8 1.2 1.8 1.2 2.5s-.4 1.7-1.2 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -275,6 +289,7 @@ export function TabStrip({
   onClose,
   onNewTab,
   onMove,
+  onMuteToggle,
 }: TabStripProps): React.ReactElement {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [iconOnlySet, setIconOnlySet] = useState<Set<string>>(new Set());
@@ -459,6 +474,10 @@ export function TabStrip({
             }}
             onKeyDown={(e) => handleTabKeyDown(e, tab, index)}
             tabRef={setTabRef(index)}
+            onMuteToggle={(e) => {
+              e.stopPropagation();
+              onMuteToggle(tab.id);
+            }}
           />
         ))}
         {/* + button sits right after the last tab (Chrome-style), not pinned right */}

@@ -65,6 +65,7 @@ declare const electronAPI: {
     showContextMenu: (tabId: string) => Promise<void>;
     showBackHistory: (tabId: string) => Promise<void>;
     showForwardHistory: (tabId: string) => Promise<void>;
+    muteTab: (tabId: string) => Promise<void>;
   };
   cdp: {
     getActiveTabCdpUrl: () => Promise<string | null>;
@@ -408,6 +409,16 @@ export function WindowChrome(): React.ReactElement {
     electronAPI.tabs.create();
   }, []);
 
+  const handleMuteToggle = useCallback(
+    (tabId: string) => {
+      console.log('[WindowChrome] muteTab', tabId);
+      electronAPI.tabs.muteTab(tabId).catch((err: Error) =>
+        console.error('[WindowChrome] muteTab failed', err),
+      );
+    },
+    [],
+  );
+
   const handleMove = useCallback((tabId: string, toIndex: number) => {
     electronAPI.tabs.move(tabId, toIndex);
   }, []);
@@ -547,6 +558,7 @@ export function WindowChrome(): React.ReactElement {
           onClose={handleClose}
           onNewTab={handleNewTab}
           onMove={handleMove}
+          onMuteToggle={handleMuteToggle}
         />
       </div>
 
