@@ -11,6 +11,7 @@ import { URLBar } from './URLBar';
 import { BookmarksBar } from './BookmarksBar';
 import { BookmarkDialog } from './BookmarkDialog';
 import { FindBar } from './FindBar';
+import { StatusBar } from './StatusBar';
 import { PasswordPromptBar } from './PasswordPromptBar';
 import { PermissionBar } from './PermissionBar';
 import { DevicePickerBar } from './DevicePickerBar';
@@ -141,6 +142,7 @@ declare const electronAPI: {
     downloadProgress: (cb: (dl: DownloadItemDTO) => void) => () => void;
     downloadDone: (cb: (dl: DownloadItemDTO) => void) => () => void;
     downloadsState: (cb: (downloads: DownloadItemDTO[]) => void) => () => void;
+    linkHover: (cb: (payload: { url: string }) => void) => () => void;
   };
   permissions: {
     respond: (promptId: string, decision: string) => Promise<void>;
@@ -161,6 +163,7 @@ export function WindowChrome(): React.ReactElement {
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [urlBarFocused, setUrlBarFocused] = useState(false);
+  const [hoveredUrl, setHoveredUrl] = useState('');
   const [zoomPercent, setZoomPercent] = useState(100);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -283,6 +286,10 @@ export function WindowChrome(): React.ReactElement {
       setUrlBarFocused(true);
     });
 
+    const unsubLinkHover = electronAPI.on.linkHover(({ url }) => {
+      setHoveredUrl(url);
+    });
+
     const unsubZoomChanged = electronAPI.on.zoomChanged(({ percent }) => {
       setZoomPercent(percent);
     });
@@ -315,6 +322,7 @@ export function WindowChrome(): React.ReactElement {
       unsubTabActivated();
       unsubFaviconUpdated();
       unsubFocusUrl();
+      unsubLinkHover();
       unsubZoomChanged();
       unsubTargetLost();
       unsubBookmarksUpdated();
@@ -616,6 +624,7 @@ export function WindowChrome(): React.ReactElement {
       <DevicePickerBar />
       <PasswordPromptBar activeTabId={activeTabId} />
       <FindBar activeTabId={activeTabId} />
+      <StatusBar url={hoveredUrl} />
     </div>
   );
 }
