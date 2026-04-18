@@ -16,10 +16,14 @@ const CURRENT_STEP = 3;
 interface AccountCreationProps {
   onBack: () => void;
   onComplete: (account: { email: string; display_name?: string }, scopes: GoogleOAuthScope[]) => void;
+  /** Called immediately when the user confirms scope selection, before OAuth redirect.
+   *  Allows the parent to store the selected scopes so they are available when
+   *  the OAuth callback fires asynchronously. */
+  onScopesSelected?: (scopes: GoogleOAuthScope[]) => void;
   oauthError?: string | null;
 }
 
-export function AccountCreation({ onBack, onComplete: _onComplete, oauthError }: AccountCreationProps): React.ReactElement {
+export function AccountCreation({ onBack, onComplete: _onComplete, onScopesSelected, oauthError }: AccountCreationProps): React.ReactElement {
   const [showScopesModal, setShowScopesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -31,6 +35,10 @@ export function AccountCreation({ onBack, onComplete: _onComplete, oauthError }:
   async function handleScopesConfirm(scopes: GoogleOAuthScope[]): Promise<void> {
     setShowScopesModal(false);
     setIsLoading(true);
+
+    // Propagate selected scopes to the parent immediately so they are stored in
+    // state before the async OAuth callback fires.
+    onScopesSelected?.(scopes);
 
     try {
       if (typeof window !== 'undefined' && (window as Window & { onboardingAPI?: { startOAuth: (scopes: GoogleOAuthScope[]) => Promise<void> } }).onboardingAPI) {

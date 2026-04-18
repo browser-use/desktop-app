@@ -113,13 +113,15 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       scopeCount: payload.oauth_scopes.length,
     });
 
-    // Persist completed state with timestamp
+    // Persist completed state with timestamp, including selected OAuth scopes
     const existing = accountStore.load();
     accountStore.save({
       agent_name: payload.agent_name,
       email: payload.account.email,
       created_at: existing?.created_at,
       onboarding_completed_at: new Date().toISOString(),
+      oauth_scopes: payload.oauth_scopes,
+      scopes_granted: payload.oauth_scopes.length > 0,
     });
 
     mainLogger.info('onboardingHandlers.complete.accountSaved', {
