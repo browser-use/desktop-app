@@ -27,6 +27,13 @@ const HAS_WHITESPACE_RE = /\s/;
 
 const GOOGLE_SEARCH_BASE = 'https://www.google.com/search?q=';
 
+const buildSearch = (query: string, searchUrl?: string): string => {
+  if (searchUrl && searchUrl.includes('%s')) {
+    return searchUrl.replace('%s', encodeURIComponent(query));
+  }
+  return GOOGLE_SEARCH_BASE + encodeURIComponent(query);
+};
+
 // ---------------------------------------------------------------------------
 // Bookmark / history lookup callback
 // ---------------------------------------------------------------------------
@@ -59,9 +66,7 @@ export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn
   // 3. Whitespace anywhere → search (URLs never contain unencoded spaces)
   if (HAS_WHITESPACE_RE.test(trimmed)) {
     mainLogger.info('navigation.parse.searchWithSpaces', { input: trimmed });
-    return searchUrl
-      ? searchUrl.replace('%s', encodeURIComponent(trimmed))
-      : GOOGLE_SEARCH_BASE + encodeURIComponent(trimmed);
+    return buildSearch(trimmed, searchUrl);
   }
 
   // 4. localhost / IP / IPv6
@@ -96,9 +101,7 @@ export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn
 
   // 8. Single word, no dots → search
   mainLogger.info('navigation.parse.search', { input: trimmed });
-  return searchUrl
-    ? searchUrl.replace('%s', encodeURIComponent(trimmed))
-    : GOOGLE_SEARCH_BASE + encodeURIComponent(trimmed);
+  return buildSearch(trimmed, searchUrl);
 }
 
 // ---------------------------------------------------------------------------
