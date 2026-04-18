@@ -67,6 +67,10 @@ export class TabGroupStore {
     return JSON.stringify([...this.groups.values()]);
   }
 
+  private static readonly VALID_COLORS = new Set<string>([
+    'grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan',
+  ]);
+
   deserialize(json: string): void {
     try {
       const parsed: unknown = JSON.parse(json);
@@ -76,7 +80,9 @@ export class TabGroupStore {
           g !== null &&
           typeof g === 'object' &&
           typeof (g as TabGroup).id === 'string' &&
-          typeof (g as TabGroup).name === 'string',
+          typeof (g as TabGroup).name === 'string' &&
+          TabGroupStore.VALID_COLORS.has((g as TabGroup).color) &&
+          Array.isArray((g as TabGroup).tabIds),
       );
       this.groups.clear();
       for (const g of arr) {
