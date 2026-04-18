@@ -17,9 +17,12 @@ Streaming is used to avoid timeout on long generations.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .logger import log
+
+if TYPE_CHECKING:
+    from anthropic import Anthropic
 
 # ── Model constants ───────────────────────────────────────────────────────────
 
@@ -129,7 +132,7 @@ class LLMClient:
         self.model = model or os.environ.get(MODEL_ENV_VAR, MODEL_DEFAULT)
         self.max_tokens = max_tokens
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self._client = None  # lazy-initialized
+        self._client: Anthropic | None = None  # lazy-initialized
         self.usage = TokenUsage()
 
     def _get_client(self):

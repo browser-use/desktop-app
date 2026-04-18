@@ -422,10 +422,13 @@ class AgentLoop:
     def _safe_page_info(self) -> dict:
         """Get page info, returning empty dict on failure."""
         try:
-            return self.helpers_module.page_info()
+            info = self.helpers_module.page_info()
         except Exception as exc:
             log.debug("AgentLoop.page_info", task_id=self.task_id, error=str(exc))
             return {}
+        if not isinstance(info, dict):
+            return {}
+        return info
 
     def _safe_page_info_str(self) -> str:
         """Get page info as a string."""
@@ -439,6 +442,8 @@ class AgentLoop:
         for msg in reversed(messages):
             if msg.get("role") == "assistant":
                 content = msg.get("content", "")
+                if not isinstance(content, str):
+                    continue
                 # Return first non-empty line as plan summary
                 for line in content.split("\n"):
                     line = line.strip()

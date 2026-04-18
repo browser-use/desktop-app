@@ -130,10 +130,7 @@ jobs:
       - name: Ruff format check
         run: ruff format --check agent tests
 
-      - name: Mypy typecheck [soft-fail]
-        # Baseline has 5 pre-existing mypy errors tracked for cleanup; runs to
-        # surface regressions but does not gate merges yet. See docs/CI.md.
-        continue-on-error: true
+      - name: Mypy typecheck
         run: mypy agent
 
       - name: Pytest with coverage

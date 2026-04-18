@@ -1,7 +1,7 @@
 # CI + local testing
 
 This doc explains the CI topology, how to run each check locally, and the
-ratchet plan for the two soft-fail jobs (`tsc` and `mypy`).
+ratchet plan for the remaining soft-fail job (`tsc`).
 
 ## Workflows
 
@@ -16,7 +16,7 @@ Fast, parallel jobs that gate merges:
 | `lint` | ubuntu | ~1m | **yes** | `npm run lint` — eslint on `src/`, `tests/`, config files |
 | `typecheck` | ubuntu | ~1m | no (soft-fail) | `npm run typecheck` — `tsc --noEmit` |
 | `unit` | ubuntu | ~2m | **yes** | `npm run test:coverage` — vitest unit + integration + coverage artifact |
-| `python` | ubuntu | ~2m | **yes** (except mypy) | ruff check, ruff format --check, **mypy (soft-fail)**, `pytest --cov` |
+| `python` | ubuntu | ~2m | **yes** | ruff check, ruff format --check, mypy, `pytest --cov` |
 
 Triggered on `pull_request` and `push` to `main`, or via `workflow_dispatch`.
 
@@ -65,7 +65,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 ruff check agent tests
 ruff format --check agent tests
-mypy agent                 # soft-fail in CI; ~5 known errors
+mypy agent                 # hard-fail in CI; baseline clean
 pytest --cov=agent
 
 # Playwright e2e (needs packaged app)
@@ -75,19 +75,19 @@ npx playwright test --config=tests/setup/playwright.config.ts tests/regression/
 
 The `qa` script bundles lint + typecheck + test: `npm run qa`.
 
-## Soft-fail rollout (tsc + mypy)
+## Soft-fail rollout (tsc)
 
-Both `typecheck` (TS) and `mypy` (Python) currently run as informational —
-they report errors but don't block merges. This is a deliberate Phase 1
-choice because the baseline is already red:
+`typecheck` (TS) currently runs as informational — it reports errors but
+doesn't block merges. This is a deliberate Phase 1 choice because the
+baseline is already red:
 
 - **TS (`tsc --noEmit`): ~55 errors.** Surfaced after upgrading `typescript`
   4.5.5 → 5.4 to unblock `@types/node`. Categories: missing `.svg` module
   declarations, settings preload-bridge type drift (passwords handlers),
   missing `electron-updater` dep, stale test mock types, Vite config drift.
-- **Python (`mypy`): 5 errors.** `schemas.py` TypedDict `version` literal
-  mismatches, `llm.py` None-vs-Anthropic assignment, `loop.py` `Any`
-  returns.
+
+Python `mypy` was previously soft-fail but has been cleaned up (5 → 0)
+and now hard-fails on any new error.
 
 The same soft-fail treatment applies to the Playwright jobs in `e2e.yml`:
 
@@ -110,7 +110,7 @@ The comments in each workflow mark the exact lines.
 Each PR should not **increase** the error count. Reviewers check the
 Actions log — the soft-fail jobs still run, still print diffs, and still
 produce a red check next to the green merge status. A PR that adds
-a new tsc or mypy error in a file that was previously clean should be
+a new tsc error in a file that was previously clean should be
 sent back.
 
 ## Coverage

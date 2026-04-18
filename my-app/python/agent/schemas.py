@@ -6,13 +6,13 @@ Protocol version: 1.0
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict, Union
+from typing import Any, Final, Literal, TypedDict, Union
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-PROTOCOL_VERSION: str = "1.0"
+PROTOCOL_VERSION: Final[Literal["1.0"]] = "1.0"
 
 TASK_FAILURE_REASONS = (
     "step_budget_exhausted",
