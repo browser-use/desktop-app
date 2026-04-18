@@ -138,6 +138,7 @@ function TabItem({
       tabIndex={isActive ? 0 : -1}
       draggable
       onClick={onActivate}
+      onAuxClick={(e) => { if (e.button === 1) { e.stopPropagation(); onClose(e); } }}
       onKeyDown={onKeyDown}
       onDragStart={(e) => onDragStart(e, tab.id, index)}
       onDragOver={(e) => onDragOver(e, index)}

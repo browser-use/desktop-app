@@ -465,6 +465,32 @@ export class TabManager {
     return tabId;
   }
 
+  createBackgroundTab(url: string): string {
+    const tabId = uuidv4();
+    const webPrefs: Electron.WebPreferences = {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    };
+    if (this.partition) webPrefs.partition = this.partition;
+    const view = new WebContentsView({ webPreferences: webPrefs });
+    this.win.contentView.addChildView(view);
+    this.tabs.set(tabId, view);
+    this.tabOrder.push(tabId);
+    this.navControllers.set(tabId, new NavigationController(view));
+    view.webContents.setVisualZoomLevelLimits(1, 3).catch(() => {});
+    this.attachViewEvents(tabId, view);
+    this.positionView(view);
+    view.setVisible(false);
+    this.onWebContentsCreated?.(view.webContents);
+    view.webContents.loadURL(url);
+    // Do NOT activate — stays in background
+    this.saveSession();
+    this.broadcastState();
+    mainLogger.info('TabManager.createBackgroundTab', { tabId, url });
+    return tabId;
+  }
+
   closeTab(tabId: string, force = false): void {
     const view = this.tabs.get(tabId);
     if (!view) {
@@ -1734,6 +1760,20 @@ export class TabManager {
     wc.on('new-window' as any, (e: Event, url: string) => {
       e.preventDefault();
       this.createTab(url);
+    });
+
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      if (url && !BLOCKED_SCHEMES.test(url)) {
+        const background =
+          disposition === 'background-tab' ||
+          disposition === 'other';
+        if (background) {
+          this.createBackgroundTab(url);
+        } else {
+          this.createTab(url);
+        }
+      }
+      return { action: 'deny' };
     });
 
     // Find-in-page results stream back here. We only broadcast the final
