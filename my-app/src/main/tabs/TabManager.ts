@@ -481,6 +481,7 @@ export class TabManager {
     view.webContents.setVisualZoomLevelLimits(1, 3).catch(() => {});
     this.attachViewEvents(tabId, view);
     this.positionView(view);
+    view.setVisible(false);
     this.onWebContentsCreated?.(view.webContents);
     view.webContents.loadURL(url);
     // Do NOT activate — stays in background
