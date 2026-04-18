@@ -281,6 +281,14 @@ export class TabManager {
     this.relayout();
   }
 
+  setContentVisible(visible: boolean): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    mainLogger.debug('TabManager.setContentVisible', { visible, activeTabId: this.activeTabId });
+    view.setVisible(visible);
+  }
+
   setChromeOffset(offset: number): void {
     const next = Math.max(0, Math.min(512, Math.round(offset)));
     if (next === this.chromeOffset) return;

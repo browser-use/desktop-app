@@ -1,23 +1,18 @@
 /**
  * ipc.ts — omnibox IPC bindings.
  *
- * Registers `omnibox:*` handlers that power the URL-bar autocomplete dropdown.
- * Three providers are aggregated on every keystroke:
- *   1. Shortcuts  — previously confirmed navigations (highest relevance).
- *   2. History    — all visited pages, scored by recency.
- *   3. Bookmarks  — flat-list walk of the bookmark tree.
- *   4. Open tabs  — live tab summaries injected by the caller.
- *
- * Results are deduplicated by URL and sorted by relevance desc.
+ * Channels:
+ *   omnibox:suggest          — returns ranked OmniboxSuggestion[]
+ *   omnibox:record-selection — ShortcutsProvider learning
+ *   omnibox:remove-history   — × button removes a history entry
  */
 
 import { ipcMain } from 'electron';
-import type { BookmarkNode } from '../bookmarks/BookmarkStore';
-import { BookmarkStore } from '../bookmarks/BookmarkStore';
-import { HistoryStore } from '../history/HistoryStore';
-import { ShortcutsStore } from './ShortcutsStore';
-import type { OmniboxSuggestion } from './providers';
 import { assertString } from '../ipc-validators';
+import { getSuggestions, type ProviderContext } from './providers';
+import type { ShortcutsStore } from './ShortcutsStore';
+import type { HistoryStore } from '../history/HistoryStore';
+import type { BookmarkStore } from '../bookmarks/BookmarkStore';
 import { mainLogger } from '../logger';
 
 const CHANNELS = [
@@ -28,248 +23,56 @@ const CHANNELS = [
 
 export interface OmniboxIpcOptions {
   shortcutsStore: ShortcutsStore;
-  historyStore: HistoryStore | null;
+  historyStore: HistoryStore;
   bookmarkStore: BookmarkStore;
-  /** Returns title + url for every open tab in the current window. */
+  /** Returns [{title, url}] for all open tabs */
   getOpenTabs: () => Array<{ title: string; url: string }>;
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function flatBookmarks(node: BookmarkNode): Array<{ url: string; name: string }> {
-  if (node.type === 'bookmark' && node.url) {
-    return [{ url: node.url, name: node.name }];
-  }
-  if (node.children) {
-    return node.children.flatMap((c) => flatBookmarks(c));
-  }
-  return [];
-}
-
-function scoreText(text: string, lower: string): number {
-  if (!text) return 0;
-  const t = text.toLowerCase();
-  if (t === lower) return 100;
-  if (t.startsWith(lower)) return 80;
-  if (t.includes(lower)) return 50;
-  return 0;
-}
-
-// Levenshtein distance for "did you mean" typo detection.
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  if (a.length === 0) return b.length;
-  if (b.length === 0) return a.length;
-  const matrix: number[][] = [];
-  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b[i - 1] === a[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1,     // deletion
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-}
-
-// Looks like a bare domain (no scheme, no spaces, has a dot + TLD).
-const BARE_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*)?(\.[a-z0-9][a-z0-9-]*)+$/i;
-
-function extractHostname(url: string): string {
-  try {
-    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return u.hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
-
-function scoreEntry(title: string, url: string, inputLower: string): number {
-  return Math.max(scoreText(title, inputLower), scoreText(url, inputLower));
-}
-
-// ---------------------------------------------------------------------------
-// Public
-// ---------------------------------------------------------------------------
 
 export function registerOmniboxHandlers(opts: OmniboxIpcOptions): void {
   const { shortcutsStore, historyStore, bookmarkStore, getOpenTabs } = opts;
 
-  // -------------------------------------------------------------------------
-  // omnibox:suggest — aggregate providers and return ranked suggestions.
-  // -------------------------------------------------------------------------
   ipcMain.handle(
     'omnibox:suggest',
-    (_e, payload?: { input?: string; remoteSearch?: boolean }): OmniboxSuggestion[] => {
-      const input = typeof payload?.input === 'string' ? payload.input.trim() : '';
-      const lower = input.toLowerCase();
-      mainLogger.debug('omnibox:suggest', { input });
+    async (_e, payload: { input: string; remoteSearch?: boolean }) => {
+      const input = typeof payload?.input === 'string' ? payload.input : '';
+      const remoteSearch = payload?.remoteSearch !== false;
+      mainLogger.debug('omnibox:suggest', { input, remoteSearch });
 
-      const results: OmniboxSuggestion[] = [];
-      const seenIndex = new Map<string, number>(); // url → index in results
+      const historyResult = historyStore.query({ limit: 500 });
+      const bookmarkTree = bookmarkStore.listTree();
 
-      function push(s: OmniboxSuggestion): void {
-        if (!s.url) return;
-        const existing = seenIndex.get(s.url);
-        if (existing !== undefined) {
-          // Replace if this entry has higher relevance (e.g. bookmark > history).
-          if (s.relevance > results[existing].relevance) {
-            results[existing] = s;
-          }
-          return;
-        }
-        seenIndex.set(s.url, results.length);
-        results.push(s);
-      }
+      const context: ProviderContext = {
+        historyEntries: historyResult.entries,
+        bookmarkEntries: bookmarkTree.roots,
+        shortcutEntries: shortcutsStore.query(input),
+        openTabs: getOpenTabs(),
+      };
 
-      // 1. Shortcuts (highest relevance baseline = 900)
-      const shortcuts = shortcutsStore.query(input, 5);
-      for (const sc of shortcuts) {
-        const base = scoreEntry(sc.title, sc.url, lower);
-        push({
-          id: `shortcut:${sc.id}`,
-          type: 'shortcut',
-          title: sc.title,
-          url: sc.url,
-          relevance: 900 + base + Math.min(sc.useCount, 50),
-        });
-      }
-
-      // 2. History (baseline = 700)
-      if (historyStore && input.length > 0) {
-        const { entries } = historyStore.query({ query: input, limit: 10 });
-        for (const e of entries) {
-          const base = scoreEntry(e.title, e.url, lower);
-          push({
-            id: `history:${e.id}`,
-            type: 'history',
-            title: e.title || e.url,
-            url: e.url,
-            favicon: e.favicon ?? undefined,
-            relevance: 700 + base,
-          });
-        }
-      }
-
-      // 3. Bookmarks (baseline = 800 — user-curated, ranks above history)
-      if (input.length > 0) {
-        const tree = bookmarkStore.listTree();
-        const allBookmarks = tree.roots.flatMap((r) => flatBookmarks(r));
-        for (const bm of allBookmarks) {
-          const base = scoreEntry(bm.name, bm.url, lower);
-          if (base === 0) continue;
-          push({
-            id: `bookmark:${bm.url}`,
-            type: 'bookmark',
-            title: bm.name,
-            url: bm.url,
-            relevance: 800 + base,
-          });
-        }
-      }
-
-      // 4. Open tabs (baseline = 600)
-      if (input.length > 0) {
-        const tabs = getOpenTabs();
-        for (const tab of tabs) {
-          if (!tab.url) continue;
-          const base = scoreEntry(tab.title, tab.url, lower);
-          if (base === 0) continue;
-          push({
-            id: `tab:${tab.url}`,
-            type: 'tab',
-            title: tab.title || tab.url,
-            url: tab.url,
-            relevance: 600 + base,
-          });
-        }
-      }
-
-      // 5. Did-you-mean: fuzzy hostname match against visited URLs (baseline = 750).
-      // Only fires when the input looks like a domain, has no exact history match,
-      // and a close variant (Levenshtein ≤ 2) exists in history.
-      if (
-        historyStore &&
-        input.length >= 4 &&
-        BARE_DOMAIN_RE.test(lower) &&
-        results.filter((r) => r.type === 'history' || r.type === 'shortcut').length === 0
-      ) {
-        const inputHost = extractHostname(lower);
-        const { entries: histEntries } = historyStore.query({ limit: 200 });
-        const hostsSeen = new Set<string>();
-        let bestDistance = 3;
-        let bestEntry: { url: string; title: string; hostname: string } | null = null;
-
-        for (const e of histEntries) {
-          const hostname = extractHostname(e.url);
-          if (hostsSeen.has(hostname)) continue;
-          hostsSeen.add(hostname);
-          const dist = levenshtein(inputHost, hostname);
-          if (dist > 0 && dist < bestDistance) {
-            bestDistance = dist;
-            bestEntry = { url: e.url, title: e.title || e.url, hostname };
-          }
-        }
-
-        if (bestEntry) {
-          // Rewrite only the hostname in the original URL, preserving scheme, port, and path.
-          let correctedUrl: string;
-          try {
-            const parsed = new URL(bestEntry.url);
-            parsed.hostname = bestEntry.hostname;
-            correctedUrl = parsed.toString();
-          } catch {
-            correctedUrl = `https://${bestEntry.hostname}`;
-          }
-          push({
-            id: `did-you-mean:${bestEntry.hostname}`,
-            type: 'did-you-mean',
-            title: `Did you mean: ${bestEntry.hostname}?`,
-            url: correctedUrl,
-            description: correctedUrl,
-            relevance: 750,
-          });
-        }
-      }
-
-      // Sort by relevance descending, cap at 10
-      results.sort((a, b) => b.relevance - a.relevance);
-      return results.slice(0, 10);
+      const suggestions = await getSuggestions({ input, context, remoteSearch });
+      mainLogger.debug('omnibox:suggest.result', { count: suggestions.length });
+      return suggestions;
     },
   );
 
-  // -------------------------------------------------------------------------
-  // omnibox:record-selection — persist a shortcut when user confirms a URL.
-  // -------------------------------------------------------------------------
   ipcMain.handle(
     'omnibox:record-selection',
-    (_e, payload?: { inputText?: string; url?: string; title?: string }): boolean => {
-      const inputText = assertString(payload?.inputText ?? '', 'inputText', 2048);
-      const url = assertString(payload?.url ?? '', 'url', 2048);
-      const title = assertString(payload?.title ?? '', 'title', 512);
-      if (!url) return false;
+    (
+      _e,
+      payload: { inputText: string; url: string; title: string },
+    ) => {
+      const inputText = assertString(payload?.inputText, 'inputText', 2048);
+      const url = assertString(payload?.url, 'url', 4096);
+      const title = assertString(payload?.title ?? '', 'title', 1024);
       mainLogger.debug('omnibox:record-selection', { inputText, url });
       shortcutsStore.recordSelection(inputText, url, title);
       return true;
     },
   );
 
-  // -------------------------------------------------------------------------
-  // omnibox:remove-history — delete a single history entry by id.
-  // -------------------------------------------------------------------------
-  ipcMain.handle('omnibox:remove-history', (_e, id: string): boolean => {
+  ipcMain.handle('omnibox:remove-history', (_e, id: string) => {
     assertString(id, 'id', 128);
     mainLogger.debug('omnibox:remove-history', { id });
-    if (!historyStore) return false;
     return historyStore.removeEntry(id);
   });
 }

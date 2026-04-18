@@ -1,12 +1,9 @@
 /**
- * ShortcutsStore — persists omnibox shortcuts.
+ * ShortcutsStore — persists omnibox selection history so ShortcutsProvider
+ * can rank previously-selected suggestions higher.
  *
- * A "shortcut" is a user-confirmed URL selection from the omnibox.  When the
- * user picks a suggestion and navigates to it the shortcut record is written
- * (or its use-count is incremented) so that it ranks higher on future queries.
- *
- * Follows the HistoryStore pattern: debounced atomic writes to
- * userData/omnibox-shortcuts.json (300ms).
+ * Follows HistoryStore / BookmarkStore patterns: debounced atomic writes to
+ * userData/omnibox-shortcuts.json (300ms). Capped at 1000 entries.
  */
 
 import { app } from 'electron';
@@ -16,21 +13,22 @@ import { mainLogger } from '../logger';
 
 const SHORTCUTS_FILE_NAME = 'omnibox-shortcuts.json';
 const DEBOUNCE_MS = 300;
-const MAX_SHORTCUTS = 1_000;
+const MAX_ENTRIES = 1000;
 
 export interface ShortcutEntry {
-  /** Unique id — same as the input text that produced the navigation. */
-  id: string;
-  /** The text the user typed when they selected this URL. */
+  /** The text the user typed when they made this selection */
   inputText: string;
+  /** The URL they navigated to */
   url: string;
+  /** Display title at time of selection */
   title: string;
-  /** How many times this shortcut has been selected. */
-  useCount: number;
+  /** Number of times this (inputText, url) pair was selected */
+  hitCount: number;
+  /** Timestamp of the most recent selection */
   lastUsed: number;
 }
 
-export interface PersistedShortcuts {
+interface PersistedShortcuts {
   version: 1;
   entries: ShortcutEntry[];
 }
@@ -53,18 +51,15 @@ export class ShortcutsStore {
       const raw = fs.readFileSync(getShortcutsPath(), 'utf-8');
       const parsed = JSON.parse(raw) as PersistedShortcuts;
       if (parsed.version === 1 && Array.isArray(parsed.entries)) {
-        this.entries = parsed.entries.slice(0, MAX_SHORTCUTS);
+        this.entries = parsed.entries;
         mainLogger.info('ShortcutsStore.load.ok', { count: this.entries.length });
       } else {
-        mainLogger.warn('ShortcutsStore.load.invalidVersion', { version: (parsed as any).version });
         this.entries = [];
       }
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        mainLogger.error('ShortcutsStore.load.failed', {
-          error: (err as Error).message,
-        });
+        mainLogger.error('ShortcutsStore.load.failed', { error: (err as Error).message });
       }
       this.entries = [];
     }
@@ -88,70 +83,53 @@ export class ShortcutsStore {
       fs.writeFileSync(getShortcutsPath(), JSON.stringify(data), 'utf-8');
       mainLogger.debug('ShortcutsStore.flush.ok', { count: this.entries.length });
     } catch (err) {
-      mainLogger.error('ShortcutsStore.flush.failed', {
-        error: (err as Error).message,
-      });
+      mainLogger.error('ShortcutsStore.flush.failed', { error: (err as Error).message });
     }
   }
 
   /**
-   * Record that the user selected `url` / `title` after typing `inputText`.
-   * Increments useCount if an entry already exists, otherwise creates one.
+   * Record that the user selected `url` while typing `inputText`.
+   * Increments hit count if the pair already exists; otherwise inserts.
    */
-  recordSelection(inputText: string, url: string, title: string): ShortcutEntry {
+  recordSelection(inputText: string, url: string, title: string): void {
+    const key = `${inputText.toLowerCase()}|||${url}`;
     const existing = this.entries.find(
-      (e) => e.inputText === inputText && e.url === url,
+      (e) => `${e.inputText.toLowerCase()}|||${e.url}` === key,
     );
     if (existing) {
-      existing.useCount += 1;
+      existing.hitCount += 1;
       existing.lastUsed = Date.now();
-      existing.title = title || existing.title;
-      mainLogger.debug('ShortcutsStore.recordSelection.updated', { inputText, url });
-      this.scheduleSave();
-      return existing;
+      existing.title = title;
+    } else {
+      this.entries.unshift({
+        inputText: inputText.toLowerCase(),
+        url,
+        title,
+        hitCount: 1,
+        lastUsed: Date.now(),
+      });
+      if (this.entries.length > MAX_ENTRIES) {
+        this.entries = this.entries.slice(0, MAX_ENTRIES);
+      }
     }
-
-    const entry: ShortcutEntry = {
-      id: `sc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      inputText,
-      url,
-      title: title || url,
-      useCount: 1,
-      lastUsed: Date.now(),
-    };
-    this.entries.unshift(entry);
-    if (this.entries.length > MAX_SHORTCUTS) {
-      this.entries = this.entries.slice(0, MAX_SHORTCUTS);
-    }
-    mainLogger.debug('ShortcutsStore.recordSelection.added', { inputText, url });
+    mainLogger.debug('ShortcutsStore.recordSelection', { inputText, url });
     this.scheduleSave();
-    return entry;
   }
 
   /**
-   * Return shortcuts whose inputText or url/title matches `query`, sorted by
-   * useCount desc then lastUsed desc.
+   * Find shortcuts matching the current input text prefix.
+   * Returns up to `limit` results sorted by hitCount desc, then lastUsed desc.
    */
-  query(query: string, limit = 5): ShortcutEntry[] {
-    let filtered: ShortcutEntry[];
-    if (!query || query.trim().length === 0) {
-      filtered = this.entries.slice();
-    } else {
-      const lower = query.toLowerCase();
-      filtered = this.entries.filter(
-        (e) =>
-          e.inputText.toLowerCase().includes(lower) ||
-          e.url.toLowerCase().includes(lower) ||
-          e.title.toLowerCase().includes(lower),
-      );
-    }
-
-    return filtered
-      .sort((a, b) => b.useCount - a.useCount || b.lastUsed - a.lastUsed)
+  query(inputText: string, limit = 5): ShortcutEntry[] {
+    if (!inputText.trim()) return [];
+    const lower = inputText.toLowerCase();
+    return this.entries
+      .filter((e) => e.inputText.startsWith(lower) || e.url.toLowerCase().includes(lower))
+      .sort((a, b) => b.hitCount - a.hitCount || b.lastUsed - a.lastUsed)
       .slice(0, limit);
   }
 
   getAll(): ShortcutEntry[] {
-    return this.entries.slice();
+    return this.entries;
   }
 }

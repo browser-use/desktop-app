@@ -604,6 +604,12 @@ app.whenReady().then(async () => {
   // Wave1 P3 — Bookmarks: renderer reports total chrome height (base tab-row +
   // toolbar + bookmarks bar when visible). TabManager reuses this to position
   // the WebContentsView below the chrome.
+  ipcMain.handle("shell:set-content-visible", (_e, visible: unknown) => {
+    if (typeof visible !== "boolean") return;
+    mainLogger.debug("main.shell:set-content-visible", { visible });
+    tabManager?.setContentVisible(visible);
+  });
+
   ipcMain.handle('shell:set-chrome-height', (_e, height: unknown) => {
     if (typeof height !== 'number' || !Number.isFinite(height)) return;
     const BASE = 91;

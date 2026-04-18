@@ -52,6 +52,7 @@ interface PillState {
   streamIteration: number;
   result: ResultState | null;
   paletteTabs: TabLite[];
+  activeTabId: string | null;
   paletteIndex: number;
 }
 
@@ -63,6 +64,7 @@ const INITIAL_STATE: PillState = {
   streamIteration: 0,
   result: null,
   paletteTabs: [],
+  activeTabId: null,
   paletteIndex: 0,
 };
 
@@ -74,7 +76,7 @@ interface PillAPI {
   submit: (prompt: string) => Promise<{ task_id: string }>;
   cancel: (task_id: string) => Promise<{ ok: boolean }>;
   hide: () => void;
-  setExpanded: (expanded: boolean) => void;
+  setExpanded: (expanded: boolean | number) => void;
   onEvent: (cb: (event: AgentEvent) => void) => () => void;
   onHideRequest: (cb: () => void) => () => void;
   onQueuedTask: (cb: (data: { prompt: string; task_id: string }) => void) => () => void;
@@ -180,8 +182,8 @@ export function Pill(): React.ReactElement {
   // -------------------------------------------------------------------------
   const refreshTabs = useCallback(async () => {
     try {
-      const { tabs } = await window.pillAPI.tabs.getState();
-      setState((prev) => ({ ...prev, paletteTabs: tabs }));
+      const { tabs, activeTabId } = await window.pillAPI.tabs.getState();
+      setState((prev) => ({ ...prev, paletteTabs: tabs, activeTabId }));
     } catch { /* pill might load before tabs are ready — ignore */ }
   }, []);
 

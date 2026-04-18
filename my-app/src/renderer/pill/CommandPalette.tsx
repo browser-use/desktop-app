@@ -11,6 +11,8 @@
 
 import React from 'react';
 
+const MAX_VISIBLE_ROWS = 6;
+
 export type PaletteRow =
   | { kind: 'tab'; tabId: string; title: string; url: string }
   | { kind: 'agent'; prompt: string };
@@ -18,6 +20,7 @@ export type PaletteRow =
 export interface PaletteProps {
   rows: PaletteRow[];
   activeIndex: number;
+  activeTabId?: string | null;
   onSelect: (row: PaletteRow) => void;
   onHover: (index: number) => void;
 }
@@ -48,9 +51,10 @@ export function buildRows(
   return rows;
 }
 
-function TabRow({ row, active, onSelect, onHover, index }: {
+function TabRow({ row, active, isCurrent, onSelect, onHover, index }: {
   row: Extract<PaletteRow, { kind: 'tab' }>;
   active: boolean;
+  isCurrent: boolean;
   onSelect: (r: PaletteRow) => void;
   onHover: (i: number) => void;
   index: number;
@@ -64,7 +68,9 @@ function TabRow({ row, active, onSelect, onHover, index }: {
       role="option"
       aria-selected={active}
     >
-      <span className="pill-palette-icon" aria-hidden="true">▸</span>
+      <span className="pill-palette-icon" aria-hidden="true">
+        {isCurrent ? <span className="pill-palette-current-dot" /> : '▸'}
+      </span>
       <span className="pill-palette-title">{row.title || 'Untitled'}</span>
       <span className="pill-palette-sub">{row.url}</span>
     </div>
@@ -94,13 +100,14 @@ function AgentRow({ row, active, onSelect, onHover, index }: {
   );
 }
 
-export function CommandPalette({ rows, activeIndex, onSelect, onHover }: PaletteProps): React.ReactElement {
+export function CommandPalette({ rows, activeIndex, activeTabId, onSelect, onHover }: PaletteProps): React.ReactElement {
   return (
     <div className="pill-palette" role="listbox" aria-label="Command palette">
       {rows.map((row, i) => {
         const active = i === activeIndex;
         if (row.kind === 'tab') {
-          return <TabRow key={`t-${row.tabId}`} row={row} active={active} onSelect={onSelect} onHover={onHover} index={i} />;
+          const isCurrent = row.tabId === activeTabId;
+          return <TabRow key={`t-${row.tabId}`} row={row} active={active} isCurrent={isCurrent} onSelect={onSelect} onHover={onHover} index={i} />;
         }
         return <AgentRow key={`a-${i}`} row={row} active={active} onSelect={onSelect} onHover={onHover} index={i} />;
       })}

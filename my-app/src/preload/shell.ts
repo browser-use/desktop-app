@@ -305,6 +305,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
     setChromeHeight: (height: number): Promise<void> =>
       ipcRenderer.invoke('shell:set-chrome-height', height),
+    setContentVisible: (visible: boolean): Promise<void> =>
+      ipcRenderer.invoke('shell:set-content-visible', visible),
     getPlatform: (): Promise<string> =>
       ipcRenderer.invoke('shell:get-platform'),
 

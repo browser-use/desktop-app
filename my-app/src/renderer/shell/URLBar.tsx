@@ -1,6 +1,6 @@
 /**
  * URLBar: address bar with URL/search parsing, security indicator, Cmd+L focus,
- * and a star button that toggles a bookmark save/edit dialog.
+ * a star button that toggles a bookmark save/edit dialog, and omnibox autocomplete.
  */
 
 import React, {
@@ -9,22 +9,9 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { OmniboxDropdown } from './OmniboxDropdown';
+import type { OmniboxSuggestion } from '../../main/omnibox/providers';
 import { decode as punyDecode } from 'punycode';
-
-// ---------------------------------------------------------------------------
-// Omnibox types (mirrored from main/omnibox/providers.ts)
-// ---------------------------------------------------------------------------
-interface OmniboxSuggestion {
-  id: string;
-  type: 'history' | 'bookmark' | 'tab' | 'shortcut' | 'search';
-  title: string;
-  url: string;
-  description?: string;
-  favicon?: string;
-  relevance: number;
-}
-
-
 
 const GOOGLE_FAVICON_API = 'https://www.google.com/s2/favicons?sz=32&domain_url=';
 
@@ -35,7 +22,8 @@ const SECURE_RE = /^https:\/\//i;
 const INSECURE_RE = /^http:\/\//i;
 // New-tab data: URLs and about:blank are internal placeholders; the omnibox
 // renders them as empty so the "Search or enter address" placeholder shows.
-const BLANK_RE = /^(data:|about:blank$|.*newtab\.html$)/i;
+const BLANK_RE = /^(data:|about:blank$)/i;
+const NEWTAB_RE = /\/newtab\/newtab\.html/i;
 
 // Subdomains that Chrome elides from display (trivial/redundant prefixes).
 const TRIVIAL_SUBDOMAIN_RE = /^(www|m)\./i;
@@ -301,7 +289,7 @@ export function URLBar({
   const [inputValue, setInputValue] = useState(() => displayUrl(url));
   const [isEditing, setIsEditing] = useState(false);
   const [suggestions, setSuggestions] = useState<OmniboxSuggestion[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState(-1);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestGenRef = useRef(0);
@@ -343,7 +331,7 @@ export function URLBar({
         const limited = (results ?? []).slice(0, inputValue.trim() ? 8 : 6);
         setSuggestions(limited);
         setDropdownOpen(limited.length > 0);
-        setSelectedIdx(-1);
+        setSelectedIndex(-1);
       } catch {
         if (gen === suggestGenRef.current) setSuggestions([]);
       }
@@ -365,7 +353,7 @@ export function URLBar({
   const closeDropdown = useCallback(() => {
     setDropdownOpen(false);
     setSuggestions([]);
-    setSelectedIdx(-1);
+    setSelectedIndex(-1);
   }, []);
 
   const handleBlur = useCallback(() => {
@@ -394,17 +382,17 @@ export function URLBar({
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+        setSelectedIndex((i) => Math.min(i + 1, suggestions.length - 1));
         return;
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.max(i - 1, -1));
+        setSelectedIndex((i) => Math.max(i - 1, -1));
         return;
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        const sel = suggestions[selectedIdx];
+        const sel = suggestions[selectedIndex];
         if (sel) {
           confirmNavigate(sel.url, sel);
         } else {
@@ -423,14 +411,13 @@ export function URLBar({
         }
       }
     },
-    [inputValue, suggestions, selectedIdx, dropdownOpen, confirmNavigate, closeDropdown, url],
+    [inputValue, suggestions, selectedIndex, dropdownOpen, confirmNavigate, closeDropdown, url],
   );
 
-  const handleRemoveSuggestion = useCallback(async (s: OmniboxSuggestion, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleRemoveSuggestion = useCallback((s: OmniboxSuggestion) => {
     if (s.id.startsWith('history:')) {
       const id = s.id.slice('history:'.length);
-      await electronAPI.omnibox.removeHistory(id).catch(() => {});
+      electronAPI.omnibox.removeHistory(id).catch(() => {});
     }
     setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
     if (suggestions.filter((x) => x.id !== s.id).length === 0) {
@@ -544,6 +531,9 @@ export function URLBar({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         aria-label="Address bar"
+        aria-expanded={dropdownOpen}
+        aria-autocomplete="list"
+        aria-activedescendant={selectedIndex >= 0 ? `omnibox-item-${selectedIndex}` : undefined}
       />
 
       {/* Bookmark star */}
@@ -575,52 +565,15 @@ export function URLBar({
       {/* Loading indicator */}
       {isLoading && <span className="url-bar__loading" aria-hidden="true" />}
 
-      {/* Autocomplete dropdown */}
-      {dropdownOpen && suggestions.length > 0 && (
-        <div className="omnibox-dropdown" role="listbox" aria-label="Suggestions">
-          {suggestions.map((s, idx) => (
-            <div
-              key={s.id}
-              className={`omnibox-dropdown__item${idx === selectedIdx ? ' omnibox-dropdown__item--selected' : ''}`}
-              role="option"
-              aria-selected={idx === selectedIdx}
-              onMouseDown={(e) => { e.preventDefault(); confirmNavigate(s.url, s); }}
-              onMouseEnter={() => setSelectedIdx(idx)}
-            >
-              <span className="omnibox-dropdown__icon">
-                {s.favicon ? (
-                  <img src={s.favicon} width={16} height={16} alt="" />
-                ) : (
-                  <img
-                    src={GOOGLE_FAVICON_API + encodeURIComponent(s.url)}
-                    width={16}
-                    height={16}
-                    alt=""
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                )}
-              </span>
-              <span className="omnibox-dropdown__text">
-                <span className="omnibox-dropdown__title">{s.title || s.url}</span>
-                {s.title && s.url !== s.title && (
-                  <span className="omnibox-dropdown__url">{s.url}</span>
-                )}
-              </span>
-              <span className="omnibox-dropdown__type">{s.type}</span>
-              {(s.type === 'history' || s.type === 'shortcut') && (
-                <button
-                  type="button"
-                  className="omnibox-dropdown__remove"
-                  title="Remove from suggestions"
-                  onMouseDown={(e) => handleRemoveSuggestion(s, e)}
-                  aria-label="Remove suggestion"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+      {/* Omnibox autocomplete dropdown */}
+      {dropdownOpen && (
+        <OmniboxDropdown
+          suggestions={suggestions}
+          selectedIndex={selectedIndex}
+          onSelect={(s) => confirmNavigate(s.url, s)}
+          onRemove={handleRemoveSuggestion}
+          onHoverIndex={setSelectedIndex}
+        />
       )}
     </div>
   );
