@@ -96,9 +96,11 @@ const {
     on: vi.fn(),
     quit: vi.fn(),
     setAsDefaultProtocolClient: vi.fn(() => true),
+    setBadgeCount: vi.fn(),
     isPackaged: false,
     getPath: vi.fn((name: string) => (name === 'userData' ? '/tmp/agentic-test' : '/tmp')),
     getAppPath: vi.fn(() => '/test/app'),
+    dock: { setBadge: vi.fn(), bounce: vi.fn(), cancelBounce: vi.fn() },
   };
 
   const mockIpcMain = {
@@ -113,29 +115,30 @@ const {
     unregisterAll: vi.fn(),
   };
 
+  // Auto-stubbing proxy for BrowserWindow mocks — any unknown method becomes vi.fn()
+  function makeWindowProxy(id: number): Record<string, unknown> {
+    const base: Record<string, unknown> = {
+      id,
+      webContents: new Proxy({} as Record<string, unknown>, {
+        get(t, p: string) {
+          if (!(p in t)) t[p] = vi.fn();
+          return t[p];
+        },
+      }),
+    };
+    return new Proxy(base, {
+      get(target, prop: string) {
+        if (!(prop in target) && typeof prop === 'string') {
+          target[prop] = vi.fn();
+        }
+        return target[prop];
+      },
+    });
+  }
+
   return {
-    mockCreateShellWindow: vi.fn(() => ({
-      id: 1,
-      webContents: {
-        once: vi.fn(),
-        on: vi.fn(),
-        send: vi.fn(),
-      },
-      on: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      close: vi.fn(),
-    })),
-    mockCreateOnboardingWindow: vi.fn(() => ({
-      id: 2,
-      webContents: {
-        once: vi.fn(),
-        on: vi.fn(),
-        send: vi.fn(),
-      },
-      on: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      close: vi.fn(),
-    })),
+    mockCreateShellWindow: vi.fn(() => makeWindowProxy(1)),
+    mockCreateOnboardingWindow: vi.fn(() => makeWindowProxy(2)),
     mockRegisterOnboardingHandlers: vi.fn(),
     mockUnregisterOnboardingHandlers: vi.fn(),
     mockInitOAuthHandler: vi.fn(),
@@ -143,9 +146,9 @@ const {
     mockCreatePillWindow: vi.fn(),
     mockRegisterHotkeys: vi.fn(() => true),
     mockUnregisterHotkeys: vi.fn(),
-    MockTabManager: vi.fn(() => mockTabManagerInstance),
+    MockTabManager: vi.fn(function () { return mockTabManagerInstance; }),
     mockTabManagerInstance,
-    MockAccountStore: vi.fn(() => mockAccountStoreInstance),
+    MockAccountStore: vi.fn(function () { return mockAccountStoreInstance; }),
     mockAccountStoreInstance,
     isOnboardingCompleteFlag,
     whenReadyHolder,
@@ -182,12 +185,12 @@ vi.mock('../../src/main/identity/AccountStore', () => ({
 }));
 
 vi.mock('../../src/main/identity/OAuthClient', () => ({
-  OAuthClient: vi.fn(() => ({ startAuthFlow: vi.fn() })),
+  OAuthClient: vi.fn(function () { return { startAuthFlow: vi.fn() }; }),
   PROTOCOL_SCHEME: 'agentic-browser',
 }));
 
 vi.mock('../../src/main/identity/KeychainStore', () => ({
-  KeychainStore: vi.fn(() => ({ setToken: vi.fn(), getToken: vi.fn() })),
+  KeychainStore: vi.fn(function () { return { setToken: vi.fn(), getToken: vi.fn() }; }),
 }));
 
 vi.mock('../../src/main/pill', () => ({
@@ -240,9 +243,11 @@ vi.mock('electron', () => {
     removeAllListeners: vi.fn(),
     setPermissionRequestHandler: vi.fn(),
     setPermissionCheckHandler: vi.fn(),
+    setDevicePermissionHandler: vi.fn(),
     webRequest: {
       onBeforeRequest: vi.fn(),
       onHeadersReceived: vi.fn(),
+      onBeforeSendHeaders: vi.fn(),
     },
     clearCache: vi.fn(() => Promise.resolve()),
     clearStorageData: vi.fn(() => Promise.resolve()),
@@ -357,19 +362,6 @@ describe('onboarding gate (main/index.ts)', () => {
   it('fresh user: openShellWindow factory creates shell + pill when invoked', async () => {
     isOnboardingCompleteFlag.value = false;
     mockAccountStoreInstance.isOnboardingComplete.mockReturnValue(false);
-
-    // Provide a fresh shell window mock for the factory invocation
-    mockCreateShellWindow.mockReturnValueOnce({
-      id: 10,
-      webContents: {
-        once: vi.fn(),
-        on: vi.fn(),
-        send: vi.fn(),
-      },
-      on: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      close: vi.fn(),
-    });
 
     await triggerWhenReady();
 

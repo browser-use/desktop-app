@@ -43,7 +43,7 @@ jobs:
         id: locate
         working-directory: my-app
         run: |
-          APP_DIR=$(ls -d out/my-app-darwin-* | head -n 1)
+          APP_DIR=$(ls -d out/*-darwin-* | head -n 1)
           echo "app-path=my-app/${APP_DIR}" >> "$GITHUB_OUTPUT"
           ls -la "${APP_DIR}"
 
@@ -127,7 +127,7 @@ jobs:
       - name: Restore permissions on Electron binary
         working-directory: my-app
         run: |
-          APP_DIR=$(ls -d out/my-app-darwin-* | head -n 1)
+          APP_DIR=$(ls -d out/*-darwin-* | head -n 1)
           chmod +x "${APP_DIR}/my-app.app/Contents/MacOS/my-app"
 
       - name: Run e2e smoke specs

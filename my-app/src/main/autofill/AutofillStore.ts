@@ -11,7 +11,6 @@
 import { app, safeStorage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-// eslint-disable-next-line import/no-unresolved
 import { v4 as uuidv4 } from 'uuid';
 import { mainLogger } from '../logger';
 

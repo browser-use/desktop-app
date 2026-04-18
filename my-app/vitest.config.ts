@@ -35,10 +35,6 @@ export default defineConfig({
       'tests/unit/zoom/**/*.spec.ts',
       'tests/unit/shell/**/*.spec.tsx',
     ],
-    // jsdom for React component specs; node for everything else
-    environmentMatchGlobs: [
-      ['tests/unit/**/*.spec.tsx', 'jsdom'],
-    ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file
     //   // @vitest-environment jsdom
