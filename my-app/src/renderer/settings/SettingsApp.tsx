@@ -2807,7 +2807,8 @@ function AccessibilityTab(): React.ReactElement {
   async function handleLiveCaptionToggle(checked: boolean): Promise<void> {
     setLiveCaptionEnabled(checked);
     try {
-      await window.settingsAPI.setLiveCaption({ enabled: checked });
+      const ok = await window.settingsAPI.setLiveCaption({ enabled: checked });
+      if (!ok) throw new Error('Settings update failed');
       toast.show({
         variant: 'success',
         title: checked ? 'Live Caption enabled' : 'Live Caption disabled',
@@ -2828,7 +2829,8 @@ function AccessibilityTab(): React.ReactElement {
     try {
       await window.settingsAPI.setLiveCaption({ language });
     } catch (err) {
-      setLiveCaptionLanguage(previous);
+      // Only roll back if the user hasn't already selected a different language.
+      setLiveCaptionLanguage((cur) => (cur === language ? previous : cur));
       toast.show({
         variant: 'error',
         title: 'Failed to update language',
