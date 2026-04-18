@@ -6,7 +6,7 @@ Protocol version: 1.0
 
 from __future__ import annotations
 
-from typing import Any, List, Literal, Optional, TypedDict, Union
+from typing import Any, Literal, TypedDict, Union
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -229,7 +229,7 @@ class OnboardingCompleteEvent(TypedDict):
     event: Literal["onboarding-complete"]
     agent_name: str
     account: AccountInfo
-    oauth_scopes: List[str]
+    oauth_scopes: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -245,9 +245,7 @@ def assert_version(msg: Any) -> None:
     if v is None:
         raise ValueError("IPC message missing 'version' field")
     if v != PROTOCOL_VERSION:
-        raise ValueError(
-            f"IPC version mismatch: expected {PROTOCOL_VERSION}, got {v!r}"
-        )
+        raise ValueError(f"IPC version mismatch: expected {PROTOCOL_VERSION}, got {v!r}")
 
 
 def make_success_response(result: Any = None) -> SuccessResponse:

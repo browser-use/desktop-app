@@ -15,31 +15,37 @@ Per plan §4 (active-tab enforcement at transport):
     ONLY to that URL — not the browser-level endpoint. This makes multi-tab
     contamination impossible at the protocol level.
 """
+
 from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
-from .budget import Budget, BudgetExhausted
-from .exec_sandbox import ExecSandbox, SandboxViolation, ExecTimeout, extract_code_block, llm_indicates_done
+from .budget import Budget
+from .exec_sandbox import (
+    ExecSandbox,
+    ExecTimeout,
+    SandboxViolation,
+    extract_code_block,
+    llm_indicates_done,
+)
 from .llm import LLMClient
+from .logger import log
 from .protocol import (
+    REASON_INTERNAL_ERROR,
     REASON_STEP_BUDGET_EXHAUSTED,
     REASON_TOKEN_BUDGET_EXHAUSTED,
-    REASON_SANDBOX_VIOLATION,
-    REASON_INTERNAL_ERROR,
-    event_task_started,
-    event_step_start,
-    event_step_result,
     event_step_error,
+    event_step_result,
+    event_step_start,
+    event_task_cancelled,
     event_task_done,
     event_task_failed,
-    event_task_cancelled,
-    event_target_lost,
+    event_task_started,
 )
 from .telemetry import TaskTimer, record_sandbox_violation, record_step_duration
-from .logger import log
 
 
 class AgentLoop:
@@ -65,8 +71,8 @@ class AgentLoop:
         emit_event: Callable[[dict], None],
         helpers_module: Any,
         llm_client: LLMClient,
-        budget: Optional[Budget] = None,
-        cancel_flag: Optional[threading.Event] = None,
+        budget: Budget | None = None,
+        cancel_flag: threading.Event | None = None,
     ):
         self.task_id = task_id
         self.prompt = prompt
@@ -108,13 +114,21 @@ class AgentLoop:
         try:
             self._run_loop()
         except Exception as exc:
-            log.error("AgentLoop.run", task_id=self.task_id, error=str(exc), note="unhandled exception")
-            self.emit_event(event_task_failed(
-                self.task_id,
-                REASON_INTERNAL_ERROR,
-                partial_result=str(exc),
-            ))
-            self._timer.done(success=False, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+            log.error(
+                "AgentLoop.run", task_id=self.task_id, error=str(exc), note="unhandled exception"
+            )
+            self.emit_event(
+                event_task_failed(
+                    self.task_id,
+                    REASON_INTERNAL_ERROR,
+                    partial_result=str(exc),
+                )
+            )
+            self._timer.done(
+                success=False,
+                steps_used=self.budget.steps_used,
+                tokens_used=self.budget.tokens_used,
+            )
 
     def _run_loop(self) -> None:
         """Inner loop — separated for cleaner exception handling."""
@@ -128,31 +142,62 @@ class AgentLoop:
         for _iteration in range(self.budget.max_steps):
             # ── Cancel check ─────────────────────────────────────────────────
             if self.cancel_flag.is_set():
-                log.info("AgentLoop._run_loop", task_id=self.task_id, step=self.budget.steps_used, note="cancel_flag set")
+                log.info(
+                    "AgentLoop._run_loop",
+                    task_id=self.task_id,
+                    step=self.budget.steps_used,
+                    note="cancel_flag set",
+                )
                 self.emit_event(event_task_cancelled(self.task_id))
-                self._timer.done(success=False, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+                self._timer.done(
+                    success=False,
+                    steps_used=self.budget.steps_used,
+                    tokens_used=self.budget.tokens_used,
+                )
                 return
 
             # ── Token budget check ────────────────────────────────────────────
             if self.budget.is_token_exhausted():
-                log.warn("AgentLoop._run_loop", task_id=self.task_id, note="token budget exhausted", tokens_used=self.budget.tokens_used)
-                self.emit_event(event_task_failed(
-                    self.task_id,
-                    REASON_TOKEN_BUDGET_EXHAUSTED,
-                    partial_result=self._last_result,
-                ))
-                self._timer.done(success=False, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+                log.warn(
+                    "AgentLoop._run_loop",
+                    task_id=self.task_id,
+                    note="token budget exhausted",
+                    tokens_used=self.budget.tokens_used,
+                )
+                self.emit_event(
+                    event_task_failed(
+                        self.task_id,
+                        REASON_TOKEN_BUDGET_EXHAUSTED,
+                        partial_result=self._last_result,
+                    )
+                )
+                self._timer.done(
+                    success=False,
+                    steps_used=self.budget.steps_used,
+                    tokens_used=self.budget.tokens_used,
+                )
                 return
 
             # ── Step budget check ─────────────────────────────────────────────
             if self.budget.is_step_exhausted():
-                log.warn("AgentLoop._run_loop", task_id=self.task_id, note="step budget exhausted", steps_used=self.budget.steps_used)
-                self.emit_event(event_task_failed(
-                    self.task_id,
-                    REASON_STEP_BUDGET_EXHAUSTED,
-                    partial_result=self._last_result,
-                ))
-                self._timer.done(success=False, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+                log.warn(
+                    "AgentLoop._run_loop",
+                    task_id=self.task_id,
+                    note="step budget exhausted",
+                    steps_used=self.budget.steps_used,
+                )
+                self.emit_event(
+                    event_task_failed(
+                        self.task_id,
+                        REASON_STEP_BUDGET_EXHAUSTED,
+                        partial_result=self._last_result,
+                    )
+                )
+                self._timer.done(
+                    success=False,
+                    steps_used=self.budget.steps_used,
+                    tokens_used=self.budget.tokens_used,
+                )
                 return
 
             step = self.budget.increment_step()
@@ -181,17 +226,19 @@ class AgentLoop:
                     "content": f"[LLM error at step {step}]: {exc}",
                 }
                 messages.append(obs_entry)
-                messages.append({
-                    "role": "user",
-                    "content": f"The LLM call failed: {exc}. Please continue or indicate task_done.",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"The LLM call failed: {exc}. Please continue or indicate task_done.",
+                    }
+                )
                 self.emit_event(event_step_error(self.task_id, step, str(exc)))
                 duration_ms = int((time.monotonic() - step_start_time) * 1000)
                 record_step_duration(self.task_id, step, duration_ms)
                 continue
 
             # Record tokens from this LLM call
-            usage = self.llm_client.get_usage_snapshot()
+            self.llm_client.get_usage_snapshot()
             # Approximate: use the latest delta by tracking cumulative
             self.budget.record_tokens(
                 input_tokens=getattr(self.llm_client.usage, "input_tokens", 0),
@@ -205,23 +252,41 @@ class AgentLoop:
             python_code = extract_code_block(llm_response)
 
             if python_code is None:
-                log.debug("AgentLoop.extract_code", task_id=self.task_id, step=step, note="no code block in LLM response")
+                log.debug(
+                    "AgentLoop.extract_code",
+                    task_id=self.task_id,
+                    step=step,
+                    note="no code block in LLM response",
+                )
                 # No code — check if LLM said done
                 if llm_indicates_done(llm_response):
-                    log.info("AgentLoop.task_done", task_id=self.task_id, step=step, note="no code block, LLM said done")
-                    self.emit_event(event_task_done(
-                        self.task_id,
-                        result=self._last_result,
+                    log.info(
+                        "AgentLoop.task_done",
+                        task_id=self.task_id,
+                        step=step,
+                        note="no code block, LLM said done",
+                    )
+                    self.emit_event(
+                        event_task_done(
+                            self.task_id,
+                            result=self._last_result,
+                            steps_used=self.budget.steps_used,
+                            tokens_used=self.budget.tokens_used,
+                        )
+                    )
+                    self._timer.done(
+                        success=True,
                         steps_used=self.budget.steps_used,
                         tokens_used=self.budget.tokens_used,
-                    ))
-                    self._timer.done(success=True, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+                    )
                     return
 
-                messages.append({
-                    "role": "user",
-                    "content": "Please provide a Python code block or indicate the task is complete.",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Please provide a Python code block or indicate the task is complete.",
+                    }
+                )
                 duration_ms = int((time.monotonic() - step_start_time) * 1000)
                 record_step_duration(self.task_id, step, duration_ms)
                 continue
@@ -239,10 +304,12 @@ class AgentLoop:
 
                 # Feed result back into conversation
                 result_summary = repr(exec_result) if exec_result is not None else "None"
-                messages.append({
-                    "role": "user",
-                    "content": f"Step {step} result: {result_summary}\nContinue with the next step or indicate task_done.",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Step {step} result: {result_summary}\nContinue with the next step or indicate task_done.",
+                    }
+                )
 
             except SandboxViolation as exc:
                 step_error = str(exc)
@@ -250,70 +317,97 @@ class AgentLoop:
                 record_sandbox_violation(self.task_id, str(exc))
                 duration_ms = int((time.monotonic() - step_start_time) * 1000)
                 record_step_duration(self.task_id, step, duration_ms)
-                self.emit_event(event_step_error(
-                    self.task_id, step, {"type": "sandbox_violation", "message": step_error}
-                ))
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Step {step} failed with a security violation: {step_error}\n"
-                        "You must not use blocked modules or operations. "
-                        "Please try a different approach using only the available helpers."
-                    ),
-                })
+                self.emit_event(
+                    event_step_error(
+                        self.task_id, step, {"type": "sandbox_violation", "message": step_error}
+                    )
+                )
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Step {step} failed with a security violation: {step_error}\n"
+                            "You must not use blocked modules or operations. "
+                            "Please try a different approach using only the available helpers."
+                        ),
+                    }
+                )
 
             except ExecTimeout as exc:
                 step_error = str(exc)
                 log.warn("AgentLoop.exec.timeout", task_id=self.task_id, step=step, error=str(exc))
                 duration_ms = int((time.monotonic() - step_start_time) * 1000)
                 record_step_duration(self.task_id, step, duration_ms)
-                self.emit_event(event_step_error(
-                    self.task_id, step, {"type": "timeout", "message": step_error}
-                ))
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Step {step} timed out after 30 seconds: {step_error}\n"
-                        "Please use a simpler approach or break into smaller steps."
-                    ),
-                })
+                self.emit_event(
+                    event_step_error(self.task_id, step, {"type": "timeout", "message": step_error})
+                )
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Step {step} timed out after 30 seconds: {step_error}\n"
+                            "Please use a simpler approach or break into smaller steps."
+                        ),
+                    }
+                )
 
             except Exception as exc:
                 step_error = str(exc)
                 log.warn("AgentLoop.exec.error", task_id=self.task_id, step=step, error=str(exc))
                 duration_ms = int((time.monotonic() - step_start_time) * 1000)
                 record_step_duration(self.task_id, step, duration_ms)
-                self.emit_event(event_step_error(
-                    self.task_id, step, {"type": "runtime_error", "message": step_error}
-                ))
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Step {step} raised an exception: {step_error}\n"
-                        "Please adjust your code and try again."
-                    ),
-                })
+                self.emit_event(
+                    event_step_error(
+                        self.task_id, step, {"type": "runtime_error", "message": step_error}
+                    )
+                )
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Step {step} raised an exception: {step_error}\n"
+                            "Please adjust your code and try again."
+                        ),
+                    }
+                )
 
             # ── Check done ────────────────────────────────────────────────────
             if step_error is None and llm_indicates_done(llm_response):
-                log.info("AgentLoop.task_done", task_id=self.task_id, step=step, steps_used=self.budget.steps_used)
-                self.emit_event(event_task_done(
-                    self.task_id,
-                    result=self._last_result,
+                log.info(
+                    "AgentLoop.task_done",
+                    task_id=self.task_id,
+                    step=step,
+                    steps_used=self.budget.steps_used,
+                )
+                self.emit_event(
+                    event_task_done(
+                        self.task_id,
+                        result=self._last_result,
+                        steps_used=self.budget.steps_used,
+                        tokens_used=self.budget.tokens_used,
+                    )
+                )
+                self._timer.done(
+                    success=True,
                     steps_used=self.budget.steps_used,
                     tokens_used=self.budget.tokens_used,
-                ))
-                self._timer.done(success=True, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+                )
                 return
 
         # Loop exhausted — emit step_budget_exhausted
-        log.warn("AgentLoop._run_loop.exhausted", task_id=self.task_id, steps_used=self.budget.steps_used)
-        self.emit_event(event_task_failed(
-            self.task_id,
-            REASON_STEP_BUDGET_EXHAUSTED,
-            partial_result=self._last_result,
-        ))
-        self._timer.done(success=False, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used)
+        log.warn(
+            "AgentLoop._run_loop.exhausted", task_id=self.task_id, steps_used=self.budget.steps_used
+        )
+        self.emit_event(
+            event_task_failed(
+                self.task_id,
+                REASON_STEP_BUDGET_EXHAUSTED,
+                partial_result=self._last_result,
+            )
+        )
+        self._timer.done(
+            success=False, steps_used=self.budget.steps_used, tokens_used=self.budget.tokens_used
+        )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -359,9 +453,9 @@ def run_task(
     task_id: str,
     emit_event: Callable[[dict], None],
     helpers_module: Any,
-    llm_client: Optional[LLMClient] = None,
-    budget: Optional[Budget] = None,
-    cancel_flag: Optional[threading.Event] = None,
+    llm_client: LLMClient | None = None,
+    budget: Budget | None = None,
+    cancel_flag: threading.Event | None = None,
 ) -> None:
     """
     Top-level entry point for running an agent task.

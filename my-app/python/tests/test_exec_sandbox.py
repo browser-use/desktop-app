@@ -20,25 +20,24 @@ Covers:
 - M1: memory cap via resource.setrlimit in subprocess
 - M2: str.format dunder traversal (skipped, separate task)
 """
+
 import os
-import threading
 import tempfile
+
 import pytest
 
 from agent.exec_sandbox import (
     ExecSandbox,
-    SandboxViolation,
     ExecTimeout,
-    inspect_ast,
+    SandboxViolation,
     build_namespace,
     extract_code_block,
+    inspect_ast,
     llm_indicates_done,
-    BLOCKED_MODULES,
-    ALLOWED_MODULES,
 )
 
-
 # ── Helpers mock ──────────────────────────────────────────────────────────────
+
 
 class MockHelpers:
     """Minimal helpers mock that records calls."""
@@ -71,6 +70,7 @@ class MockHelpers:
 
 
 # ── Blocked imports ───────────────────────────────────────────────────────────
+
 
 class TestBlockedImports:
     """All blocked modules must raise SandboxViolation before exec."""
@@ -163,6 +163,7 @@ class TestBlockedImports:
 
 # ── Allowed imports ───────────────────────────────────────────────────────────
 
+
 class TestAllowedImports:
     def test_import_json(self):
         inspect_ast("import json")  # Should not raise
@@ -187,6 +188,7 @@ class TestAllowedImports:
 
 
 # ── Blocked builtins ──────────────────────────────────────────────────────────
+
 
 class TestBlockedBuiltins:
     def _check_blocked_call(self, code: str):
@@ -213,6 +215,7 @@ class TestBlockedBuiltins:
 
 
 # ── Blocked dangerous attributes ──────────────────────────────────────────────
+
 
 class TestBlockedAttributes:
     def test_subclasses_blocked(self):
@@ -242,6 +245,7 @@ class TestBlockedAttributes:
 
 
 # ── Namespace ─────────────────────────────────────────────────────────────────
+
 
 class TestBuildNamespace:
     def test_helpers_exposed(self):
@@ -298,6 +302,7 @@ class TestBuildNamespace:
 
 # ── ExecSandbox.run() ─────────────────────────────────────────────────────────
 
+
 class TestExecSandbox:
     def setup_method(self):
         self.helpers = MockHelpers()
@@ -343,9 +348,7 @@ class TestExecSandbox:
         assert result is None
 
     def test_json_module_available(self):
-        result = self.sandbox.run(
-            '__result__ = json.dumps({"hello": "world"})'
-        )
+        result = self.sandbox.run('__result__ = json.dumps({"hello": "world"})')
         assert result == '{"hello": "world"}'
 
     def test_math_module_available(self):
@@ -399,6 +402,7 @@ __result__ = x + y
 
 # ── extract_code_block ────────────────────────────────────────────────────────
 
+
 class TestExtractCodeBlock:
     def test_python_fenced_block(self):
         text = "Some text\n```python\nprint('hello')\n```\nMore text"
@@ -438,6 +442,7 @@ class TestExtractCodeBlock:
 
 
 # ── llm_indicates_done ────────────────────────────────────────────────────────
+
 
 class TestLlmIndicatesDone:
     def test_task_complete_marker(self):
@@ -479,6 +484,7 @@ class TestLlmIndicatesDone:
 
 # ── C1: Frame-walking RCE via traceback attributes ────────────────────────────
 
+
 class TestFrameWalkingBlocked:
     """
     C1 CRITICAL regression tests.
@@ -508,7 +514,10 @@ except Exception as e:
         # The violation message must name one of the blocked traversal attributes
         msg = str(exc_info.value)
         blocked_names = {
-            "__traceback__", "tb_frame", "f_back", "f_builtins",
+            "__traceback__",
+            "tb_frame",
+            "f_back",
+            "f_builtins",
         }
         assert any(name in msg for name in blocked_names), (
             f"Expected one of {blocked_names} in violation message, got: {msg!r}"
@@ -597,6 +606,7 @@ except Exception as e:
 
 # ── H1: safe_open path traversal ─────────────────────────────────────────────
 
+
 class TestSafeOpenPathTraversal:
     """
     H1 HIGH — safe_open must resolve symlinks and normalize paths before the
@@ -609,6 +619,7 @@ class TestSafeOpenPathTraversal:
         string starts with /tmp/agentic-.
         """
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
         with pytest.raises(SandboxViolation) as exc_info:
             safe_open("/tmp/agentic-x/../../etc/hosts")
@@ -620,6 +631,7 @@ class TestSafeOpenPathTraversal:
         after realpath resolution.
         """
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
 
         with tempfile.TemporaryDirectory(prefix="agentic-") as agentic_dir:
@@ -632,6 +644,7 @@ class TestSafeOpenPathTraversal:
     def test_legit_path_inside_prefix_allowed(self, tmp_path):
         """A real file inside /tmp/agentic-* resolves to itself and passes."""
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
 
         # Create an actual temp dir with the required prefix
@@ -646,6 +659,7 @@ class TestSafeOpenPathTraversal:
     def test_write_mode_blocked(self):
         """Write mode ('w') must be blocked unless explicitly allowed."""
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
         with pytest.raises(SandboxViolation) as exc_info:
             safe_open("/tmp/agentic-test/out.txt", "w")
@@ -654,6 +668,7 @@ class TestSafeOpenPathTraversal:
     def test_append_mode_blocked(self):
         """Append mode ('a') must be blocked."""
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
         with pytest.raises(SandboxViolation):
             safe_open("/tmp/agentic-test/out.txt", "a")
@@ -661,6 +676,7 @@ class TestSafeOpenPathTraversal:
     def test_exclusive_create_mode_blocked(self):
         """Exclusive create mode ('x') must be blocked."""
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
         with pytest.raises(SandboxViolation):
             safe_open("/tmp/agentic-test/out.txt", "x")
@@ -668,12 +684,14 @@ class TestSafeOpenPathTraversal:
     def test_readwrite_mode_blocked(self):
         """Read+write mode ('r+') must be blocked."""
         from agent.exec_sandbox import _make_safe_open
+
         safe_open = _make_safe_open()
         with pytest.raises(SandboxViolation):
             safe_open("/tmp/agentic-test/out.txt", "r+")
 
 
 # ── H2: Timeout kills subprocess (no thread zombie) ──────────────────────────
+
 
 class TestTimeoutKillsProcess:
     """
@@ -698,12 +716,9 @@ class TestTimeoutKillsProcess:
         re-raising ExecTimeout.
         """
         import multiprocessing
+
         helpers = MockHelpers()
         sandbox = ExecSandbox(helpers)
-
-        alive_after = []
-
-        original_run = sandbox.run
 
         # We need access to the internal process.  Wrap ExecSandbox to capture it.
         # Instead, just verify indirectly: run multiple timed-out tasks and confirm
@@ -717,6 +732,7 @@ class TestTimeoutKillsProcess:
                 pass
 
         import time as _time
+
         _time.sleep(0.2)  # brief settle for join()
 
         final_proc_count = len(multiprocessing.active_children())
@@ -742,6 +758,7 @@ class TestTimeoutKillsProcess:
 
 # ── M1: Memory cap in subprocess ─────────────────────────────────────────────
 
+
 class TestMemoryCap:
     """
     M1 MEDIUM — resource.setrlimit(RLIMIT_AS) must cap memory inside the
@@ -765,6 +782,7 @@ class TestMemoryCap:
 
 # ── M2: str.format dunder traversal ──────────────────────────────────────────
 
+
 class TestFormatLeakBlocked:
     """
     M2 MEDIUM — str.format with {x.__class__} traversal leaks class hierarchy.
@@ -773,7 +791,9 @@ class TestFormatLeakBlocked:
     Tracked as M2-deferred: guarded format() builtin replacement needed.
     """
 
-    @pytest.mark.skip(reason="M2 medium priority — guarded str.format replacement is a separate task")
+    @pytest.mark.skip(
+        reason="M2 medium priority — guarded str.format replacement is a separate task"
+    )
     def test_format_class_traversal_blocked(self):
         """
         '{0.__class__.__name__}'.format(42) must be blocked.

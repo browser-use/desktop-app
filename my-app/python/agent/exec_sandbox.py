@@ -21,120 +21,128 @@ Safe builtins exposed:
     json (module), re (module), math (module), datetime (module),
     collections (module), itertools (module)
 """
+
 from __future__ import annotations
 
 import ast
 import builtins
+import collections
+import datetime
+import itertools
 import json
 import math
 import os
 import re
 import textwrap
-import collections
-import itertools
-import datetime
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from .logger import log
 
 # ── Security constants ────────────────────────────────────────────────────────
 
-BLOCKED_MODULES = frozenset({
-    "os",
-    "subprocess",
-    "sys",
-    "socket",
-    "urllib",
-    "urllib.request",
-    "urllib.parse",
-    "requests",
-    "httpx",
-    "shutil",
-    "pathlib",
-    "glob",
-    "fnmatch",
-    "importlib",
-    "importlib.util",
-    "importlib.machinery",
-    "ctypes",
-    "multiprocessing",
-    "threading",
-    "concurrent",
-    "concurrent.futures",
-    "asyncio",
-    "signal",
-    "pty",
-    "pdb",
-    "code",
-    "codeop",
-    "pickle",
-    "shelve",
-    "dbm",
-    "sqlite3",
-    "ftplib",
-    "smtplib",
-    "imaplib",
-    "poplib",
-    "telnetlib",
-    "xmlrpc",
-    "http",
-    "email",
-    "html",
-    "xml",
-})
+BLOCKED_MODULES = frozenset(
+    {
+        "os",
+        "subprocess",
+        "sys",
+        "socket",
+        "urllib",
+        "urllib.request",
+        "urllib.parse",
+        "requests",
+        "httpx",
+        "shutil",
+        "pathlib",
+        "glob",
+        "fnmatch",
+        "importlib",
+        "importlib.util",
+        "importlib.machinery",
+        "ctypes",
+        "multiprocessing",
+        "threading",
+        "concurrent",
+        "concurrent.futures",
+        "asyncio",
+        "signal",
+        "pty",
+        "pdb",
+        "code",
+        "codeop",
+        "pickle",
+        "shelve",
+        "dbm",
+        "sqlite3",
+        "ftplib",
+        "smtplib",
+        "imaplib",
+        "poplib",
+        "telnetlib",
+        "xmlrpc",
+        "http",
+        "email",
+        "html",
+        "xml",
+    }
+)
 
-ALLOWED_MODULES = frozenset({
-    "json",
-    "re",
-    "math",
-    "datetime",
-    "collections",
-    "itertools",
-    "functools",
-    "operator",
-    "string",
-    "textwrap",
-    "unicodedata",
-    "struct",
-    "codecs",
-    "base64",
-    "hashlib",
-    "hmac",
-    "uuid",
-    "decimal",
-    "fractions",
-    "statistics",
-    "random",
-    "copy",
-    "pprint",
-    "traceback",
-    "warnings",
-    "abc",
-    "dataclasses",
-    "typing",
-    "enum",
-})
+ALLOWED_MODULES = frozenset(
+    {
+        "json",
+        "re",
+        "math",
+        "datetime",
+        "collections",
+        "itertools",
+        "functools",
+        "operator",
+        "string",
+        "textwrap",
+        "unicodedata",
+        "struct",
+        "codecs",
+        "base64",
+        "hashlib",
+        "hmac",
+        "uuid",
+        "decimal",
+        "fractions",
+        "statistics",
+        "random",
+        "copy",
+        "pprint",
+        "traceback",
+        "warnings",
+        "abc",
+        "dataclasses",
+        "typing",
+        "enum",
+    }
+)
 
-BLOCKED_BUILTINS = frozenset({
-    "open",
-    "exec",
-    "eval",
-    "compile",
-    "__import__",
-    "breakpoint",
-    "input",
-    "vars",
-    "dir",
-    "globals",
-    "locals",
-    "delattr",
-    "setattr",
-    "getattr",
-    "hasattr",
-    "object",
-    "type",
-    "super",
-})
+BLOCKED_BUILTINS = frozenset(
+    {
+        "open",
+        "exec",
+        "eval",
+        "compile",
+        "__import__",
+        "breakpoint",
+        "input",
+        "vars",
+        "dir",
+        "globals",
+        "locals",
+        "delattr",
+        "setattr",
+        "getattr",
+        "hasattr",
+        "object",
+        "type",
+        "super",
+    }
+)
 
 SANDBOX_EXEC_TIMEOUT = 30  # seconds
 
@@ -152,6 +160,7 @@ class ExecTimeout(Exception):
 
 
 # ── AST Inspection ────────────────────────────────────────────────────────────
+
 
 class _ASTInspector(ast.NodeVisitor):
     """Walk the AST and raise SandboxViolation on any blocked construct."""
@@ -188,20 +197,22 @@ class _ASTInspector(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         """Block calls to dangerous builtins by name."""
-        if isinstance(node.func, ast.Name):
-            if node.func.id in BLOCKED_BUILTINS:
-                raise SandboxViolation(
-                    f"Call to blocked builtin '{node.func.id}' is not allowed",
-                    ast.unparse(node),
-                )
+        if isinstance(node.func, ast.Name) and node.func.id in BLOCKED_BUILTINS:
+            raise SandboxViolation(
+                f"Call to blocked builtin '{node.func.id}' is not allowed",
+                ast.unparse(node),
+            )
         # Block attribute access to __class__, __bases__, etc. (MRO escape)
-        if isinstance(node.func, ast.Attribute):
-            if node.func.attr.startswith("__") and node.func.attr.endswith("__"):
-                if node.func.attr not in ("__str__", "__repr__", "__len__", "__iter__"):
-                    raise SandboxViolation(
-                        f"Attribute access to dunder method '{node.func.attr}' is not allowed",
-                        ast.unparse(node),
-                    )
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr.startswith("__")
+            and node.func.attr.endswith("__")
+            and node.func.attr not in ("__str__", "__repr__", "__len__", "__iter__")
+        ):
+            raise SandboxViolation(
+                f"Attribute access to dunder method '{node.func.attr}' is not allowed",
+                ast.unparse(node),
+            )
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -210,11 +221,22 @@ class _ASTInspector(ast.NodeVisitor):
         # C1 fix: also block __traceback__, __cause__, __context__ used in
         # the frame-walking RCE exploit.
         dangerous_dunder_attrs = {
-            "__subclasses__", "__mro__", "__bases__", "__globals__",
-            "__builtins__", "__loader__", "__spec__", "__import__",
-            "__class__", "__dict__", "__code__", "__func__",
+            "__subclasses__",
+            "__mro__",
+            "__bases__",
+            "__globals__",
+            "__builtins__",
+            "__loader__",
+            "__spec__",
+            "__import__",
+            "__class__",
+            "__dict__",
+            "__code__",
+            "__func__",
             # C1: traceback/exception chain dunders that enable frame walking
-            "__traceback__", "__cause__", "__context__",
+            "__traceback__",
+            "__cause__",
+            "__context__",
         }
         if node.attr in dangerous_dunder_attrs:
             raise SandboxViolation(
@@ -226,17 +248,32 @@ class _ASTInspector(ast.NodeVisitor):
         # are the second step of the frame-walking exploit chain.
         dangerous_nondunder_attrs = {
             # traceback object attributes
-            "tb_frame", "tb_next", "tb_lineno",
+            "tb_frame",
+            "tb_next",
+            "tb_lineno",
             # frame object attributes
-            "f_back", "f_builtins", "f_globals", "f_locals",
-            "f_code", "f_lineno", "f_lasti",
+            "f_back",
+            "f_builtins",
+            "f_globals",
+            "f_locals",
+            "f_code",
+            "f_lineno",
+            "f_lasti",
             # generator/coroutine/async-generator frame attributes
-            "gi_frame", "gi_code",
-            "cr_frame", "cr_code",
-            "ag_frame", "ag_code",
+            "gi_frame",
+            "gi_code",
+            "cr_frame",
+            "cr_code",
+            "ag_frame",
+            "ag_code",
             # code object attributes
-            "co_consts", "co_names", "co_code", "co_varnames",
-            "co_cellvars", "co_freevars", "co_nlocals",
+            "co_consts",
+            "co_names",
+            "co_code",
+            "co_varnames",
+            "co_cellvars",
+            "co_freevars",
+            "co_nlocals",
         }
         if node.attr in dangerous_nondunder_attrs:
             raise SandboxViolation(
@@ -252,11 +289,12 @@ def inspect_ast(source: str) -> None:
     try:
         tree = ast.parse(source, mode="exec")
     except SyntaxError as exc:
-        raise SandboxViolation(f"Syntax error in generated code: {exc}", source)
+        raise SandboxViolation(f"Syntax error in generated code: {exc}", source) from exc
     _ASTInspector().visit(tree)
 
 
 # ── Namespace construction ────────────────────────────────────────────────────
+
 
 def _make_safe_open():
     """
@@ -306,18 +344,20 @@ def _make_safe_open():
 
 def _make_print_proxy(print_log: list[str]) -> Callable:
     """Return a print() replacement that logs to the event stream list."""
+
     def proxy_print(*args, **kwargs):
         sep = kwargs.get("sep", " ")
         text = sep.join(str(a) for a in args)
         print_log.append(text)
         log.info("ExecSandbox.print_proxy", text=text)
+
     return proxy_print
 
 
 def build_namespace(
     helpers_module: Any,
     print_log: list[str],
-    extra: Optional[dict] = None,
+    extra: dict | None = None,
 ) -> dict:
     """
     Build the restricted exec namespace.
@@ -341,29 +381,63 @@ def build_namespace(
         # I/O proxy
         "print": _make_print_proxy(print_log),
         # Core types
-        "len": len, "range": range, "int": int, "float": float, "str": str,
-        "bool": bool, "bytes": bytes,
+        "len": len,
+        "range": range,
+        "int": int,
+        "float": float,
+        "str": str,
+        "bool": bool,
+        "bytes": bytes,
         # Containers
-        "list": list, "dict": dict, "tuple": tuple, "set": set, "frozenset": frozenset,
+        "list": list,
+        "dict": dict,
+        "tuple": tuple,
+        "set": set,
+        "frozenset": frozenset,
         # Iteration
-        "sorted": sorted, "enumerate": enumerate, "zip": zip, "map": map,
-        "filter": filter, "reversed": reversed,
+        "sorted": sorted,
+        "enumerate": enumerate,
+        "zip": zip,
+        "map": map,
+        "filter": filter,
+        "reversed": reversed,
         # Numeric
-        "min": min, "max": max, "abs": abs, "round": round, "sum": sum, "pow": pow,
-        "divmod": divmod, "hex": hex, "oct": oct, "bin": bin, "ord": ord, "chr": chr,
+        "min": min,
+        "max": max,
+        "abs": abs,
+        "round": round,
+        "sum": sum,
+        "pow": pow,
+        "divmod": divmod,
+        "hex": hex,
+        "oct": oct,
+        "bin": bin,
+        "ord": ord,
+        "chr": chr,
         # Logic
-        "any": any, "all": all,
+        "any": any,
+        "all": all,
         # Inspection (read-only safe ones)
-        "isinstance": isinstance, "repr": repr, "hash": hash, "id": id,
+        "isinstance": isinstance,
+        "repr": repr,
+        "hash": hash,
+        "id": id,
         "callable": callable,
         # String
         "format": format,
         # Exceptions
-        "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
-        "KeyError": KeyError, "IndexError": IndexError, "RuntimeError": RuntimeError,
-        "StopIteration": StopIteration, "NotImplementedError": NotImplementedError,
+        "Exception": Exception,
+        "ValueError": ValueError,
+        "TypeError": TypeError,
+        "KeyError": KeyError,
+        "IndexError": IndexError,
+        "RuntimeError": RuntimeError,
+        "StopIteration": StopIteration,
+        "NotImplementedError": NotImplementedError,
         # Constants
-        "True": True, "False": False, "None": None,
+        "True": True,
+        "False": False,
+        "None": None,
         # Allowed modules
         "json": json,
         "re": re,
@@ -386,6 +460,7 @@ def build_namespace(
 
 
 # ── Sandbox runner ────────────────────────────────────────────────────────────
+
 
 class ExecSandbox:
     """
@@ -444,9 +519,7 @@ class ExecSandbox:
             try:
                 json.dumps(result)
             except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"Sandbox result is not JSON-serializable: {exc}"
-                ) from exc
+                raise ValueError(f"Sandbox result is not JSON-serializable: {exc}") from exc
 
         log.debug("ExecSandbox.run.complete", result_type=type(result).__name__)
         return result
@@ -454,7 +527,8 @@ class ExecSandbox:
 
 # ── Code block extraction ─────────────────────────────────────────────────────
 
-def extract_code_block(llm_response: str) -> Optional[str]:
+
+def extract_code_block(llm_response: str) -> str | None:
     """
     Extract the first Python code block from an LLM markdown response.
 

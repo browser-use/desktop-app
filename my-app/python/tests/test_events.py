@@ -11,24 +11,24 @@ Covers:
 - SyncEventEmitter: events_of_type()
 - Thread-safety of SyncEventEmitter
 """
+
 import asyncio
 import threading
 import time
-import pytest
 
 from agent.events import EventEmitter, SyncEventEmitter
 from agent.protocol import (
-    event_task_started,
-    event_step_start,
+    REASON_INTERNAL_ERROR,
     event_step_result,
+    event_step_start,
+    event_task_cancelled,
     event_task_done,
     event_task_failed,
-    event_task_cancelled,
-    REASON_INTERNAL_ERROR,
+    event_task_started,
 )
 
-
 # ── EventEmitter (async) ──────────────────────────────────────────────────────
+
 
 class TestEventEmitter:
     def _run(self, coro):
@@ -99,15 +99,18 @@ class TestEventEmitter:
     def test_set_writer_updates_writer(self):
         emitter = EventEmitter()
         assert emitter._writer is None
+
         # We can't easily create a real StreamWriter in unit tests,
         # but we verify the setter accepts any value
         class FakeWriter:
             pass
+
         emitter.set_writer(FakeWriter())
         assert emitter._writer is not None
 
 
 # ── SyncEventEmitter ──────────────────────────────────────────────────────────
+
 
 class TestSyncEventEmitter:
     def test_emit_calls_inject_fn(self):

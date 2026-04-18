@@ -1,0 +1,150 @@
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  SKIP_SIGNING: '1'
+
+jobs:
+  build:
+    name: Build Electron app (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 25
+    outputs:
+      app-path: ${{ steps.locate.outputs.app-path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: Package (unsigned)
+        working-directory: my-app
+        run: npm run package
+
+      - name: Locate built app
+        id: locate
+        working-directory: my-app
+        run: |
+          APP_DIR=$(ls -d out/my-app-darwin-* | head -n 1)
+          echo "app-path=my-app/${APP_DIR}" >> "$GITHUB_OUTPUT"
+          ls -la "${APP_DIR}"
+
+      - name: Upload built app
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-app-${{ github.sha }}
+          path: my-app/out/
+          retention-days: 3
+          if-no-files-found: error
+
+  regression:
+    name: Playwright regression
+    runs-on: macos-latest
+    needs: build
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: Download built app
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-app-${{ github.sha }}
+          path: my-app/out/
+
+      - name: Restore permissions on Electron binary
+        working-directory: my-app
+        run: |
+          APP_DIR=$(ls -d out/my-app-darwin-* | head -n 1)
+          chmod +x "${APP_DIR}/my-app.app/Contents/MacOS/my-app"
+
+      - name: Playwright regression tests
+        working-directory: my-app
+        run: npx playwright test --config=tests/setup/playwright.config.ts tests/regression/
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-regression-report
+          path: |
+            my-app/tests/results/
+            my-app/playwright-report/
+          if-no-files-found: ignore
+
+  e2e-smoke:
+    name: Playwright e2e smoke
+    runs-on: macos-latest
+    needs: build
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: Download built app
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-app-${{ github.sha }}
+          path: my-app/out/
+
+      - name: Restore permissions on Electron binary
+        working-directory: my-app
+        run: |
+          APP_DIR=$(ls -d out/my-app-darwin-* | head -n 1)
+          chmod +x "${APP_DIR}/my-app.app/Contents/MacOS/my-app"
+
+      - name: Run e2e smoke specs
+        working-directory: my-app
+        env:
+          NODE_ENV: test
+        run: |
+          npx playwright test --config=tests/setup/playwright.config.ts \
+            tests/e2e/golden-path.spec.ts \
+            tests/e2e/pill-flow.spec.ts \
+            tests/e2e/ipc.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-report
+          path: |
+            my-app/tests/results/
+            my-app/playwright-report/
+          if-no-files-found: ignore

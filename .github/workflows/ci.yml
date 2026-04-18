@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  lint:
+    name: Lint (TS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: ESLint
+        working-directory: my-app
+        run: npm run lint
+
+  typecheck:
+    name: Typecheck (TS) [soft-fail]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Baseline is red — the codebase has ~55 pre-existing tsc errors being
+    # tracked for cleanup (see docs/CI.md "Typecheck rollout"). Runs on every
+    # PR so regressions stay visible, but does not gate merges yet. Flip
+    # continue-on-error to false once the baseline is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: tsc --noEmit
+        working-directory: my-app
+        run: npm run typecheck
+
+  unit:
+    name: Unit + integration (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: Run vitest with coverage
+        working-directory: my-app
+        run: npm run test:coverage
+
+      - name: Upload coverage (TS)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-ts
+          path: my-app/tests/results/coverage/
+          if-no-files-found: warn
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-results
+          path: my-app/tests/results/
+          if-no-files-found: ignore
+
+  python:
+    name: Python daemon (ruff + mypy + pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: my-app/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            my-app/python/requirements.txt
+            my-app/python/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check agent tests
+
+      - name: Ruff format check
+        run: ruff format --check agent tests
+
+      - name: Mypy typecheck [soft-fail]
+        # Baseline has 5 pre-existing mypy errors tracked for cleanup; runs to
+        # surface regressions but does not gate merges yet. See docs/CI.md.
+        continue-on-error: true
+        run: mypy agent
+
+      - name: Pytest with coverage
+        run: pytest --cov=agent --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage (Python)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python
+          path: my-app/python/coverage.xml
+          if-no-files-found: warn

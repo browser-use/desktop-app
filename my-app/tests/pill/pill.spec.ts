@@ -88,7 +88,11 @@ describe('PillWindowManager', () => {
   // -------------------------------------------------------------------------
   // Test: pill window is created with correct options
   // -------------------------------------------------------------------------
-  it('creates pill window with correct frameless transparent options', async () => {
+  it('creates pill window with correct frameless opaque options', async () => {
+    // Pill is intentionally opaque as of commit 80d10f4 ("style(pill): opaque
+    // dark window, no more transparent rectangle"). The rounded-corner look is
+    // provided by `roundedCorners: true` + a fixed backgroundColor, not by
+    // `transparent: true`.
     const { createPillWindow } = await import('../../src/main/pill');
 
     createPillWindow();
@@ -97,7 +101,7 @@ describe('PillWindowManager', () => {
       expect.objectContaining({
         width: 480,
         height: 56,
-        transparent: true,
+        transparent: false,
         frame: false,
         alwaysOnTop: true,
         hasShadow: true,

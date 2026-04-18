@@ -43,21 +43,35 @@ const {
   mockIpcMain,
   mockGlobalShortcut,
 } = vi.hoisted(() => {
-  const mockTabManagerInstance = {
+  // Methods whose return value the code-under-test inspects. Anything else
+  // is auto-stubbed via the Proxy below.
+  const tabManagerBaseline: Record<string, unknown> = {
     restoreSession: vi.fn(),
     discoverCdpPort: vi.fn(() => Promise.resolve(9222)),
     getActiveTabCdpUrl: vi.fn(() => Promise.resolve('http://localhost:9222')),
     getActiveTabTargetId: vi.fn(() => Promise.resolve('target-1')),
     getState: vi.fn(() => ({ tabs: [] })),
     getActiveTabId: vi.fn(() => null),
-    relayout: vi.fn(),
-    flushSession: vi.fn(),
-    createTab: vi.fn(),
-    closeTab: vi.fn(),
-    activateTab: vi.fn(),
+    getAllTabSummaries: vi.fn(() => []),
+    getZoomOverrides: vi.fn(() => ({})),
     getTabAtIndex: vi.fn(() => null),
-    reloadActive: vi.fn(),
+    getTabIdForWebContentsId: vi.fn(() => null),
   };
+
+  // Proxy that auto-stubs any missing method with a fresh vi.fn(). This
+  // keeps the mock forward-compatible as src/main/index.ts grows new
+  // tabManager.setXxx(...) wiring calls.
+  const mockTabManagerInstance: Record<string, unknown> = new Proxy(
+    tabManagerBaseline,
+    {
+      get(target, prop: string) {
+        if (!(prop in target) && typeof prop === 'string') {
+          target[prop] = vi.fn();
+        }
+        return target[prop];
+      },
+    },
+  );
 
   // Mutable flag — tests set this before invoking whenReady
   const isOnboardingCompleteFlag = { value: false };
@@ -102,14 +116,22 @@ const {
   return {
     mockCreateShellWindow: vi.fn(() => ({
       id: 1,
-      webContents: { once: vi.fn(), send: vi.fn() },
+      webContents: {
+        once: vi.fn(),
+        on: vi.fn(),
+        send: vi.fn(),
+      },
       on: vi.fn(),
       isDestroyed: vi.fn(() => false),
       close: vi.fn(),
     })),
     mockCreateOnboardingWindow: vi.fn(() => ({
       id: 2,
-      webContents: { once: vi.fn(), send: vi.fn() },
+      webContents: {
+        once: vi.fn(),
+        on: vi.fn(),
+        send: vi.fn(),
+      },
       on: vi.fn(),
       isDestroyed: vi.fn(() => false),
       close: vi.fn(),
@@ -209,18 +231,52 @@ vi.mock('../../src/shared/types', () => ({
 
 vi.mock('electron-squirrel-startup', () => ({ default: false }));
 
-vi.mock('electron', () => ({
-  app: mockApp,
-  BrowserWindow: {
-    getAllWindows: vi.fn(() => []),
-  },
-  globalShortcut: mockGlobalShortcut,
-  ipcMain: mockIpcMain,
-  Menu: {
-    setApplicationMenu: vi.fn(),
-    buildFromTemplate: vi.fn(() => ({})),
-  },
-}));
+vi.mock('electron', () => {
+  const sessionStub = {
+    on: vi.fn(),
+    off: vi.fn(),
+    once: vi.fn(),
+    removeListener: vi.fn(),
+    removeAllListeners: vi.fn(),
+    setPermissionRequestHandler: vi.fn(),
+    setPermissionCheckHandler: vi.fn(),
+    webRequest: {
+      onBeforeRequest: vi.fn(),
+      onHeadersReceived: vi.fn(),
+    },
+    clearCache: vi.fn(() => Promise.resolve()),
+    clearStorageData: vi.fn(() => Promise.resolve()),
+    cookies: {
+      get: vi.fn(() => Promise.resolve([])),
+      remove: vi.fn(() => Promise.resolve()),
+      flushStore: vi.fn(() => Promise.resolve()),
+    },
+  };
+  return {
+    app: mockApp,
+    BrowserWindow: {
+      getAllWindows: vi.fn(() => []),
+    },
+    globalShortcut: mockGlobalShortcut,
+    ipcMain: mockIpcMain,
+    Menu: {
+      setApplicationMenu: vi.fn(),
+      buildFromTemplate: vi.fn(() => ({})),
+    },
+    session: {
+      defaultSession: sessionStub,
+      fromPartition: vi.fn(() => sessionStub),
+    },
+    protocol: {
+      registerSchemesAsPrivileged: vi.fn(),
+      registerFileProtocol: vi.fn(),
+      registerStringProtocol: vi.fn(),
+      registerBufferProtocol: vi.fn(),
+      handle: vi.fn(),
+      unhandle: vi.fn(),
+    },
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Import the module under test — runs module-level side effects once.
@@ -305,7 +361,11 @@ describe('onboarding gate (main/index.ts)', () => {
     // Provide a fresh shell window mock for the factory invocation
     mockCreateShellWindow.mockReturnValueOnce({
       id: 10,
-      webContents: { once: vi.fn(), send: vi.fn() },
+      webContents: {
+        once: vi.fn(),
+        on: vi.fn(),
+        send: vi.fn(),
+      },
       on: vi.fn(),
       isDestroyed: vi.fn(() => false),
       close: vi.fn(),

@@ -16,22 +16,19 @@ Usage:
     log.warn("Budget.check", reason="token_budget_exhausted", tokens_used=n)
     log.error("ExecSandbox.run", error=str(e), task_id=task_id, step=step)
 """
+
 from __future__ import annotations
 
-import io
 import json
 import os
 import re
 import sys
 import time
-from typing import Any, IO
+from typing import IO, Any
 
 # ── DEV flag ──────────────────────────────────────────────────────────────────
 
-DEV: bool = (
-    os.getenv("NODE_ENV") != "production"
-    or os.getenv("AGENTIC_DEV") == "1"
-)
+DEV: bool = os.getenv("NODE_ENV") != "production" or os.getenv("AGENTIC_DEV") == "1"
 
 # ── Secret scrubbing ──────────────────────────────────────────────────────────
 
@@ -56,6 +53,7 @@ def _scrub(ctx: dict) -> dict:
 
 # ── Core emit ─────────────────────────────────────────────────────────────────
 
+
 def _emit(level: str, component: str, ctx: dict, stream: IO[str] | None = None) -> None:
     """Serialize and write a single JSONL log entry."""
     scrubbed = _scrub(ctx)
@@ -70,6 +68,7 @@ def _emit(level: str, component: str, ctx: dict, stream: IO[str] | None = None) 
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 class _Logger:
     """

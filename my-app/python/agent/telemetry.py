@@ -10,11 +10,11 @@ Metric names (from plan §8.4):
     sandbox_violations_per_day (incremented)
     agent_task_success_rate (via task_done/task_failed counts)
 """
+
 from __future__ import annotations
 
-import json
 import time
-from typing import Any, Optional
+from typing import Any
 
 from .logger import log
 
@@ -32,7 +32,7 @@ METRIC_DAEMON_STARTUP = "daemon_startup"
 METRIC_TOKEN_USAGE = "agent_token_usage"
 
 
-def _emit(metric: str, value: Any, tags: Optional[dict] = None) -> None:
+def _emit(metric: str, value: Any, tags: dict | None = None) -> None:
     """Emit a structured metric log line."""
     record = {
         "metric": metric,
@@ -46,13 +46,14 @@ def _emit(metric: str, value: Any, tags: Optional[dict] = None) -> None:
 
 # ── Telemetry helpers ─────────────────────────────────────────────────────────
 
+
 class TaskTimer:
     """Context-manager-style timer for a single agent task."""
 
     def __init__(self, task_id: str):
         self.task_id = task_id
-        self._start: Optional[float] = None
-        self._first_step_time: Optional[float] = None
+        self._start: float | None = None
+        self._first_step_time: float | None = None
 
     def start(self) -> None:
         self._start = time.monotonic()

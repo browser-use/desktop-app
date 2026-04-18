@@ -10,19 +10,17 @@ Covers:
 - All 4 levels emit correctly in DEV mode
 - _stream parameter routes output away from stderr
 """
+
 from __future__ import annotations
 
 import io
 import json
 import os
-import time
-import importlib
 import sys
-
-import pytest
-
+import time
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _reload_logger(node_env: str | None, agentic_dev: str | None):
     """
@@ -47,6 +45,7 @@ def _reload_logger(node_env: str | None, agentic_dev: str | None):
         if "agent.logger" in sys.modules:
             del sys.modules["agent.logger"]
         import agent.logger as mod
+
         return mod
     finally:
         # Restore original env
@@ -72,6 +71,7 @@ def _capture(fn, *args, **kwargs) -> dict:
 
 
 # ── DEV flag behavior ─────────────────────────────────────────────────────────
+
 
 class TestDevFlag:
     def test_dev_true_when_node_env_missing(self):
@@ -102,6 +102,7 @@ class TestDevFlag:
 
 # ── debug / info are no-ops in production ─────────────────────────────────────
 
+
 class TestDebugInfoNoOpsInProduction:
     def setup_method(self):
         self._mod = _reload_logger(node_env="production", agentic_dev=None)
@@ -129,6 +130,7 @@ class TestDebugInfoNoOpsInProduction:
 
 # ── All 4 levels emit in DEV mode ─────────────────────────────────────────────
 
+
 class TestAllLevelsInDev:
     def setup_method(self):
         self._mod = _reload_logger(node_env="development", agentic_dev=None)
@@ -155,6 +157,7 @@ class TestAllLevelsInDev:
 
 
 # ── JSONL format ──────────────────────────────────────────────────────────────
+
 
 class TestJsonlFormat:
     def setup_method(self):
@@ -217,6 +220,7 @@ class TestJsonlFormat:
 
     def test_non_serializable_value_uses_str_fallback(self):
         """Objects that aren't JSON-serializable are converted via default=str."""
+
         class Weird:
             def __str__(self):
                 return "weird_value"
@@ -226,6 +230,7 @@ class TestJsonlFormat:
 
 
 # ── Secret scrubbing ──────────────────────────────────────────────────────────
+
 
 class TestSecretScrubbing:
     def setup_method(self):
@@ -289,6 +294,7 @@ class TestSecretScrubbing:
 
 
 # ── AGENTIC_DEV override in production ───────────────────────────────────────
+
 
 class TestAgenticDevOverride:
     def test_debug_emits_when_agentic_dev_1_in_prod(self):

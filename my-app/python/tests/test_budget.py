@@ -10,14 +10,15 @@ Covers:
 - snapshot() shape
 - Custom budget limits
 """
+
 import pytest
 
 from agent.budget import (
-    Budget,
-    BudgetExhausted,
     MAX_STEPS_DEFAULT,
     MAX_TOKENS_INPUT_DEFAULT,
     MAX_TOKENS_OUTPUT_DEFAULT,
+    Budget,
+    BudgetExhausted,
 )
 
 

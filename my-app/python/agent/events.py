@@ -8,14 +8,15 @@ Thread safety: emit() is synchronous and uses loop.call_soon_threadsafe so it
 can be called from background threads (e.g. the agent loop running in a thread
 pool executor).
 """
+
 from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
 
-from .protocol import encode_message
 from .logger import log
+from .protocol import encode_message
 
 # Type alias for the low-level write callable
 WriteCallable = Callable[[bytes], None]
@@ -29,7 +30,7 @@ class EventEmitter:
     In sync/thread contexts, call `emit_threadsafe()` with the running loop.
     """
 
-    def __init__(self, writer: Optional[asyncio.StreamWriter] = None):
+    def __init__(self, writer: asyncio.StreamWriter | None = None):
         self._writer = writer
         self._history: list[dict] = []  # ordered event log for tests/debugging
 
@@ -46,7 +47,11 @@ class EventEmitter:
         log.info("EventEmitter.emit", event_type=event_type, task_id=task_id)
 
         if self._writer is None:
-            log.debug("EventEmitter.emit", note="no writer — event buffered in history only", event_type=event_type)
+            log.debug(
+                "EventEmitter.emit",
+                note="no writer — event buffered in history only",
+                event_type=event_type,
+            )
             return
 
         data = encode_message(event)
@@ -54,7 +59,12 @@ class EventEmitter:
             self._writer.write(data)
             await self._writer.drain()
         except (ConnectionResetError, BrokenPipeError, OSError) as exc:
-            log.warn("EventEmitter.emit", note="write failed — event dropped", error=str(exc), event_type=event_type)
+            log.warn(
+                "EventEmitter.emit",
+                note="write failed — event dropped",
+                error=str(exc),
+                event_type=event_type,
+            )
 
     def emit_threadsafe(self, event: dict, loop: asyncio.AbstractEventLoop) -> None:
         """Schedule emit() from a non-async thread."""

@@ -1,0 +1,75 @@
+name: Release (manual)
+
+# Manual-only: produces a DMG from the current ref as a downloadable artifact.
+# Does NOT publish to any store, GitHub Releases, or update channel — this is
+# the "I want a build I can hand to a tester" workflow. Use `gh workflow run
+# release.yml --ref <branch>` or the GitHub UI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip-signing:
+        description: 'Build unsigned (no Apple Developer credentials needed)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  make:
+    name: Package + make DMG (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: my-app/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install JS dependencies
+        working-directory: my-app
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Python daemon dependencies
+        working-directory: my-app/python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Python daemon binary
+        working-directory: my-app/python
+        run: bash build.sh
+
+      - name: electron-forge make
+        working-directory: my-app
+        env:
+          SKIP_SIGNING: ${{ inputs.skip-signing && '1' || '' }}
+          SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run make
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentic-browser-${{ github.sha }}
+          path: |
+            my-app/out/make/**/*.dmg
+            my-app/out/make/**/*.zip
+          if-no-files-found: error
+          retention-days: 14

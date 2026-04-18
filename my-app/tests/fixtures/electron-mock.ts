@@ -64,6 +64,61 @@ export const shell = {
   openExternal: (_url: string) => Promise.resolve(),
 };
 
+// Minimal Session stub. DownloadManager calls session.defaultSession.on(
+// 'will-download', ...) during BrowserWindow construction, so the mock
+// must expose a chainable EventEmitter-shaped object.
+const sessionStub = {
+  on: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
+  off: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
+  once: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
+  removeListener: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
+  removeAllListeners: (_event?: string) => sessionStub,
+  setPermissionRequestHandler: (_handler: unknown) => undefined,
+  setPermissionCheckHandler: (_handler: unknown) => undefined,
+  webRequest: {
+    onBeforeRequest: (_listener: unknown) => undefined,
+    onHeadersReceived: (_listener: unknown) => undefined,
+  },
+  clearCache: () => Promise.resolve(),
+  clearStorageData: (_options?: unknown) => Promise.resolve(),
+  cookies: {
+    get: () => Promise.resolve([]),
+    remove: () => Promise.resolve(),
+    flushStore: () => Promise.resolve(),
+  },
+};
+
+export const session = {
+  defaultSession: sessionStub,
+  fromPartition: (_partition: string) => sessionStub,
+};
+
+// Many main-process modules reach for app.whenReady via the namespace import.
+// The `protocol` module is also referenced by custom scheme registration code.
+export const protocol = {
+  registerSchemesAsPrivileged: (_schemes: unknown[]) => undefined,
+  registerFileProtocol: (_scheme: string, _handler: unknown) => undefined,
+  registerStringProtocol: (_scheme: string, _handler: unknown) => undefined,
+  registerBufferProtocol: (_scheme: string, _handler: unknown) => undefined,
+  handle: (_scheme: string, _handler: unknown) => undefined,
+  unhandle: (_scheme: string) => undefined,
+};
+
+export const Menu = {
+  setApplicationMenu: (_menu: unknown) => undefined,
+  buildFromTemplate: (_template: unknown[]) => ({
+    popup: () => undefined,
+    closePopup: () => undefined,
+  }),
+  getApplicationMenu: () => null,
+};
+
+export const MenuItem = class {
+  constructor(_opts: unknown) {
+    // noop
+  }
+};
+
 export default {
   app,
   ipcMain,
@@ -72,4 +127,8 @@ export default {
   screen,
   nativeImage,
   shell,
+  session,
+  protocol,
+  Menu,
+  MenuItem,
 };

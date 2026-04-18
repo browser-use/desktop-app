@@ -1,0 +1,52 @@
+version: 2
+updates:
+  # JavaScript/TypeScript deps in the Electron app
+  - package-ecosystem: npm
+    directory: /my-app
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    groups:
+      electron:
+        patterns:
+          - 'electron'
+          - '@electron/*'
+          - '@electron-forge/*'
+      react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react*'
+      testing:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+          - '@playwright/*'
+          - '@testing-library/*'
+      eslint:
+        patterns:
+          - 'eslint*'
+          - '@typescript-eslint/*'
+    ignore:
+      # Typescript 4.5 is pinned intentionally — upgrade is a scoped project
+      - dependency-name: 'typescript'
+
+  # Python daemon deps
+  - package-ecosystem: pip
+    directory: /my-app/python
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 3
+
+  # GitHub Actions versions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3

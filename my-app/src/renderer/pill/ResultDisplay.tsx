@@ -123,11 +123,11 @@ export function ResultDisplay({
   if (isDone) {
     const resultText = String((state as { kind: 'done'; result: unknown }).result ?? '');
 
-    function handleCopy(): void {
+    const handleCopy = (): void => {
       if (resultText) {
         void navigator.clipboard.writeText(resultText);
       }
-    }
+    };
 
     return (
       <div className="pill-result" data-testid="result-display" data-result-kind="done">

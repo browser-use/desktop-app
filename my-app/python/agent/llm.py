@@ -13,11 +13,11 @@ Prompt caching strategy (mandatory per spec):
 
 Streaming is used to avoid timeout on long generations.
 """
+
 from __future__ import annotations
 
 import os
-import re
-from typing import Any, Optional
+from typing import Any
 
 from .logger import log
 
@@ -75,6 +75,7 @@ HELPERS_DOC = SYSTEM_PROMPT_PREFIX + "```python\n" + _HELPERS_SOURCE + "\n```"
 
 # ── Token usage tracking ──────────────────────────────────────────────────────
 
+
 class TokenUsage:
     """Accumulates token usage across LLM calls."""
 
@@ -110,6 +111,7 @@ class TokenUsage:
 
 # ── LLM Client ────────────────────────────────────────────────────────────────
 
+
 class LLMClient:
     """
     Anthropic SDK client with prompt caching.
@@ -120,9 +122,9 @@ class LLMClient:
 
     def __init__(
         self,
-        model: Optional[str] = None,
+        model: str | None = None,
         max_tokens: int = MAX_TOKENS_DEFAULT,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ):
         self.model = model or os.environ.get(MODEL_ENV_VAR, MODEL_DEFAULT)
         self.max_tokens = max_tokens
@@ -135,6 +137,7 @@ class LLMClient:
         if self._client is None:
             try:
                 import anthropic  # noqa: PLC0415
+
                 self._client = anthropic.Anthropic(
                     api_key=self._api_key,
                 )
@@ -148,7 +151,7 @@ class LLMClient:
     def chat(
         self,
         messages: list[dict],
-        page_context: Optional[str] = None,
+        page_context: str | None = None,
     ) -> str:
         """
         Send messages to the LLM with prompt caching on the system prompt.
@@ -175,11 +178,13 @@ class LLMClient:
 
         # Block 2: page context (per-task, cached across steps of same task)
         if page_context:
-            system_blocks.append({
-                "type": "text",
-                "text": f"Current page context:\n{page_context}",
-                "cache_control": {"type": "ephemeral"},
-            })
+            system_blocks.append(
+                {
+                    "type": "text",
+                    "text": f"Current page context:\n{page_context}",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            )
 
         log.debug(
             "LLMClient.chat",

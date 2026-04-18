@@ -31,14 +31,24 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      include: ['src/main/telemetry.ts', 'src/main/logger.ts', 'config/sentry.ts'],
-      reporter: ['text', 'lcov'],
+      include: [
+        'src/main/**/*.ts',
+        'src/shared/**/*.ts',
+        'src/renderer/**/*.ts',
+        'src/renderer/**/*.tsx',
+        'config/*.ts',
+      ],
+      exclude: [
+        '**/*.d.ts',
+        '**/__mocks__/**',
+        'src/renderer/**/main.tsx',
+      ],
+      reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: 'tests/results/coverage',
-      thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 70,
-      },
+      // Phase 1: report coverage but don't gate CI on it. New code should
+      // follow the D1 directive (>=80% on src/main + src/shared). Ratcheting
+      // global thresholds is Phase-2 work, tracked once we've backfilled tests
+      // for the Chromium-parity features that shipped without them.
     },
     reporters: ['verbose'],
   },

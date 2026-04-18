@@ -8,38 +8,38 @@ Covers:
 - ProtocolError on malformed input
 - Version field present on all messages
 """
+
 import json
+
 import pytest
 
 from agent.protocol import (
-    PROTOCOL_VERSION,
+    ERR_INTERNAL,
     ERR_PARSE_ERROR,
     ERR_UNKNOWN_META,
-    ERR_TASK_RUNNING,
-    ERR_TASK_NOT_FOUND,
-    ERR_INTERNAL,
-    REASON_STEP_BUDGET_EXHAUSTED,
-    REASON_TOKEN_BUDGET_EXHAUSTED,
-    REASON_SANDBOX_VIOLATION,
+    PROTOCOL_VERSION,
     REASON_INTERNAL_ERROR,
+    REASON_SANDBOX_VIOLATION,
+    REASON_STEP_BUDGET_EXHAUSTED,
     REASON_TARGET_LOST,
-    ok_response,
+    REASON_TOKEN_BUDGET_EXHAUSTED,
+    ProtocolError,
+    encode_message,
     error_response,
-    event_task_started,
-    event_step_start,
-    event_step_result,
     event_step_error,
+    event_step_result,
+    event_step_start,
+    event_target_lost,
+    event_task_cancelled,
     event_task_done,
     event_task_failed,
-    event_task_cancelled,
-    event_target_lost,
+    event_task_started,
+    ok_response,
     parse_request,
-    encode_message,
-    ProtocolError,
 )
 
-
 # ── ok_response ───────────────────────────────────────────────────────────────
+
 
 class TestOkResponse:
     def test_ok_true(self):
@@ -60,6 +60,7 @@ class TestOkResponse:
 
 
 # ── error_response ────────────────────────────────────────────────────────────
+
 
 class TestErrorResponse:
     def test_ok_false(self):
@@ -82,6 +83,7 @@ class TestErrorResponse:
 
 
 # ── Event builders ────────────────────────────────────────────────────────────
+
 
 class TestEventBuilders:
     TASK_ID = "test-task-001"
@@ -108,7 +110,9 @@ class TestEventBuilders:
         assert evt["plan"] == ""
 
     def test_step_result(self):
-        evt = event_step_result(self.TASK_ID, step=1, result={"url": "https://x.com"}, duration_ms=250)
+        evt = event_step_result(
+            self.TASK_ID, step=1, result={"url": "https://x.com"}, duration_ms=250
+        )
         self._assert_base(evt, "step_result")
         assert evt["step"] == 1
         assert evt["result"] == {"url": "https://x.com"}
@@ -143,7 +147,9 @@ class TestEventBuilders:
         assert "partial_result" not in evt
 
     def test_task_failed_with_partial_result(self):
-        evt = event_task_failed(self.TASK_ID, reason=REASON_TOKEN_BUDGET_EXHAUSTED, partial_result="some data")
+        evt = event_task_failed(
+            self.TASK_ID, reason=REASON_TOKEN_BUDGET_EXHAUSTED, partial_result="some data"
+        )
         assert evt["partial_result"] == "some data"
 
     def test_task_cancelled(self):
@@ -157,6 +163,7 @@ class TestEventBuilders:
 
 
 # ── encode_message ────────────────────────────────────────────────────────────
+
 
 class TestEncodeMessage:
     def test_produces_bytes(self):
@@ -193,6 +200,7 @@ class TestEncodeMessage:
 
 # ── parse_request ─────────────────────────────────────────────────────────────
 
+
 class TestParseRequest:
     def test_valid_bytes(self):
         raw = b'{"meta": "ping"}'
@@ -216,7 +224,7 @@ class TestParseRequest:
 
     def test_parse_error_on_non_object(self):
         with pytest.raises(ProtocolError) as exc_info:
-            parse_request(b'[1, 2, 3]')
+            parse_request(b"[1, 2, 3]")
         assert exc_info.value.code == ERR_PARSE_ERROR
 
     def test_parse_error_on_missing_meta(self):
@@ -225,12 +233,14 @@ class TestParseRequest:
         assert exc_info.value.code == ERR_UNKNOWN_META
 
     def test_agent_task_shape_preserved(self):
-        raw = json.dumps({
-            "meta": "agent_task",
-            "task_id": "t1",
-            "prompt": "click login",
-            "per_target_cdp_url": "ws://localhost:9222/devtools/page/abc",
-        }).encode()
+        raw = json.dumps(
+            {
+                "meta": "agent_task",
+                "task_id": "t1",
+                "prompt": "click login",
+                "per_target_cdp_url": "ws://localhost:9222/devtools/page/abc",
+            }
+        ).encode()
         msg = parse_request(raw)
         assert msg["meta"] == "agent_task"
         assert msg["task_id"] == "t1"
@@ -243,6 +253,7 @@ class TestParseRequest:
 
 
 # ── Reason string constants ───────────────────────────────────────────────────
+
 
 class TestReasonConstants:
     def test_all_reasons_are_strings(self):

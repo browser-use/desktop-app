@@ -6,6 +6,7 @@ Defaults:
     max_tokens_input = 100_000
     max_tokens_output = 16_000
 """
+
 from __future__ import annotations
 
 from .logger import log
@@ -17,6 +18,7 @@ MAX_TOKENS_OUTPUT_DEFAULT = 16_000
 
 class BudgetExhausted(Exception):
     """Raised when a budget limit is exceeded."""
+
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason

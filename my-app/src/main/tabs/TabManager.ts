@@ -375,8 +375,13 @@ export class TabManager {
 
     mainLogger.info('TabManager.closeTab', { tabId, pinned: this.pinnedTabs.has(tabId) });
 
-    // Notify permission manager to expire session grants for this tab
-    try { this.onTabClosed?.(tabId); } catch {}
+    // Notify permission manager to expire session grants for this tab.
+    // Best-effort — do not fail the close path if the callback throws.
+    try {
+      this.onTabClosed?.(tabId);
+    } catch {
+      // intentionally swallowed
+    }
 
     // Capture closed-tab record BEFORE destroying the view. Scroll capture is
     // best-effort (races with page destruction); history capture uses

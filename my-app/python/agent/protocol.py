@@ -27,12 +27,12 @@ Event shapes (daemon → main, pushed async, one JSON per line):
     {event: "task_cancelled", task_id}
     {event: "target_lost",    task_id, target_id}
 """
+
 from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass, field, asdict
-from typing import Any, Optional
+from typing import Any
 
 PROTOCOL_VERSION = "1.0"
 
@@ -58,7 +58,8 @@ def _now_iso() -> str:
 
 # ── Response builders ─────────────────────────────────────────────────────────
 
-def ok_response(result: Optional[dict] = None) -> dict:
+
+def ok_response(result: dict | None = None) -> dict:
     """Build a successful response envelope."""
     resp: dict[str, Any] = {"ok": True, "version": PROTOCOL_VERSION}
     if result is not None:
@@ -76,6 +77,7 @@ def error_response(code: str, message: str, retryable: bool = False) -> dict:
 
 
 # ── Event builders ────────────────────────────────────────────────────────────
+
 
 def event_task_started(task_id: str) -> dict:
     return {
@@ -168,8 +170,10 @@ def event_target_lost(task_id: str, target_id: str) -> dict:
 
 # ── Message parsing ───────────────────────────────────────────────────────────
 
+
 class ProtocolError(Exception):
     """Raised when an incoming message cannot be parsed or has invalid shape."""
+
     def __init__(self, code: str, message: str, retryable: bool = False):
         super().__init__(message)
         self.code = code
@@ -183,7 +187,7 @@ def parse_request(raw: bytes | str) -> dict:
             raw = raw.decode("utf-8")
         msg = json.loads(raw.strip())
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise ProtocolError(ERR_PARSE_ERROR, f"JSON parse error: {exc}")
+        raise ProtocolError(ERR_PARSE_ERROR, f"JSON parse error: {exc}") from exc
 
     if not isinstance(msg, dict):
         raise ProtocolError(ERR_PARSE_ERROR, "Message must be a JSON object")

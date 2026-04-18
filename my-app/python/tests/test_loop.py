@@ -18,23 +18,18 @@ Covers:
 - task_failed emitted on budget exhaustion
 - task_cancelled emitted when cancelled
 """
+
 import threading
-from typing import Optional
-from unittest.mock import MagicMock
 
-import pytest
-
-from agent.loop import AgentLoop, run_task
 from agent.budget import Budget
-from agent.events import SyncEventEmitter
-from agent.exec_sandbox import SandboxViolation
+from agent.loop import AgentLoop, run_task
 from agent.protocol import (
     REASON_STEP_BUDGET_EXHAUSTED,
     REASON_TOKEN_BUDGET_EXHAUSTED,
 )
 
-
 # ── Mock LLM client ───────────────────────────────────────────────────────────
+
 
 class MockLLMClient:
     """
@@ -49,7 +44,7 @@ class MockLLMClient:
         # Simulate token usage (small numbers for tests)
         self.usage = _FakeUsage()
 
-    def chat(self, messages: list[dict], page_context: Optional[str] = None) -> str:
+    def chat(self, messages: list[dict], page_context: str | None = None) -> str:
         self._call_count += 1
         # Accumulate fake tokens each call
         self.usage.input_tokens += 100
@@ -73,6 +68,7 @@ class _FakeUsage:
 
 # ── Mock helpers ──────────────────────────────────────────────────────────────
 
+
 class MockHelpers:
     def page_info(self) -> dict:
         return {"url": "https://example.com", "title": "Example"}
@@ -89,11 +85,12 @@ class MockHelpers:
 
 # ── Test fixtures ─────────────────────────────────────────────────────────────
 
+
 def make_loop(
     responses: list[str],
     max_steps: int = 20,
     max_tokens_input: int = 100_000,
-    cancel_flag: Optional[threading.Event] = None,
+    cancel_flag: threading.Event | None = None,
 ) -> tuple[AgentLoop, list[dict]]:
     """Create an AgentLoop with mocked LLM and return (loop, event_log)."""
     event_log: list[dict] = []
@@ -117,6 +114,7 @@ def events_of_type(log: list[dict], event_type: str) -> list[dict]:
 
 
 # ── Happy path ────────────────────────────────────────────────────────────────
+
 
 class TestHappyPath:
     def test_task_started_emitted_first(self):
@@ -204,6 +202,7 @@ class TestHappyPath:
 
 # ── Budget exhaustion ─────────────────────────────────────────────────────────
 
+
 class TestBudgetExhaustion:
     def test_step_budget_exhausted_emits_task_failed(self):
         # max_steps=2, LLM never says done
@@ -262,6 +261,7 @@ class TestBudgetExhaustion:
 
 # ── Cancel flag ───────────────────────────────────────────────────────────────
 
+
 class TestCancelFlag:
     def test_cancel_before_first_step(self):
         cancel_flag = threading.Event()
@@ -290,6 +290,7 @@ class TestCancelFlag:
         cancel_flag = threading.Event()
 
         call_count = 0
+
         class CancelAfterFirst(MockLLMClient):
             def chat(self, messages, page_context=None):
                 nonlocal call_count
@@ -322,6 +323,7 @@ class TestCancelFlag:
 
 
 # ── Sandbox violation ─────────────────────────────────────────────────────────
+
 
 class TestSandboxViolation:
     def test_sandbox_violation_emits_step_error(self):
@@ -363,6 +365,7 @@ class TestSandboxViolation:
 
 # ── Event ordering ────────────────────────────────────────────────────────────
 
+
 class TestEventOrdering:
     def test_event_sequence_for_complete_task(self):
         responses = [
@@ -401,13 +404,16 @@ class TestEventOrdering:
 
 # ── run_task() entry point ────────────────────────────────────────────────────
 
+
 class TestRunTask:
     def test_run_task_function(self):
         """run_task() is the daemon entry point — verify it works end-to-end."""
         event_log: list[dict] = []
-        llm = MockLLMClient([
-            "```python\n__result__ = 'via run_task'\n```\nTask complete",
-        ])
+        llm = MockLLMClient(
+            [
+                "```python\n__result__ = 'via run_task'\n```\nTask complete",
+            ]
+        )
 
         run_task(
             prompt="test via run_task",

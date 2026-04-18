@@ -21,6 +21,7 @@ Usage (internal — called by ExecSandbox.run):
     from .safe_exec_subprocess import run_in_subprocess
     result = run_in_subprocess(source, namespace, timeout_s, max_bytes)
 """
+
 from __future__ import annotations
 
 import multiprocessing
@@ -33,9 +34,7 @@ from .logger import log
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 # Default memory cap per sandboxed execution: 512 MB
-_DEFAULT_MEMORY_BYTES = int(
-    os.getenv("SANDBOX_MEMORY_BYTES", str(512 * 1024 * 1024))
-)
+_DEFAULT_MEMORY_BYTES = int(os.getenv("SANDBOX_MEMORY_BYTES", str(512 * 1024 * 1024)))
 
 # Keys used in the result queue payload
 _RESULT_KEY = "__result__"
@@ -44,6 +43,7 @@ _ERROR_TYPE_KEY = "__error_type__"
 
 
 # ── Subprocess entry point ─────────────────────────────────────────────────────
+
 
 def _subprocess_entry(
     source: str,
@@ -72,7 +72,7 @@ def _subprocess_entry(
             note="memory_limit_set",
             max_bytes=max_bytes,
         )
-    except (ValueError, resource.error) as exc:
+    except (OSError, ValueError) as exc:
         # Non-fatal: log and continue — limit may already be lower
         log.warn(
             "safe_exec_subprocess._subprocess_entry",
@@ -94,6 +94,7 @@ def _subprocess_entry(
         # queue.  We catch that here and convert it to an explicit error payload
         # (which is always picklable) so the parent always receives a payload.
         import json as _json  # noqa: PLC0415
+
         if result is not None:
             try:
                 _json.dumps(result)
@@ -106,11 +107,13 @@ def _subprocess_entry(
                 serialization_err = ValueError(
                     f"Sandbox result is not JSON-serializable: {json_exc}"
                 )
-                result_queue.put({
-                    _ERROR_KEY: str(serialization_err),
-                    _ERROR_TYPE_KEY: "ValueError",
-                    "__exc__": serialization_err,
-                })
+                result_queue.put(
+                    {
+                        _ERROR_KEY: str(serialization_err),
+                        _ERROR_TYPE_KEY: "ValueError",
+                        "__exc__": serialization_err,
+                    }
+                )
                 result_queue.close()
                 result_queue.join_thread()
                 return
@@ -126,22 +129,27 @@ def _subprocess_entry(
         # Try to put the original exception; if it too is unpicklable,
         # fall back to a plain RuntimeError with just the message.
         try:
-            result_queue.put({
-                _ERROR_KEY: str(exc),
-                _ERROR_TYPE_KEY: type(exc).__name__,
-                # Preserve the original exception object for re-raise in parent
-                "__exc__": exc,
-            })
+            result_queue.put(
+                {
+                    _ERROR_KEY: str(exc),
+                    _ERROR_TYPE_KEY: type(exc).__name__,
+                    # Preserve the original exception object for re-raise in parent
+                    "__exc__": exc,
+                }
+            )
         except Exception:  # noqa: BLE001
-            result_queue.put({
-                _ERROR_KEY: str(exc),
-                _ERROR_TYPE_KEY: type(exc).__name__,
-            })
+            result_queue.put(
+                {
+                    _ERROR_KEY: str(exc),
+                    _ERROR_TYPE_KEY: type(exc).__name__,
+                }
+            )
         result_queue.close()
         result_queue.join_thread()
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
+
 
 def run_in_subprocess(
     source: str,
@@ -230,13 +238,14 @@ def run_in_subprocess(
     # timeout (1s) as a safety net against unexpected child crashes that skip
     # the close/join_thread path (e.g. SIGKILL from OOM).
     import queue as _queue_mod  # noqa: PLC0415
+
     try:
         payload = result_queue.get(timeout=1)
-    except _queue_mod.Empty:
+    except _queue_mod.Empty as exc:
         # Child exited without sending any payload — crashed before queuing
         raise RuntimeError(
             f"Sandbox subprocess exited with code {p.exitcode} without returning a result"
-        )
+        ) from exc
 
     if _ERROR_KEY in payload:
         # Re-raise the original exception from the subprocess

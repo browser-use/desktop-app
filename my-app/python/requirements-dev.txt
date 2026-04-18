@@ -1,0 +1,13 @@
+# Dev-only dependencies (tests, lint, type-check). Not installed into the
+# runtime Docker image — see Dockerfile, which only installs requirements.txt.
+
+-r requirements.txt
+
+# Lint + format (single tool, replaces flake8/black/isort)
+ruff>=0.7.0
+
+# Static type checking
+mypy>=1.11.0
+
+# Test coverage
+pytest-cov>=5.0.0
