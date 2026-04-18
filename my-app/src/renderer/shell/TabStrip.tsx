@@ -437,7 +437,7 @@ export function TabStrip({
 
   const handleTabClick = useCallback(
     (e: React.MouseEvent, tab: TabState, index: number) => {
-      if (e.metaKey || e.ctrlKey) {
+      if (process.platform === 'darwin' ? e.metaKey : e.ctrlKey) {
         // Toggle this tab in the selection without changing active tab
         e.stopPropagation();
         setSelectedTabIds((prev) => {
@@ -474,10 +474,14 @@ export function TabStrip({
   );
 
   const handleCloseSelected = useCallback(() => {
-    selectedTabIds.forEach((id) => onClose(id));
+    // Pinned tabs cannot be closed via bulk close — filter them out.
+    const closableIds = tabs
+      .filter((t) => selectedTabIds.has(t.id) && !t.pinned)
+      .map((t) => t.id);
+    closableIds.forEach((id) => onClose(id));
     setSelectedTabIds(new Set());
     setLastClickedTabId(null);
-  }, [selectedTabIds, onClose]);
+  }, [tabs, selectedTabIds, onClose]);
 
   const handleTabKeyDown = useCallback(
     (e: React.KeyboardEvent, tab: TabState, index: number) => {
