@@ -69,7 +69,15 @@ export class TabGroupStore {
 
   deserialize(json: string): void {
     try {
-      const arr: TabGroup[] = JSON.parse(json);
+      const parsed: unknown = JSON.parse(json);
+      if (!Array.isArray(parsed)) return;
+      const arr = parsed.filter(
+        (g): g is TabGroup =>
+          g !== null &&
+          typeof g === 'object' &&
+          typeof (g as TabGroup).id === 'string' &&
+          typeof (g as TabGroup).name === 'string',
+      );
       this.groups.clear();
       for (const g of arr) {
         this.groups.set(g.id, g);

@@ -515,7 +515,7 @@ export function TabStrip({
         label: 'New Tab in Group',
         action: () => {
           electronAPI.tabs.create().then((newTabId) => {
-            electronAPI.tabGroups.addTab({ groupId: group.id, tabId: newTabId });
+            return electronAPI.tabGroups.addTab({ groupId: group.id, tabId: newTabId });
           }).catch(() => {});
         },
       },
