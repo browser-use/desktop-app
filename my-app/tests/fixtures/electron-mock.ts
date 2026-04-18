@@ -64,28 +64,92 @@ export const shell = {
   openExternal: (_url: string) => Promise.resolve(),
 };
 
-// Minimal Session stub. DownloadManager calls session.defaultSession.on(
-// 'will-download', ...) during BrowserWindow construction, so the mock
-// must expose a chainable EventEmitter-shaped object.
+// Session stub covering every API reached from src/main.
+//
+// Callers include:
+// - DownloadManager: ses.on('will-download', ...)
+// - ExtensionManager: loadExtension / removeExtension / getAllExtensions
+// - DeclarativeNetRequestEngine: webRequest.onBeforeRequest /
+//   onHeadersReceived
+// - ClearDataController: clearHistory / clearCache / clearAuthCache /
+//   clearStorageData
+// - PermissionManager: setPermissionRequestHandler /
+//   setPermissionCheckHandler
+// - ProfileContext: session.fromPartition(...)
+//
+// The stub returns itself for chainable .on/.off so EventEmitter patterns
+// don't blow up, and resolves every async API to a typical empty value.
 const sessionStub = {
   on: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
   off: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
   once: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
   removeListener: (_event: string, _handler: (...args: unknown[]) => void) => sessionStub,
   removeAllListeners: (_event?: string) => sessionStub,
+
+  // permissions
   setPermissionRequestHandler: (_handler: unknown) => undefined,
   setPermissionCheckHandler: (_handler: unknown) => undefined,
+  setDevicePermissionHandler: (_handler: unknown) => undefined,
+
+  // web request interception (DeclarativeNetRequestEngine)
   webRequest: {
     onBeforeRequest: (_listener: unknown) => undefined,
+    onBeforeSendHeaders: (_listener: unknown) => undefined,
+    onSendHeaders: (_listener: unknown) => undefined,
     onHeadersReceived: (_listener: unknown) => undefined,
+    onResponseStarted: (_listener: unknown) => undefined,
+    onBeforeRedirect: (_listener: unknown) => undefined,
+    onCompleted: (_listener: unknown) => undefined,
+    onErrorOccurred: (_listener: unknown) => undefined,
   },
+
+  // data clearing (ClearDataController)
   clearCache: () => Promise.resolve(),
+  clearAuthCache: () => Promise.resolve(),
+  clearHistory: () => Promise.resolve(),
+  clearHostResolverCache: () => Promise.resolve(),
   clearStorageData: (_options?: unknown) => Promise.resolve(),
+  flushStorageData: () => undefined,
+
   cookies: {
     get: () => Promise.resolve([]),
+    set: (_details: unknown) => Promise.resolve(),
     remove: () => Promise.resolve(),
     flushStore: () => Promise.resolve(),
   },
+
+  // extensions (ExtensionManager)
+  loadExtension: (_path: string, _opts?: unknown) =>
+    Promise.resolve({
+      id: 'mock-ext-id',
+      manifest: {},
+      name: 'mock-ext',
+      path: _path,
+      version: '0.0.0',
+    }),
+  removeExtension: (_id: string) => undefined,
+  getExtension: (_id: string) => null,
+  getAllExtensions: () => [],
+
+  // spell check / proxies / misc
+  setSpellCheckerEnabled: (_enabled: boolean) => undefined,
+  isSpellCheckerEnabled: () => false,
+  setProxy: (_config: unknown) => Promise.resolve(),
+  resolveProxy: (_url: string) => Promise.resolve(''),
+
+  // service workers (ServiceWorkerManager)
+  serviceWorkers: {
+    getAllRunning: () => ({}),
+    getFromVersionID: (_id: number) => null,
+    startWorkerForScope: (_scope: string) => Promise.resolve(),
+  },
+
+  // user agent
+  getUserAgent: () => 'mock-ua',
+  setUserAgent: (_ua: string) => undefined,
+
+  // certificate handlers
+  setCertificateVerifyProc: (_proc: unknown) => undefined,
 };
 
 export const session = {

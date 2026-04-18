@@ -54,10 +54,19 @@ jobs:
         working-directory: my-app/python
         run: bash build.sh
 
-      - name: electron-forge make
+      - name: electron-forge make (unsigned)
+        if: inputs.skip-signing
         working-directory: my-app
         env:
-          SKIP_SIGNING: ${{ inputs.skip-signing && '1' || '' }}
+          SKIP_SIGNING: '1'
+        run: npm run make
+
+      - name: electron-forge make (signed + notarized)
+        if: ${{ !inputs.skip-signing }}
+        working-directory: my-app
+        env:
+          # Only exposed to the forge process when signing is explicitly
+          # requested — keeps credentials out of the unsigned-build path.
           SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
