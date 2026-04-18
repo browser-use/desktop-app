@@ -77,7 +77,9 @@ jobs:
         # preload-path.spec.ts launches ./node_modules/.bin/electron against
         # .vite/build/main.js directly (dev-mode style). It does NOT use the
         # packaged out/my-app.app bundle — it needs the .vite/ output tree.
-        run: npm run package -- --skip-signing
+        env:
+          SKIP_SIGNING: '1'
+        run: npm run package
 
       - name: Playwright regression tests
         working-directory: my-app
