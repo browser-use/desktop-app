@@ -12,7 +12,7 @@ import React, {
 import { OmniboxDropdown } from './OmniboxDropdown';
 import { usePopupLayer } from './PopupLayerContext';
 import type { OmniboxSuggestion } from '../../main/omnibox/providers';
-import { decode as punyDecode } from 'punycode';
+import { decode as punyDecode, toASCII } from 'punycode';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,6 +61,10 @@ function decodeHostnameForDisplay(hostname: string): string {
       if (!label.startsWith('xn--')) return label;
       try {
         const unicode = punyDecode(label.slice(4)); // strip 'xn--' prefix
+        // Round-trip validation: only show Unicode if re-encoding produces the
+        // same xn-- label. This prevents spoofing via labels like xn--google-
+        // that decode to a visually misleading string but don't round-trip.
+        if (toASCII(unicode) !== label) return label;
         return isSafeUnicodeLabel(unicode) ? unicode : label;
       } catch {
         return label;
@@ -251,6 +255,21 @@ export function URLBar({
     fetchSuggestions(val);
   }, [fetchSuggestions]);
 
+  const confirmNavigate = useCallback((target: string, suggestion?: OmniboxSuggestion) => {
+    closeDropdown();
+    onNavigate(target);
+    if (suggestion) {
+      // Use the current controlled inputValue (not the stale editInputRef) so
+      // recordSelection always receives what the user actually typed.
+      electronAPI.omnibox.recordSelection({
+        inputText: inputValue,
+        url: suggestion.url,
+        title: suggestion.title,
+      }).catch(() => {});
+    }
+    inputRef.current?.blur();
+  }, [onNavigate, closeDropdown, inputValue]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (dropdownOpen && suggestions.length > 0) {
@@ -296,16 +315,31 @@ export function URLBar({
     [inputValue, onNavigate, url, dropdownOpen, suggestions, selectedIndex, commitSuggestion, closeDropdown],
   );
 
-  const handleRemoveSuggestion = useCallback((suggestion: OmniboxSuggestion): void => {
-    console.log('[URLBar] removing omnibox history entry:', suggestion.id);
-    // Strip the "history-quick-" prefix to get the raw history id
-    const histId = suggestion.id.replace(/^history-quick-/, '').replace(/^zero-history-/, '');
-    electronAPI.omnibox.removeHistory(histId).catch((err: unknown) => {
-      console.warn('[URLBar] omnibox:remove-history error:', err);
-    });
-    setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
-    if (suggestions.length <= 1) closeDropdown();
-  }, [suggestions, closeDropdown]);
+  const handleRemoveSuggestion = useCallback((s: OmniboxSuggestion) => {
+    // Match all ID prefixes that represent removable history suggestions.
+    // Providers emit: 'history-quick-<id>', 'zero-history-<id>', 'history-url-<id>-<i>',
+    // and the legacy 'history:<id>' prefix (kept for back-compat).
+    const isHistoryId =
+      s.id.startsWith('history:') ||
+      s.id.startsWith('history-quick') ||
+      s.id.startsWith('history-url') ||
+      s.id.startsWith('zero-history');
+    if (isHistoryId) {
+      // Extract the raw entry id by stripping the known provider prefix.
+      const rawId = s.id.startsWith('history:')
+        ? s.id.slice('history:'.length)
+        : s.id.startsWith('history-quick-')
+          ? s.id.slice('history-quick-'.length)
+          : s.id.startsWith('history-url-')
+            ? s.id.slice('history-url-'.length).replace(/-\d+$/, '') // strip trailing '-<i>'
+            : s.id.slice('zero-history-'.length); // zero-history-<id>
+      electronAPI.omnibox.removeHistory(rawId).catch(() => {});
+    }
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    if (suggestions.filter((x) => x.id !== s.id).length === 0) {
+      setDropdownOpen(false);
+    }
+  }, [suggestions]);
 
   const security = getSecurityStatus(url);
   // Hide the star on blank/new-tab URLs — nothing meaningful to bookmark.
