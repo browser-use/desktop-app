@@ -10,9 +10,11 @@
  */
 
 import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 export default defineConfig({
+  plugins: [react()],
   test: {
     name: 'unit',
     include: [
@@ -21,8 +23,19 @@ export default defineConfig({
       'tests/integration/**/*.test.ts',
       // Regression tests that don't need a live Electron process
       'tests/regression/no-global-shortcuts.spec.ts',
+      // Backfilled tests for chrome://history, chrome://extensions, zoom
+      // (PR: test backfill for D1 TDD compliance)
+      'tests/unit/history/**/*.spec.ts',
+      'tests/unit/history/**/*.spec.tsx',
+      'tests/unit/extensions/**/*.spec.ts',
+      'tests/unit/extensions/**/*.spec.tsx',
+      'tests/unit/zoom/**/*.spec.ts',
+      'tests/unit/shell/**/*.spec.tsx',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
+    // Renderer .spec.tsx files declare jsdom via the per-file
+    //   // @vitest-environment jsdom
+    // pragma. The default is node so the existing pure-unit suite is unaffected.
     environment: 'node',
     globals: false,
     // Mock electron module so tests run outside Electron
