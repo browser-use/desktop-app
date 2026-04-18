@@ -18,10 +18,9 @@ import { ProfileMenu } from './ProfileMenu';
 import { DownloadButton } from './DownloadButton';
 import { DownloadBubble } from './DownloadBubble';
 import { AppMenuButton } from './AppMenuButton';
-
+import { ShareButton, ShareMenu } from './ShareMenu';
 import { SidePanel, SidePanelToggleButton } from './SidePanel';
 import type { SidePanelId, SidePanelPosition } from './SidePanel';
-import { useRegionCycling } from './useRegionCycling';
 import type {
   TabManagerState,
   TabState,
@@ -42,7 +41,7 @@ const DROPDOWN_OVERFLOW_HEIGHT = 300;
 // bookmarks bar treats those as "NTP" for the 'ntp-only' visibility mode.
 const NTP_URL_RE = /^(data:|about:blank$)/i;
 const AUTO_DISMISS_DELAY_MS = 5000;
-const DEFAULT_SIDE_PANEL_WIDTH = 340;
+const DEFAULT_SIDE_PANEL_WIDTH = 320;
 
 // Typed reference to the contextBridge API
 declare const electronAPI: {
@@ -102,8 +101,12 @@ declare const electronAPI: {
     setSidePanelWidth: (width: number) => Promise<void>;
     setSidePanelPosition: (position: 'left' | 'right') => Promise<void>;
     getPlatform: () => Promise<string>;
-    focusContent: () => Promise<void>;
-    toggleCaretBrowsing: () => Promise<boolean>;
+  };
+  share: {
+    copyLink: () => Promise<boolean>;
+    emailPage: () => Promise<boolean>;
+    savePageAs: () => Promise<boolean>;
+    getPageInfo: () => Promise<{ url: string; title: string } | null>;
   };
   menu: {
     showAppMenu: (bounds: { x: number; y: number }) => Promise<void>;
@@ -123,8 +126,6 @@ declare const electronAPI: {
     openBookmarkDialog: (cb: () => void) => () => void;
     toggleBookmarksBar: (cb: () => void) => () => void;
     focusBookmarksBar: (cb: () => void) => () => void;
-    regionCycle: (cb: (payload: { forward: boolean }) => void) => () => void;
-    caretBrowsingToggled: (cb: (payload: { enabled: boolean }) => void) => () => void;
     zoomChanged: (cb: (payload: { percent: number }) => void) => () => void;
     permissionPrompt: (
       cb: (data: { id: string; tabId: string | null; origin: string; permissionType: string; isMainFrame: boolean }) => void,
@@ -161,7 +162,6 @@ export function WindowChrome(): React.ReactElement {
   const [urlBarFocused, setUrlBarFocused] = useState(false);
   const [zoomPercent, setZoomPercent] = useState(100);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [caretBrowsing, setCaretBrowsing] = useState(false);
 
   // Bookmarks state
   const [bookmarksTree, setBookmarksTree] = useState<PersistedBookmarks | null>(null);
@@ -174,18 +174,16 @@ export function WindowChrome(): React.ReactElement {
   const [showOnComplete, setShowOnComplete] = useState(true);
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-
   // Side panel state
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
+  // Share menu state
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const [shareAnchorRect, setShareAnchorRect] = useState<DOMRect | null>(null);
   const [sidePanelActiveId, setSidePanelActiveId] = useState<SidePanelId>('bookmarks');
   const [sidePanelPosition, setSidePanelPosition] = useState<SidePanelPosition>('right');
   const [sidePanelWidth, setSidePanelWidth] = useState(DEFAULT_SIDE_PANEL_WIDTH);
 
-  // Region refs for F6 cycling
-  const tabStripRef = useRef<HTMLDivElement | null>(null);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const bookmarksBarRef = useRef<HTMLDivElement | null>(null);
-  const sidePanelRef = useRef<HTMLDivElement | null>(null);
   // Derived active tab
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
   const activeUrl = activeTab?.url ?? '';
@@ -220,38 +218,6 @@ export function WindowChrome(): React.ReactElement {
     }
     return totalBytes > 0 ? receivedBytes / totalBytes : 0;
   }, [activeDownloads]);
-
-  // ---------------------------------------------------------------------------
-  // F6 region cycling
-  // ---------------------------------------------------------------------------
-  const regionRefs = useMemo(() => ({
-    tabStrip: tabStripRef,
-    toolbar: toolbarRef,
-    bookmarksBar: bookmarksBarRef,
-    sidePanel: sidePanelRef,
-  }), []);
-
-  const regionOpts = useMemo(() => ({
-    barVisible,
-    sidePanelOpen,
-  }), [barVisible, sidePanelOpen]);
-
-  const { currentRegionRef, cycleRegion, setCurrentRegion } = useRegionCycling(
-    regionRefs,
-    regionOpts,
-  );
-
-  const handleRegionCycle = useCallback(
-    (forward: boolean) => {
-      console.log('[WindowChrome] F6 region cycle, forward:', forward);
-      const next = cycleRegion(forward);
-      if (next === 'content') {
-        console.log('[WindowChrome] Focusing content (active tab webContents)');
-        electronAPI.shell.focusContent();
-      }
-    },
-    [cycleRegion],
-  );
 
   // ---------------------------------------------------------------------------
   // Bootstrap: load initial tab + bookmarks + downloads state
@@ -342,15 +308,6 @@ export function WindowChrome(): React.ReactElement {
       setFocusBookmarksBarTick((n) => n + 1);
     });
 
-    const unsubRegionCycle = electronAPI.on.regionCycle(({ forward }) => {
-      handleRegionCycle(forward);
-    });
-
-    const unsubCaretBrowsing = electronAPI.on.caretBrowsingToggled(({ enabled }) => {
-      console.log('[WindowChrome] Caret browsing toggled:', enabled);
-      setCaretBrowsing(enabled);
-    });
-
     return () => {
       unsubTabsState();
       unsubTabUpdated();
@@ -363,29 +320,8 @@ export function WindowChrome(): React.ReactElement {
       unsubOpenDialog();
       unsubToggleBar();
       unsubFocusBar();
-      unsubRegionCycle();
-      unsubCaretBrowsing();
     };
-  }, [bookmarksTree?.visibility, handleRegionCycle]);
-
-  // Track which region has focus via focusin events on the shell
-  useEffect(() => {
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target) return;
-      if (tabStripRef.current?.contains(target)) {
-        currentRegionRef.current = 'tab-strip';
-      } else if (toolbarRef.current?.contains(target)) {
-        currentRegionRef.current = 'toolbar';
-      } else if (bookmarksBarRef.current?.contains(target)) {
-        currentRegionRef.current = 'bookmarks-bar';
-      } else if (sidePanelRef.current?.contains(target)) {
-        currentRegionRef.current = 'side-panel';
-      }
-    };
-    document.addEventListener('focusin', handleFocusIn);
-    return () => document.removeEventListener('focusin', handleFocusIn);
-  }, [currentRegionRef]);
+  }, [bookmarksTree?.visibility]);
 
   // ---------------------------------------------------------------------------
   // Download IPC subscriptions
@@ -519,21 +455,44 @@ export function WindowChrome(): React.ReactElement {
     electronAPI.downloads.setShowOnComplete(value);
   }, []);
 
-  // Side panel handlers
+  // ---------------------------------------------------------------------------
+  // Share menu actions
+  // ---------------------------------------------------------------------------
+  const handleShareClick = useCallback((rect: DOMRect) => {
+    console.log('[WindowChrome] Share button clicked');
+    setShareAnchorRect(rect);
+    setShareMenuOpen((prev) => !prev);
+  }, []);
+
+  const handleShareClose = useCallback(() => {
+    console.log('[WindowChrome] Share menu closed');
+    setShareMenuOpen(false);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Side panel actions
+  // ---------------------------------------------------------------------------
+  const handleSidePanelToggle = useCallback(() => {
+    setSidePanelOpen((prev) => {
+      const next = !prev;
+      console.log('[WindowChrome] Side panel toggled:', next ? 'open' : 'closed');
+      return next;
+    });
+  }, []);
+
   const handleSidePanelClose = useCallback(() => {
+    console.log('[WindowChrome] Side panel closed');
     setSidePanelOpen(false);
   }, []);
 
   const handleSidePanelSelect = useCallback((id: SidePanelId) => {
+    console.log('[WindowChrome] Side panel selected:', id);
     setSidePanelActiveId(id);
-    setSidePanelOpen(true);
   }, []);
 
   const handleSidePanelWidthChange = useCallback((width: number) => {
     setSidePanelWidth(width);
-    electronAPI.shell.setSidePanelWidth(width);
   }, []);
-
 
   // ---------------------------------------------------------------------------
   // Render
@@ -541,7 +500,7 @@ export function WindowChrome(): React.ReactElement {
   return (
     <div className="window-chrome">
       {/* Tab strip row */}
-      <div className="window-chrome__tab-row" ref={tabStripRef} data-region="tab-strip">
+      <div className="window-chrome__tab-row">
         <div className="window-chrome__traffic-light-spacer" aria-hidden="true" />
 
         <TabStrip
@@ -555,7 +514,7 @@ export function WindowChrome(): React.ReactElement {
       </div>
 
       {/* Toolbar row */}
-      <div className="window-chrome__toolbar" ref={toolbarRef} data-region="toolbar">
+      <div className="window-chrome__toolbar">
         <NavButtons
           canGoBack={activeTab?.canGoBack ?? false}
           canGoForward={activeTab?.canGoForward ?? false}
@@ -610,23 +569,32 @@ export function WindowChrome(): React.ReactElement {
           )}
         </div>
 
+        <ShareButton onClick={handleShareClick} />
+        <ShareMenu
+          open={shareMenuOpen}
+          onClose={handleShareClose}
+          anchorRect={shareAnchorRect}
+        />
+        <SidePanelToggleButton
+          isOpen={sidePanelOpen}
+          onClick={handleSidePanelToggle}
+        />
+
         <ProfileMenu onDropdownChange={setDropdownOpen} />
         <AppMenuButton />
       </div>
 
       {barVisible && bookmarksTree && (
-        <div ref={bookmarksBarRef} data-region="bookmarks-bar">
-          <BookmarksBar
-            tree={bookmarksTree}
-            onOpen={(url) => {
-              if (activeTabId) electronAPI.tabs.navigate(activeTabId, url);
-            }}
-            onOpenInNewTab={(url) => {
-              electronAPI.tabs.create(url);
-            }}
-            focusTick={focusBookmarksBarTick}
-          />
-        </div>
+        <BookmarksBar
+          tree={bookmarksTree}
+          onOpen={(url) => {
+            if (activeTabId) electronAPI.tabs.navigate(activeTabId, url);
+          }}
+          onOpenInNewTab={(url) => {
+            electronAPI.tabs.create(url);
+          }}
+          focusTick={focusBookmarksBarTick}
+        />
       )}
 
       {bookmarkDialogOpen && activeUrl && bookmarksTree && (
@@ -642,26 +610,6 @@ export function WindowChrome(): React.ReactElement {
       <PermissionBar activeTabId={activeTabId} />
       <PasswordPromptBar activeTabId={activeTabId} />
       <FindBar activeTabId={activeTabId} />
-
-
-      <div ref={sidePanelRef} data-region="side-panel">
-        <SidePanel
-          open={sidePanelOpen}
-          activePanel={sidePanelActiveId}
-          position={sidePanelPosition}
-          width={sidePanelWidth}
-          activeTabId={activeTabId}
-          onClose={handleSidePanelClose}
-          onSelectPanel={handleSidePanelSelect}
-          onWidthChange={handleSidePanelWidthChange}
-        />
-      </div>
-
-      {caretBrowsing && (
-        <div className="caret-browsing-indicator" aria-live="polite">
-          Caret browsing ON
-        </div>
-      )}
     </div>
   );
 }

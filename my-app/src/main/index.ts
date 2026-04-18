@@ -15,7 +15,7 @@ import path from 'node:path';
 // dev-time fallback.
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, dialog, shell } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, dialog, shell } from 'electron';
 import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 import { TabManager } from './tabs/TabManager';
@@ -75,6 +75,8 @@ import { registerChromeHandlers, unregisterChromeHandlers } from './chrome/ipc';
 // Downloads
 // Issue #97 — Print Preview
 import { openPrintPreviewWindow } from './print/PrintPreviewWindow';
+// Issue #98 — Share menu
+import { registerShareHandlers, unregisterShareHandlers } from './share/ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -382,6 +384,9 @@ app.whenReady().then(async () => {
   registerHistoryHandlers({ store: historyStore });
 
   // Issue #26 — Chrome internal pages
+
+  // Issue #98 — Share menu
+  registerShareHandlers(tabManager!, shellWindow!);
   registerChromeHandlers(
     (page: string) => tabManager?.openInternalPage(page),
     () => openSettingsWindow(),
@@ -583,6 +588,7 @@ app.whenReady().then(async () => {
     ipcMain.removeHandler('settings:get-zoom-overrides');
     ipcMain.removeHandler('settings:remove-zoom-override');
     ipcMain.removeHandler('settings:clear-all-zoom-overrides');
+    unregisterShareHandlers();
     unregisterBookmarkHandlers();
     unregisterHistoryHandlers();
     unregisterChromeHandlers();
@@ -842,6 +848,56 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             mainLogger.debug('shortcuts.closeWindow');
             shellWindow?.close();
           },
+        },
+        { type: 'separator' },
+        {
+          label: 'Share',
+          submenu: [
+            {
+              label: 'Copy Link',
+              click: () => {
+                mainLogger.debug('shortcuts.share.copyLink');
+                const url = tabManager?.getActiveTabUrl();
+                if (url) clipboard.writeText(url);
+              },
+            },
+            {
+              label: 'Email This Page',
+              accelerator: 'CommandOrControl+Shift+I',
+              click: () => {
+                mainLogger.debug('shortcuts.share.emailPage');
+                const url = tabManager?.getActiveTabUrl();
+                const wc = tabManager?.getActiveWebContents();
+                const title = wc?.getTitle() || '';
+                if (url) {
+                  const subject = encodeURIComponent(title || url);
+                  const body = encodeURIComponent(url);
+                  shell.openExternal(`mailto:?subject=${subject}&body=${body}`);
+                }
+              },
+            },
+            { type: 'separator' },
+            {
+              label: 'Save Page As…',
+              accelerator: 'CommandOrControl+S',
+              click: async () => {
+                mainLogger.debug('shortcuts.share.savePageAs');
+                const wc = tabManager?.getActiveWebContents();
+                if (!wc || !shellWindow) return;
+                const pageUrl = wc.getURL();
+                const title = (wc.getTitle() || 'page').replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 100);
+                const result = await dialog.showSaveDialog(shellWindow, {
+                  defaultPath: title,
+                  filters: [{ name: 'Webpage, Complete', extensions: ['html'] }],
+                });
+                if (!result.canceled && result.filePath) {
+                  wc.savePage(result.filePath, 'HTMLComplete').catch((err: Error) => {
+                    mainLogger.warn('share.savePage.failed', { error: err.message });
+                  });
+                }
+              },
+            },
+          ],
         },
         { type: 'separator' },
         {
@@ -1478,6 +1534,50 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
       ],
     },
     { type: 'separator' },
+    {
+      label: 'Share',
+      submenu: [
+        {
+          label: 'Copy Link',
+          click: () => {
+            const url = tabManager?.getActiveTabUrl();
+            if (url) clipboard.writeText(url);
+          },
+        },
+        {
+          label: 'Email This Page',
+          click: () => {
+            const url = tabManager?.getActiveTabUrl();
+            const wc = tabManager?.getActiveWebContents();
+            const title = wc?.getTitle() || '';
+            if (url) {
+              const subject = encodeURIComponent(title || url);
+              const body = encodeURIComponent(url);
+              shell.openExternal(`mailto:?subject=${subject}&body=${body}`);
+            }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Save Page As…', accelerator: 'Ctrl+S',
+          click: async () => {
+            const wc = tabManager?.getActiveWebContents();
+            if (!wc || !shellWindow) return;
+            const pageUrl = wc.getURL();
+            const title = (wc.getTitle() || 'page').replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 100);
+            const result = await dialog.showSaveDialog(shellWindow, {
+              defaultPath: title,
+              filters: [{ name: 'Webpage, Complete', extensions: ['html'] }],
+            });
+            if (!result.canceled && result.filePath) {
+              wc.savePage(result.filePath, 'HTMLComplete').catch((err: Error) => {
+                mainLogger.warn('share.savePage.failed', { error: err.message });
+              });
+            }
+          },
+        },
+      ],
+    },
     {
       label: 'Print…', accelerator: 'Ctrl+P',
       click: () => {

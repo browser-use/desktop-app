@@ -276,6 +276,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('shell:toggle-caret-browsing'),
   },
 
+
+  // Issue #98 — Share menu
+  share: {
+    copyLink: (): Promise<boolean> =>
+      ipcRenderer.invoke('share:copy-link'),
+
+    emailPage: (): Promise<boolean> =>
+      ipcRenderer.invoke('share:email-page'),
+
+    savePageAs: (): Promise<boolean> =>
+      ipcRenderer.invoke('share:save-page-as'),
+
+    getPageInfo: (): Promise<{ url: string; title: string } | null> =>
+      ipcRenderer.invoke('share:get-page-info'),
+  },
   // Issue #81 — Three-dot app menu (non-macOS)
   menu: {
     showAppMenu: (bounds: { x: number; y: number }): Promise<void> =>
