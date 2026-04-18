@@ -309,6 +309,7 @@ export function BookmarkManager() {
   }, []);
 
   const startRename = useCallback((node: BookmarkNode) => {
+    renameCancelledRef.current = false;
     setRenamingId(node.id);
     setRenameValue(node.name);
   }, []);
