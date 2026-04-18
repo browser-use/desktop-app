@@ -136,6 +136,7 @@ export function URLBar({
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestGenRef = useRef(0);
   // Track the input text used when the user started editing (for recordSelection)
   const editInputRef = useRef('');
 
