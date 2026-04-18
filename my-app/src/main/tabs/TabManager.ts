@@ -317,6 +317,7 @@ export class TabManager {
     this.onActiveTabChanged = cb;
   }
 
+
   setHistoryStore(store: HistoryStore): void {
     this.historyStore = store;
     mainLogger.info('TabManager.setHistoryStore', { msg: 'History recording enabled' });
