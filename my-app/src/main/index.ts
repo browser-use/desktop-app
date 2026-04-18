@@ -451,6 +451,9 @@ function openNewWindow(initialUrl?: string): BrowserWindow {
     tm.restoreSession();
   }
   tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
+  tm.setOnMoveTabToNewWindow((url: string) => {
+    openNewWindow(url);
+  });
 
   win.webContents.once('did-finish-load', () => {
     mainLogger.info('main.newWindow.ready', { windowId: win.id });
@@ -471,19 +474,26 @@ function openNewWindow(initialUrl?: string): BrowserWindow {
 // ---------------------------------------------------------------------------
 // Incognito window (Cmd+Shift+N) — isolated session, cleared on last close
 // ---------------------------------------------------------------------------
-function openIncognitoWindow(): BrowserWindow {
+function openIncognitoWindow(initialUrl?: string): BrowserWindow {
   // All incognito windows in a profile share one session partition.
   if (!incognitoPartitionName) {
     incognitoPartitionName = `${INCOGNITO_PARTITION_PREFIX}-${activeProfileId}-${Date.now()}`;
     mainLogger.info('main.openIncognitoWindow.newPartition', { incognitoPartitionName });
   }
   const partition = incognitoPartitionName;
-  mainLogger.info('main.openIncognitoWindow', { partition });
+  mainLogger.info('main.openIncognitoWindow', { partition, initialUrl });
 
   const win = createShellWindow({ titleSuffix: ' (Incognito)', incognito: true });
   const tm = new TabManager(win, { guest: true, partition });
-  tm.restoreSession();
+  if (initialUrl) {
+    tm.createTab(initialUrl);
+  } else {
+    tm.restoreSession();
+  }
   tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
+  tm.setOnMoveTabToNewWindow((url: string) => {
+    openIncognitoWindow(url);
+  });
 
   win.webContents.once('did-finish-load', () => {
     mainLogger.info('main.incognitoWindow.ready', { windowId: win.id });
@@ -504,6 +514,8 @@ function openIncognitoWindow(): BrowserWindow {
       remaining: incognitoWindows.size,
       partition,
     });
+    // Clean up this instance from the TabManager registry.
+    tm.destroy();
     if (incognitoWindows.size === 0 && incognitoPartitionName) {
       mainLogger.info('main.incognitoWindow.clearSession', { partition });
       void clearGuestSession(incognitoPartitionName);
@@ -1834,8 +1846,21 @@ ipcMain.handle('tabs:move-to-new-window', (e, tabId: string) => {
   if (tabs.length <= 1) return false; // Can't detach the last tab
   const tab = tabs.find((t) => t.id === tabId);
   if (!tab) return false;
-  tm.closeTab(tabId);
-  openNewWindow(tab.url);
+  // Force-close so pinned tabs are moved rather than duplicated.
+  tm.closeTab(tabId, true);
+  // Preserve the source window's session type so the detached tab stays in
+  // the same context (incognito → incognito, guest → guest, normal → normal).
+  if (callerWin && incognitoWindows.has(callerWin)) {
+    openIncognitoWindow(tab.url);
+  } else if (tm.isGuest) {
+    // Guest (non-incognito) — open a new guest shell with the URL.
+    // Note: openGuestShell replaces the primary shell; for guest tab-detach
+    // this is the best approximation of session-preserving behaviour today.
+    openGuestShell();
+    tabManager?.createTab(tab.url);
+  } else {
+    openNewWindow(tab.url);
+  }
   return true;
 });
 
