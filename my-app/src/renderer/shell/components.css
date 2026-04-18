@@ -2367,3 +2367,93 @@
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Tab groups (Issue #5)
+   --------------------------------------------------------------------------- */
+.tab-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--group-color) 20%, transparent);
+  border: 1.5px solid var(--group-color);
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--group-color);
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0 2px;
+}
+.tab-group-chip:hover {
+  background: color-mix(in srgb, var(--group-color) 35%, transparent);
+}
+.tab-group-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--group-color);
+}
+.tab-group-chip__name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-group-chip__arrow {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.tab-item--grouped {
+  border-left: 2px solid var(--tab-group-color, #1a73e8);
+}
+
+.tab-group-rename-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tab-group-rename-dialog {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+.tab-group-rename-input {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  background: var(--color-bg-base);
+  color: var(--color-fg-primary);
+  outline: none;
+  min-width: 160px;
+}
+.tab-group-rename-input:focus {
+  border-color: var(--color-accent, #1a73e8);
+}
+.tab-group-rename-dialog button {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-primary);
+  cursor: pointer;
+}
+.tab-group-rename-dialog button:hover {
+  background: var(--color-bg-hover);
+}

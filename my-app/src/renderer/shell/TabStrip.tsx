@@ -13,11 +13,21 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { TabState } from '../../main/tabs/TabManager';
+import type { TabGroup } from '../../main/tabs/TabGroupStore';
 
 declare const electronAPI: {
   tabs: {
     showContextMenu: (tabId: string) => Promise<void>;
     muteTab: (tabId: string) => Promise<void>;
+  };
+  tabGroups: {
+    list: () => Promise<TabGroup[]>;
+    create: (p: { name: string; color: string; tabIds: string[] }) => Promise<TabGroup>;
+    update: (p: { id: string; patch: object }) => Promise<void>;
+    addTab: (p: { groupId: string; tabId: string }) => Promise<void>;
+    removeTab: (p: { tabId: string }) => Promise<void>;
+    delete: (p: { id: string }) => Promise<void>;
+    onUpdated: (cb: (groups: TabGroup[]) => void) => () => void;
   };
 };
 
@@ -72,6 +82,7 @@ interface TabItemProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   tabRef: (el: HTMLDivElement | null) => void;
   onMuteToggle: (e: React.MouseEvent) => void;
+  groupColor?: string;
 }
 
 function TabItem({
@@ -89,6 +100,7 @@ function TabItem({
   onKeyDown,
   tabRef,
   onMuteToggle,
+  groupColor,
 }: TabItemProps): React.ReactElement {
   const isPinned = tab.pinned;
   const favicon = faviconSrc(tab);
@@ -101,9 +113,11 @@ function TabItem({
         isDragOver ? 'tab-item--drag-over' : '',
         isPinned ? 'tab-item--pinned' : '',
         isIconOnly && !isPinned ? 'tab-item--icon-only' : '',
+        groupColor ? 'tab-item--grouped' : '',
       ]
         .filter(Boolean)
         .join(' ')}
+      style={groupColor ? { '--tab-group-color': groupColor } as React.CSSProperties : undefined}
       role="tab"
       aria-selected={isActive}
       tabIndex={isActive ? 0 : -1}
@@ -280,6 +294,46 @@ function TabSearchDropdown({
 }
 
 // ---------------------------------------------------------------------------
+// Group chip color map
+// ---------------------------------------------------------------------------
+const GROUP_COLOR_MAP: Record<TabGroup['color'], string> = {
+  grey: '#9e9e9e',
+  blue: '#1a73e8',
+  red: '#d32f2f',
+  yellow: '#f9a825',
+  green: '#2e7d32',
+  pink: '#e91e63',
+  purple: '#7b1fa2',
+  cyan: '#0097a7',
+};
+
+// ---------------------------------------------------------------------------
+// GroupChip
+// ---------------------------------------------------------------------------
+interface GroupChipProps {
+  group: TabGroup;
+  onToggleCollapse: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, group: TabGroup) => void;
+}
+
+function GroupChip({ group, onToggleCollapse, onContextMenu }: GroupChipProps): React.ReactElement {
+  const color = GROUP_COLOR_MAP[group.color];
+  return (
+    <div
+      className={`tab-group-chip tab-group-chip--${group.color}`}
+      style={{ '--group-color': color } as React.CSSProperties}
+      onClick={() => onToggleCollapse(group.id)}
+      onContextMenu={(e) => onContextMenu(e, group)}
+      title={group.collapsed ? `Expand group: ${group.name || '…'}` : `Collapse group: ${group.name || '…'}`}
+    >
+      <span className="tab-group-chip__dot" />
+      <span className="tab-group-chip__name">{group.name || '…'}</span>
+      <span className="tab-group-chip__arrow">{group.collapsed ? '›' : '‹'}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // TabStrip
 // ---------------------------------------------------------------------------
 export function TabStrip({
@@ -294,6 +348,9 @@ export function TabStrip({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [iconOnlySet, setIconOnlySet] = useState<Set<string>>(new Set());
   const [searchOpen, setSearchOpen] = useState(false);
+  const [groups, setGroups] = useState<TabGroup[]>([]);
+  const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const dragTabId = useRef<string | null>(null);
   const tabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -338,6 +395,13 @@ export function TabStrip({
 
     return () => ro.disconnect();
   }, [tabs]);
+
+  // Load groups on mount and subscribe to updates
+  useEffect(() => {
+    electronAPI.tabGroups.list().then(setGroups).catch(() => {});
+    const unsub = electronAPI.tabGroups.onUpdated(setGroups);
+    return unsub;
+  }, []);
 
   // Show search button when any non-pinned tab is narrower than the threshold
   const showSearchBtn = (() => {
@@ -443,6 +507,56 @@ export function TabStrip({
     dragTabId.current = null;
   }, []);
 
+  const handleGroupContextMenu = useCallback((e: React.MouseEvent, group: TabGroup) => {
+    e.preventDefault();
+    const menu = [
+      {
+        label: 'Rename',
+        action: () => {
+          setRenameGroupId(group.id);
+          setRenameValue(group.name);
+        },
+      },
+      {
+        label: 'Ungroup',
+        action: () => {
+          electronAPI.tabGroups.delete({ id: group.id });
+        },
+      },
+      {
+        label: 'Close Group',
+        action: () => {
+          const tabIdsToClose = [...group.tabIds];
+          electronAPI.tabGroups.delete({ id: group.id });
+          tabIdsToClose.forEach((tid) => onClose(tid));
+        },
+      },
+    ];
+    const nativeMenu = document.createElement('div');
+    nativeMenu.className = 'tab-group-context-menu';
+    nativeMenu.style.cssText = `position:fixed;z-index:9999;left:${e.clientX}px;top:${e.clientY}px;background:var(--color-bg-elevated,#fff);border:1px solid var(--color-border-default,#ccc);border-radius:6px;padding:4px 0;box-shadow:0 4px 16px rgba(0,0,0,.18);min-width:140px;`;
+    menu.forEach((item) => {
+      const btn = document.createElement('button');
+      btn.textContent = item.label;
+      btn.style.cssText = 'display:block;width:100%;padding:6px 14px;text-align:left;background:none;border:none;cursor:pointer;font-size:13px;color:var(--color-fg-primary,#111);';
+      btn.onmouseenter = () => { btn.style.background = 'var(--color-bg-hover,rgba(0,0,0,.06))'; };
+      btn.onmouseleave = () => { btn.style.background = 'none'; };
+      btn.onclick = () => {
+        item.action();
+        document.body.removeChild(nativeMenu);
+      };
+      nativeMenu.appendChild(btn);
+    });
+    document.body.appendChild(nativeMenu);
+    const dismiss = (ev: MouseEvent) => {
+      if (!nativeMenu.contains(ev.target as Node)) {
+        if (document.body.contains(nativeMenu)) document.body.removeChild(nativeMenu);
+        document.removeEventListener('mousedown', dismiss);
+      }
+    };
+    document.addEventListener('mousedown', dismiss);
+  }, [onClose]);
+
   return (
     <div className="tab-strip" role="presentation" onDragEnd={handleDragEnd}>
       <div
@@ -451,35 +565,75 @@ export function TabStrip({
         role="tablist"
         aria-label="Browser tabs"
       >
-        {tabs.map((tab, index) => (
-          <TabItem
-            key={tab.id}
-            tab={tab}
-            index={index}
-            isActive={tab.id === activeTabId}
-            isIconOnly={iconOnlySet.has(tab.id)}
-            onActivate={() => onActivate(tab.id)}
-            onClose={(e) => {
-              e.stopPropagation();
-              onClose(tab.id);
-            }}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            isDragOver={dragOverIndex === index}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              electronAPI.tabs.showContextMenu(tab.id);
-            }}
-            onKeyDown={(e) => handleTabKeyDown(e, tab, index)}
-            tabRef={setTabRef(index)}
-            onMuteToggle={(e) => {
-              e.stopPropagation();
-              onMuteToggle(tab.id);
-            }}
-          />
-        ))}
+        {(() => {
+          const groupMap = new Map<string, TabGroup>(groups.map((g) => [g.id, g]));
+          const collapsedGroupIds = new Set(groups.filter((g) => g.collapsed).map((g) => g.id));
+          const tabToGroup = new Map<string, TabGroup>();
+          for (const g of groups) {
+            for (const tid of g.tabIds) tabToGroup.set(tid, g);
+          }
+          const renderedGroupChips = new Set<string>();
+          const elements: React.ReactNode[] = [];
+
+          tabs.forEach((tab, index) => {
+            const group = tabToGroup.get(tab.id);
+            if (group) {
+              if (!renderedGroupChips.has(group.id)) {
+                renderedGroupChips.add(group.id);
+                elements.push(
+                  <GroupChip
+                    key={`grp-chip-${group.id}`}
+                    group={group}
+                    onToggleCollapse={(id) => {
+                      const g = groupMap.get(id);
+                      if (g) electronAPI.tabGroups.update({ id, patch: { collapsed: !g.collapsed } });
+                    }}
+                    onContextMenu={(e, g) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleGroupContextMenu(e, g);
+                    }}
+                  />,
+                );
+              }
+              if (collapsedGroupIds.has(group.id)) return;
+            }
+
+            const groupColor = group ? GROUP_COLOR_MAP[group.color] : undefined;
+            elements.push(
+              <TabItem
+                key={tab.id}
+                tab={tab}
+                index={index}
+                isActive={tab.id === activeTabId}
+                isIconOnly={iconOnlySet.has(tab.id)}
+                onActivate={() => onActivate(tab.id)}
+                onClose={(e) => {
+                  e.stopPropagation();
+                  onClose(tab.id);
+                }}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                isDragOver={dragOverIndex === index}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  electronAPI.tabs.showContextMenu(tab.id);
+                }}
+                onKeyDown={(e) => handleTabKeyDown(e, tab, index)}
+                tabRef={setTabRef(index)}
+                onMuteToggle={(e) => {
+                  e.stopPropagation();
+                  onMuteToggle(tab.id);
+                }}
+                groupColor={groupColor}
+              />,
+            );
+          });
+
+          return elements;
+        })()}
         {/* + button sits right after the last tab (Chrome-style), not pinned right */}
         <button
           type="button"
@@ -524,6 +678,37 @@ export function TabStrip({
           onActivate={onActivate}
           onClose={() => setSearchOpen(false)}
         />
+      )}
+
+      {renameGroupId && (
+        <div className="tab-group-rename-overlay" onClick={() => setRenameGroupId(null)}>
+          <div className="tab-group-rename-dialog" onClick={(e) => e.stopPropagation()}>
+            <input
+              className="tab-group-rename-input"
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  electronAPI.tabGroups.update({ id: renameGroupId, patch: { name: renameValue } });
+                  setRenameGroupId(null);
+                } else if (e.key === 'Escape') {
+                  setRenameGroupId(null);
+                }
+              }}
+              placeholder="Group name"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                electronAPI.tabGroups.update({ id: renameGroupId, patch: { name: renameValue } });
+                setRenameGroupId(null);
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

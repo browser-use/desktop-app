@@ -66,6 +66,7 @@ import {
   CERT_ERROR_PROCEED_PREFIX,
   CERT_ERROR_BACK_PREFIX,
 } from '../errors/NetworkErrorController';
+import type { TabGroupStore } from './TabGroupStore';
 
 // Forge VitePlugin globals for the new-tab page (injected at build time)
 declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
@@ -180,6 +181,7 @@ export class TabManager {
   private urlMatchFn: UrlMatchFn | null = null;
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
+  private tabGroupStore: TabGroupStore | null = null;
   readonly isGuest: boolean;
   private readonly partition: string | null;
 
@@ -213,6 +215,10 @@ export class TabManager {
   /** Called by DeviceManager to attach select-bluetooth-device on new tabs */
   setOnWebContentsCreated(cb: ((wc: import("electron").WebContents) => void) | null): void {
     this.onWebContentsCreated = cb;
+  }
+
+  setTabGroupStore(store: TabGroupStore | null): void {
+    this.tabGroupStore = store;
   }
 
   setHistoryStore(store: HistoryStore): void {
@@ -2043,6 +2049,27 @@ export class TabManager {
         }
       },
     }));
+
+    const existingGroup = this.tabGroupStore?.getGroupForTab(tabId);
+    if (existingGroup) {
+      menu.append(new MenuItem({
+        label: 'Remove from Group',
+        click: () => {
+          this.tabGroupStore?.removeTabFromGroup(tabId);
+          this.safeSend('tab-groups:updated', this.tabGroupStore?.listGroups() ?? []);
+        },
+      }));
+    } else {
+      menu.append(new MenuItem({
+        label: 'Add to New Group',
+        click: () => {
+          const colors: Array<import('./TabGroupStore').TabGroup['color']> = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+          const color = colors[Math.floor(Math.random() * colors.length)];
+          this.tabGroupStore?.createGroup('New group', color, [tabId]);
+          this.safeSend('tab-groups:updated', this.tabGroupStore?.listGroups() ?? []);
+        },
+      }));
+    }
 
     menu.append(new MenuItem({ type: 'separator' }));
 

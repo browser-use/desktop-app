@@ -96,6 +96,9 @@ import { DeviceManager } from './devices/DeviceManager';
 import { registerDeviceHandlers, unregisterDeviceHandlers } from './devices/ipc';
 // Issue #100 — Picture-in-Picture
 import { registerPipHandlers, unregisterPipHandlers } from './pip/PictureInPictureManager';
+// Issue #5 — Tab groups
+import { TabGroupStore } from './tabs/TabGroupStore';
+import { registerTabGroupHandlers, unregisterTabGroupHandlers } from './tabs/tab-groups-ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -185,6 +188,7 @@ let activeProfileId = 'default';
 let isGuestSession = false;
 let guestPartitionName: string | null = null;
 
+const tabGroupStore = new TabGroupStore();
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com' });
 const keychainStore = new KeychainStore();
@@ -200,6 +204,7 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   mainLogger.info('main.openShellAndWire.profile', { profileId: pid, dataDir: profileDataDir, partition: profilePartition });
   shellWindow = createShellWindow();
   tabManager = new TabManager(shellWindow, { dataDir: profileDataDir, partition: profilePartition });
+  tabManager.setTabGroupStore(tabGroupStore);
   downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
 
@@ -537,6 +542,8 @@ app.whenReady().then(async () => {
 
   // Issue #98 — Share menu
   registerShareHandlers(tabManager!, shellWindow!);
+  // Issue #5 — Tab groups
+  registerTabGroupHandlers(tabGroupStore, () => shellWindow);
   registerChromeHandlers(
     (page: string) => tabManager?.openInternalPage(page),
     () => openSettingsWindow(),
@@ -776,6 +783,7 @@ app.whenReady().then(async () => {
     unregisterPermissionHandlers();
     unregisterDeviceHandlers();
     unregisterPipHandlers();
+    unregisterTabGroupHandlers();
     unregisterExtensionsHandlers();
     unregisterAutofillHandlers();
     // ExtensionManager currently has no dispose()/destroy() hook; its
