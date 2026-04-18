@@ -150,8 +150,10 @@ declare global {
       setBiometricLock: (enabled: boolean) => Promise<void>;
       getHttpsFirst: () => Promise<boolean>;
       setHttpsFirst: (enabled: boolean) => Promise<void>;
-      getSafeBrowsing: () => Promise<string>;
-      setSafeBrowsing: (level: string) => Promise<void>;
+      getDntEnabled: () => Promise<boolean>;
+      setDntEnabled: (enabled: boolean) => Promise<void>;
+      getGpcEnabled: () => Promise<boolean>;
+      setGpcEnabled: (enabled: boolean) => Promise<void>;
     };
   }
 }
@@ -750,8 +752,9 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
   const toast = useToast();
   const [httpsFirst, setHttpsFirst] = useState(false);
   const [httpsFirstLoading, setHttpsFirstLoading] = useState(true);
-  const [safeBrowsing, setSafeBrowsing] = useState<string>('standard');
-  const [safeBrowsingLoading, setSafeBrowsingLoading] = useState(true);
+  const [dntEnabled, setDntEnabled] = useState(false);
+  const [gpcEnabled, setGpcEnabled] = useState(false);
+  const [privacyLoading, setPrivacyLoading] = useState(true);
 
   useEffect(() => {
     void window.settingsAPI.getHttpsFirst().then((val) => {
@@ -760,11 +763,16 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
     }).finally(() => {
       setHttpsFirstLoading(false);
     });
-    void window.settingsAPI.getSafeBrowsing().then((val) => {
-      setSafeBrowsing(val);
+
+    void Promise.all([
+      window.settingsAPI.getDntEnabled(),
+      window.settingsAPI.getGpcEnabled(),
+    ]).then(([dnt, gpc]) => {
+      setDntEnabled(dnt);
+      setGpcEnabled(gpc);
     }).catch(() => {
     }).finally(() => {
-      setSafeBrowsingLoading(false);
+      setPrivacyLoading(false);
     });
   }, []);
 
@@ -786,22 +794,38 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
     }
   }
 
-  async function handleSafeBrowsingChange(level: string): Promise<void> {
-    const prev = safeBrowsing;
-    setSafeBrowsing(level);
+  async function handleDntToggle(checked: boolean): Promise<void> {
+    setDntEnabled(checked);
     try {
-      await window.settingsAPI.setSafeBrowsing(level);
-      const labels: Record<string, string> = {
-        enhanced: 'Enhanced protection',
-        standard: 'Standard protection',
-        disabled: 'No protection',
-      };
+      await window.settingsAPI.setDntEnabled(checked);
       toast.show({
         variant: 'success',
-        title: `Safe Browsing set to ${labels[level] ?? level}`,
+        title: checked
+          ? 'Do Not Track enabled'
+          : 'Do Not Track disabled',
       });
     } catch (err) {
-      setSafeBrowsing(prev);
+      setDntEnabled(!checked);
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update setting',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  async function handleGpcToggle(checked: boolean): Promise<void> {
+    setGpcEnabled(checked);
+    try {
+      await window.settingsAPI.setGpcEnabled(checked);
+      toast.show({
+        variant: 'success',
+        title: checked
+          ? 'Global Privacy Control enabled'
+          : 'Global Privacy Control disabled',
+      });
+    } catch (err) {
+      setGpcEnabled(!checked);
       toast.show({
         variant: 'error',
         title: 'Failed to update setting',
@@ -816,66 +840,6 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
       <p className="settings-section-desc">
         Control what local browsing data is stored on this device.
       </p>
-
-      <Card variant="default" padding="md" className="settings-card">
-        <fieldset className="settings-fieldset" disabled={safeBrowsingLoading}>
-          <legend className="settings-label">Safe Browsing</legend>
-          <p className="settings-field-hint" style={{ marginBottom: 12 }}>
-            Protects you against dangerous websites, downloads, and extensions.
-          </p>
-
-          <label className="settings-radio-row">
-            <input
-              type="radio"
-              name="safe-browsing"
-              value="enhanced"
-              checked={safeBrowsing === 'enhanced'}
-              onChange={() => void handleSafeBrowsingChange('enhanced')}
-            />
-            <span className="settings-radio-content">
-              <span className="settings-radio-label">Enhanced protection</span>
-              <span className="settings-radio-desc">
-                Fastest, most proactive protection against dangerous websites,
-                downloads, and extensions. Sends URLs to Google for real-time checks.
-              </span>
-            </span>
-          </label>
-
-          <label className="settings-radio-row">
-            <input
-              type="radio"
-              name="safe-browsing"
-              value="standard"
-              checked={safeBrowsing === 'standard'}
-              onChange={() => void handleSafeBrowsingChange('standard')}
-            />
-            <span className="settings-radio-content">
-              <span className="settings-radio-label">Standard protection</span>
-              <span className="settings-radio-desc">
-                Protects against known dangerous websites, downloads, and
-                extensions using a locally maintained list.
-              </span>
-            </span>
-          </label>
-
-          <label className="settings-radio-row">
-            <input
-              type="radio"
-              name="safe-browsing"
-              value="disabled"
-              checked={safeBrowsing === 'disabled'}
-              onChange={() => void handleSafeBrowsingChange('disabled')}
-            />
-            <span className="settings-radio-content">
-              <span className="settings-radio-label">No protection</span>
-              <span className="settings-radio-desc">
-                Not recommended. Does not protect you against dangerous websites,
-                downloads, and extensions.
-              </span>
-            </span>
-          </label>
-        </fieldset>
-      </Card>
 
       <Card variant="default" padding="md" className="settings-card">
         <div className="settings-toggle-row">
@@ -894,6 +858,53 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
               checked={httpsFirst}
               disabled={httpsFirstLoading}
               onChange={(e) => void handleHttpsFirstToggle(e.target.checked)}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+      </Card>
+
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">
+              Send a "Do Not Track" request with your browsing traffic
+            </span>
+            <span className="settings-toggle-desc">
+              Sends a DNT: 1 header with every request. Sites are not required
+              to honor this signal.
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={dntEnabled}
+              disabled={privacyLoading}
+              onChange={(e) => void handleDntToggle(e.target.checked)}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+      </Card>
+
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">
+              Send a "Global Privacy Control" signal with your browsing traffic
+            </span>
+            <span className="settings-toggle-desc">
+              Sends a Sec-GPC: 1 header with every request, signaling that you
+              do not want your data sold or shared. Sites are not required to
+              honor this signal.
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={gpcEnabled}
+              disabled={privacyLoading}
+              onChange={(e) => void handleGpcToggle(e.target.checked)}
             />
             <span className="settings-toggle-track" />
           </label>

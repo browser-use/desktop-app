@@ -147,14 +147,20 @@ export interface SettingsAPI {
   /** Get whether HTTPS-First mode is enabled */
   getHttpsFirst: () => Promise<boolean>;
 
-  /** Get Safe Browsing protection level */
-  getSafeBrowsing: () => Promise<string>;
-
-  /** Set Safe Browsing protection level */
-  setSafeBrowsing: (level: string) => Promise<void>;
-
   /** Set whether HTTPS-First mode is enabled */
   setHttpsFirst: (enabled: boolean) => Promise<void>;
+
+  /** Get whether Do Not Track header is enabled */
+  getDntEnabled: () => Promise<boolean>;
+
+  /** Set whether Do Not Track header is enabled */
+  setDntEnabled: (enabled: boolean) => Promise<void>;
+
+  /** Get whether Global Privacy Control header is enabled */
+  getGpcEnabled: () => Promise<boolean>;
+
+  /** Set whether Global Privacy Control header is enabled */
+  setGpcEnabled: (enabled: boolean) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -347,14 +353,24 @@ const api: SettingsAPI = {
     await ipcRenderer.invoke('settings:set-https-first', enabled);
   },
 
-  getSafeBrowsing: async (): Promise<string> => {
-    console.debug('[settings-preload] getSafeBrowsing');
-    return ipcRenderer.invoke('settings:get-safe-browsing') as Promise<string>;
+  getDntEnabled: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getDntEnabled');
+    return ipcRenderer.invoke('settings:get-dnt-enabled') as Promise<boolean>;
   },
 
-  setSafeBrowsing: async (level: string): Promise<void> => {
-    console.debug('[settings-preload] setSafeBrowsing', { level });
-    await ipcRenderer.invoke('settings:set-safe-browsing', level);
+  setDntEnabled: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setDntEnabled', { enabled });
+    await ipcRenderer.invoke('settings:set-dnt-enabled', enabled);
+  },
+
+  getGpcEnabled: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getGpcEnabled');
+    return ipcRenderer.invoke('settings:get-gpc-enabled') as Promise<boolean>;
+  },
+
+  setGpcEnabled: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setGpcEnabled', { enabled });
+    await ipcRenderer.invoke('settings:set-gpc-enabled', enabled);
   },
 };
 

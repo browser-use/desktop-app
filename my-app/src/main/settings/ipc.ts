@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, session } from 'electron';
 import { mainLogger } from '../logger';
 import type { AccountStore } from '../identity/AccountStore';
 import type { KeychainStore } from '../identity/KeychainStore';
@@ -25,12 +25,6 @@ import {
   type ClearDataResult,
 } from '../privacy/ClearDataController';
 import { isBiometricAvailable } from '../passwords/BiometricAuth';
-import {
-  performSignOut,
-  turnOffSync,
-  type SignOutMode,
-  type SignOutResult,
-} from '../identity/SignOutController';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -95,9 +89,10 @@ const CH_SET_BIOMETRIC_LOCK  = 'settings:set-biometric-lock';
 const CH_BIOMETRIC_AVAILABLE = 'settings:biometric-available';
 const CH_GET_HTTPS_FIRST     = 'settings:get-https-first';
 const CH_SET_HTTPS_FIRST     = 'settings:set-https-first';
-const CH_SIGN_OUT            = 'identity:sign-out';
-const CH_TURN_OFF_SYNC       = 'identity:turn-off-sync';
-const CH_GET_ACCOUNT_INFO    = 'identity:get-account-info';
+const CH_GET_DNT_ENABLED     = 'settings:get-dnt-enabled';
+const CH_SET_DNT_ENABLED     = 'settings:set-dnt-enabled';
+const CH_GET_GPC_ENABLED     = 'settings:get-gpc-enabled';
+const CH_SET_GPC_ENABLED     = 'settings:set-gpc-enabled';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -599,69 +594,81 @@ function handleSetHttpsFirst(_event: Electron.IpcMainInvokeEvent, enabled: boole
 }
 
 
-async function handleSignOut(
-  _event: Electron.IpcMainInvokeEvent,
-  mode: string,
-): Promise<SignOutResult> {
-  mainLogger.info(CH_SIGN_OUT, { mode });
-
-  if (mode !== 'clear' && mode !== 'keep') {
-    throw new Error('mode must be "clear" or "keep"');
-  }
-
-  if (!_accountStore || !_keychainStore) {
-    mainLogger.error(`${CH_SIGN_OUT}.notInitialised`);
-    throw new Error('AccountStore or KeychainStore not initialised');
-  }
-
-  const result = await performSignOut(mode as SignOutMode, _accountStore, _keychainStore);
-
-  mainLogger.info(`${CH_SIGN_OUT}.complete`, {
-    mode,
-    success: result.success,
-    tokenRevoked: result.tokenRevoked,
-    dataCleared: result.dataCleared,
-  });
-
-  if (result.success && process.env.NODE_ENV !== 'test') {
-    app.relaunch();
-    app.quit();
-  }
-
-  return result;
+function handleGetDntEnabled(): boolean {
+  mainLogger.info(CH_GET_DNT_ENABLED);
+  const prefs = readPrefs();
+  const enabled = prefs.dntEnabled === true;
+  mainLogger.info(`${CH_GET_DNT_ENABLED}.ok`, { enabled });
+  return enabled;
 }
 
-async function handleTurnOffSync(): Promise<{ success: boolean }> {
-  mainLogger.info(CH_TURN_OFF_SYNC);
-
-  if (!_accountStore) {
-    mainLogger.error(`${CH_TURN_OFF_SYNC}.notInitialised`);
-    throw new Error('AccountStore not initialised');
+function handleSetDntEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('dntEnabled must be a boolean');
   }
-
-  const result = await turnOffSync(_accountStore);
-  mainLogger.info(`${CH_TURN_OFF_SYNC}.complete`, { success: result.success });
-  return result;
+  mainLogger.info(CH_SET_DNT_ENABLED, { enabled });
+  mergePrefs({ dntEnabled: enabled });
+  refreshPrivacyHeaders();
+  mainLogger.info(`${CH_SET_DNT_ENABLED}.ok`, { enabled });
 }
 
-function handleGetAccountInfo(): { email: string; agentName: string } | null {
-  mainLogger.info(CH_GET_ACCOUNT_INFO);
+function handleGetGpcEnabled(): boolean {
+  mainLogger.info(CH_GET_GPC_ENABLED);
+  const prefs = readPrefs();
+  const enabled = prefs.gpcEnabled === true;
+  mainLogger.info(`${CH_GET_GPC_ENABLED}.ok`, { enabled });
+  return enabled;
+}
 
-  const account = _accountStore?.load();
-  if (!account) {
-    mainLogger.info(`${CH_GET_ACCOUNT_INFO}.noAccount`);
-    return null;
+function handleSetGpcEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('gpcEnabled must be a boolean');
+  }
+  mainLogger.info(CH_SET_GPC_ENABLED, { enabled });
+  mergePrefs({ gpcEnabled: enabled });
+  refreshPrivacyHeaders();
+  mainLogger.info(`${CH_SET_GPC_ENABLED}.ok`, { enabled });
+}
+
+// ---------------------------------------------------------------------------
+// Privacy header injection (DNT + GPC)
+// ---------------------------------------------------------------------------
+
+let _privacyHeadersInstalled = false;
+
+/**
+ * Installs (or re-reads prefs for) the onBeforeSendHeaders hook that appends
+ * DNT: 1 and/or Sec-GPC: 1 to every outgoing request on the default session.
+ * Safe to call multiple times — the webRequest listener is registered once.
+ */
+export function refreshPrivacyHeaders(): void {
+  const prefs = readPrefs();
+  const dnt = prefs.dntEnabled === true;
+  const gpc = prefs.gpcEnabled === true;
+  mainLogger.info('privacy.refreshHeaders', { dnt, gpc });
+
+  if (_privacyHeadersInstalled) {
+    // Listener already registered; it reads prefs each invocation so nothing to do.
+    return;
   }
 
-  mainLogger.info(`${CH_GET_ACCOUNT_INFO}.ok`, {
-    hasEmail: !!account.email,
-    hasAgentName: !!account.agent_name,
+  _privacyHeadersInstalled = true;
+
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const currentPrefs = readPrefs();
+    const headers = { ...details.requestHeaders };
+
+    if (currentPrefs.dntEnabled === true) {
+      headers['DNT'] = '1';
+    }
+    if (currentPrefs.gpcEnabled === true) {
+      headers['Sec-GPC'] = '1';
+    }
+
+    callback({ requestHeaders: headers });
   });
 
-  return {
-    email: account.email,
-    agentName: account.agent_name,
-  };
+  mainLogger.info('privacy.refreshHeaders.installed');
 }
 
 function handleCloseWindow(): void {
@@ -708,11 +715,14 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_BIOMETRIC_AVAILABLE, handleBiometricAvailable);
   ipcMain.handle(CH_GET_HTTPS_FIRST,    handleGetHttpsFirst);
   ipcMain.handle(CH_SET_HTTPS_FIRST,    handleSetHttpsFirst);
-  ipcMain.handle(CH_SIGN_OUT,           handleSignOut);
-  ipcMain.handle(CH_TURN_OFF_SYNC,      handleTurnOffSync);
-  ipcMain.handle(CH_GET_ACCOUNT_INFO,   handleGetAccountInfo);
+  ipcMain.handle(CH_GET_DNT_ENABLED,    handleGetDntEnabled);
+  ipcMain.handle(CH_SET_DNT_ENABLED,    handleSetDntEnabled);
+  ipcMain.handle(CH_GET_GPC_ENABLED,    handleGetGpcEnabled);
+  ipcMain.handle(CH_SET_GPC_ENABLED,    handleSetGpcEnabled);
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 21 });
+  refreshPrivacyHeaders();
+
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -739,9 +749,10 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_BIOMETRIC_AVAILABLE);
   ipcMain.removeHandler(CH_GET_HTTPS_FIRST);
   ipcMain.removeHandler(CH_SET_HTTPS_FIRST);
-  ipcMain.removeHandler(CH_SIGN_OUT);
-  ipcMain.removeHandler(CH_TURN_OFF_SYNC);
-  ipcMain.removeHandler(CH_GET_ACCOUNT_INFO);
+  ipcMain.removeHandler(CH_GET_DNT_ENABLED);
+  ipcMain.removeHandler(CH_SET_DNT_ENABLED);
+  ipcMain.removeHandler(CH_GET_GPC_ENABLED);
+  ipcMain.removeHandler(CH_SET_GPC_ENABLED);
 
   _accountStore  = null;
   _keychainStore = null;
