@@ -110,6 +110,8 @@ declare const HISTORY_VITE_DEV_SERVER_URL: string | undefined;
 declare const HISTORY_VITE_NAME: string | undefined;
 declare const DOWNLOADS_VITE_DEV_SERVER_URL: string | undefined;
 declare const DOWNLOADS_VITE_NAME: string | undefined;
+declare const BOOKMARKS_VITE_DEV_SERVER_URL: string | undefined;
+declare const BOOKMARKS_VITE_NAME: string | undefined;
 declare const CHROME_PAGES_VITE_DEV_SERVER_URL: string | undefined;
 declare const CHROME_PAGES_VITE_NAME: string | undefined;
 
@@ -749,6 +751,7 @@ export class TabManager {
     const preloadMap: Record<string, string> = {
       history: 'history.js',
       downloads: 'downloads.js',
+      bookmarks: 'bookmarks.js',
     };
     const preloadFile = CHROME_PAGES_PAGES.has(page) ? 'chrome.js' : (preloadMap[page] ?? 'history.js');
     const preloadPath = path.join(__dirname, preloadFile);
@@ -787,6 +790,13 @@ export class TabManager {
       } else {
         const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
         url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
+      }
+    } else if (page === 'bookmarks') {
+      if (typeof BOOKMARKS_VITE_DEV_SERVER_URL !== 'undefined' && BOOKMARKS_VITE_DEV_SERVER_URL) {
+        url = BOOKMARKS_VITE_DEV_SERVER_URL + '/src/renderer/bookmarks/bookmarks.html';
+      } else {
+        const name = typeof BOOKMARKS_VITE_NAME !== 'undefined' ? BOOKMARKS_VITE_NAME : 'bookmarks';
+        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'bookmarks.html');
       }
     } else if (CHROME_PAGES_PAGES.has(page)) {
       let baseUrl: string;
