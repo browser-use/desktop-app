@@ -19,6 +19,15 @@ const INSECURE_RE = /^http:\/\//i;
 // renders them as empty so the "Search or enter address" placeholder shows.
 const BLANK_RE = /^(data:|about:blank$)/i;
 
+// Subdomains that Chrome elides from display (trivial/redundant prefixes).
+const TRIVIAL_SUBDOMAIN_RE = /^(www|m)\./i;
+
+// Default ports per scheme — elided from display per Chrome rules.
+const DEFAULT_PORTS: Record<string, number> = {
+  'http:': 80,
+  'https:': 443,
+};
+
 interface URLBarProps {
   url: string;
   isLoading: boolean;
@@ -35,19 +44,49 @@ function getSecurityStatus(url: string): 'secure' | 'insecure' | 'none' {
   return 'none';
 }
 
+/**
+ * Elide a URL for display per Chrome's URL display guidelines:
+ *  - Strip https:// scheme (http:// is indicated via the security chip)
+ *  - Strip trivial www. and m. subdomains
+ *  - Strip default ports (80 for http, 443 for https)
+ *  - Elide trailing slash when path is exactly "/"
+ * The full URL is always preserved for actual navigation.
+ */
 function displayUrl(url: string): string {
   // New-tab / about:blank: omnibox reads empty so placeholder shows.
   if (!url || BLANK_RE.test(url)) return '';
-  // Show clean URL without protocol for https
-  if (SECURE_RE.test(url)) {
-    try {
-      const parsed = new URL(url);
-      return parsed.hostname + parsed.pathname + parsed.search + parsed.hash;
-    } catch {
-      return url;
-    }
+
+  // Only elide http/https URLs; pass through chrome://, file://, etc. as-is.
+  const isHttps = SECURE_RE.test(url);
+  const isHttp = INSECURE_RE.test(url);
+  if (!isHttps && !isHttp) return url;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
   }
-  return url;
+
+  // Build display hostname: strip trivial subdomains.
+  let host = parsed.hostname;
+  if (TRIVIAL_SUBDOMAIN_RE.test(host)) {
+    host = host.replace(TRIVIAL_SUBDOMAIN_RE, '');
+  }
+
+  // Append port only when it differs from the scheme default.
+  const defaultPort = DEFAULT_PORTS[parsed.protocol];
+  const port = parsed.port ? parseInt(parsed.port, 10) : defaultPort;
+  if (port !== defaultPort) {
+    host = `${host}:${parsed.port}`;
+  }
+
+  // Path: elide trailing slash at root (path === '/'), keep deeper paths.
+  const path = parsed.pathname === '/' ? '' : parsed.pathname;
+
+  // Build final display string.
+  // https scheme is elided entirely; http scheme remains implicit via chip.
+  return host + path + parsed.search + parsed.hash;
 }
 
 export function URLBar({
