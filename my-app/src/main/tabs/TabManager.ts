@@ -568,7 +568,7 @@ export class TabManager {
     // Remove tab from its group before any early return so the store is always clean.
     if (this.tabGroupStore?.getGroupForTab(tabId)) {
       this.tabGroupStore.removeTabFromGroup(tabId);
-      this.safeSend('tab-groups:updated', this.tabGroupStore.listGroups());
+      this.broadcastTabGroups();
     }
 
     if (this.activeTabId === tabId) {
@@ -2016,6 +2016,17 @@ export class TabManager {
     this.win.webContents.send(channel, payload);
   }
 
+  /** Broadcast tab-group updates to every open window so all shells stay in sync. */
+  private broadcastTabGroups(): void {
+    if (!this.tabGroupStore) return;
+    const groups = this.tabGroupStore.listGroups();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('tab-groups:updated', groups);
+      }
+    }
+  }
+
 
   // ---------------------------------------------------------------------------
   // Pinned tabs (Issue #3)
@@ -2138,7 +2149,7 @@ export class TabManager {
           label: 'Remove from Group',
           click: () => {
             this.tabGroupStore!.removeTabFromGroup(tabId);
-            this.safeSend('tab-groups:updated', this.tabGroupStore!.listGroups());
+            this.broadcastTabGroups();
           },
         }));
       } else {
@@ -2148,7 +2159,7 @@ export class TabManager {
             const colors: Array<import('./TabGroupStore').TabGroup['color']> = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
             const color = colors[Math.floor(Math.random() * colors.length)];
             this.tabGroupStore!.createGroup('New group', color, [tabId]);
-            this.safeSend('tab-groups:updated', this.tabGroupStore!.listGroups());
+            this.broadcastTabGroups();
           },
         }));
       }

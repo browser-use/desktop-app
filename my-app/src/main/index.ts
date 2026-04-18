@@ -422,6 +422,7 @@ function openNewWindow(): BrowserWindow {
 
   const win = createShellWindow();
   const tm = new TabManager(win, { dataDir: profileDataDir, partition: profilePartition });
+  tm.setTabGroupStore(tabGroupStore);
 
   if (historyStore) tm.setHistoryStore(historyStore);
   if (bookmarkStore) {
@@ -456,6 +457,7 @@ function openIncognitoWindow(): BrowserWindow {
 
   const win = createShellWindow({ titleSuffix: ' (Incognito)', incognito: true });
   const tm = new TabManager(win, { guest: true, partition });
+  tm.setTabGroupStore(tabGroupStore);
   tm.restoreSession();
   tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
 
