@@ -103,6 +103,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     muteTab: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:mute-tab', tabId),
 
+    captureThumbnail: (tabId: string): Promise<string | null> =>
+      ipcRenderer.invoke('tabs:capture-thumbnail', tabId),
+
     showBackHistory: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:show-back-history', tabId),
 
@@ -151,8 +154,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getVisibility: (): Promise<Visibility> =>
       ipcRenderer.invoke('bookmarks:get-visibility'),
 
-    bookmarkAllTabs: (payload: { folderName: string }): Promise<BookmarkNode> =>
+    bookmarkAllTabs: (payload: { folderName: string; parentId?: string }): Promise<BookmarkNode> =>
       ipcRenderer.invoke('bookmarks:bookmark-all-tabs', payload),
+
+    exportHtml: (): Promise<{ ok: boolean; filePath?: string }> =>
+      ipcRenderer.invoke('bookmarks:export-html'),
+
+    importHtml: (): Promise<{ ok: boolean; imported: number; skipped: number }> =>
+      ipcRenderer.invoke('bookmarks:import-html'),
   },
 
   // Zoom controls — per-origin persistence + badge UI
@@ -207,6 +216,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('downloads:get-show-on-complete'),
     setShowOnComplete: (value: boolean): Promise<void> =>
       ipcRenderer.invoke('downloads:set-show-on-complete', value),
+    dismissWarning: (id: string): Promise<void> =>
+      ipcRenderer.invoke('downloads:dismiss-warning', id),
   },
 
   // Permissions — renderer -> main decision relay + query API
@@ -355,6 +366,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       hstsIncludeSubdomains: boolean;
       isSecure: boolean;
     }> => ipcRenderer.invoke('security:get-page-info'),
+    getCookieCount: (): Promise<number> =>
+      ipcRenderer.invoke('security:get-cookie-count'),
   },
 
   // Issue #81 — Three-dot app menu (non-macOS)
@@ -478,6 +491,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('open-bookmark-dialog', handler);
       return () => ipcRenderer.removeListener('open-bookmark-dialog', handler);
+    },
+
+    openBookmarkAllTabsDialog: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('open-bookmark-all-tabs-dialog', handler);
+      return () => ipcRenderer.removeListener('open-bookmark-all-tabs-dialog', handler);
     },
 
     toggleBookmarksBar: (cb: () => void): (() => void) => {
@@ -664,6 +683,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('open-tab-search', handler);
       return () => ipcRenderer.removeListener('open-tab-search', handler);
     },
+
+    // Issue #13 — Fullscreen
+    fullscreenChanged: (cb: (payload: { isFullscreen: boolean }) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { isFullscreen: boolean }) => cb(payload);
+      ipcRenderer.on('fullscreen-changed', handler);
+      return () => ipcRenderer.removeListener('fullscreen-changed', handler);
+    },
   },
 
   // Profiles — current profile info + switch
@@ -731,4 +757,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     autofill: (id: string): Promise<string | null> =>
       ipcRenderer.invoke('passwords:autofill', id),
   },
+
 });

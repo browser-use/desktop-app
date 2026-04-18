@@ -57,6 +57,42 @@ function scoreText(text: string, lower: string): number {
   return 0;
 }
 
+// Levenshtein distance for "did you mean" typo detection.
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1,     // deletion
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+// Looks like a bare domain (no scheme, no spaces, has a dot + TLD).
+const BARE_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*)?(\.[a-z0-9][a-z0-9-]*)+$/i;
+
+function extractHostname(url: string): string {
+  try {
+    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
 function scoreEntry(title: string, url: string, inputLower: string): number {
   return Math.max(scoreText(title, inputLower), scoreText(url, inputLower));
 }
@@ -79,12 +115,19 @@ export function registerOmniboxHandlers(opts: OmniboxIpcOptions): void {
       mainLogger.debug('omnibox:suggest', { input });
 
       const results: OmniboxSuggestion[] = [];
-      const seen = new Set<string>();
+      const seenIndex = new Map<string, number>(); // url → index in results
 
       function push(s: OmniboxSuggestion): void {
         if (!s.url) return;
-        if (seen.has(s.url)) return;
-        seen.add(s.url);
+        const existing = seenIndex.get(s.url);
+        if (existing !== undefined) {
+          // Replace if this entry has higher relevance (e.g. bookmark > history).
+          if (s.relevance > results[existing].relevance) {
+            results[existing] = s;
+          }
+          return;
+        }
+        seenIndex.set(s.url, results.length);
         results.push(s);
       }
 
@@ -147,6 +190,53 @@ export function registerOmniboxHandlers(opts: OmniboxIpcOptions): void {
             title: tab.title || tab.url,
             url: tab.url,
             relevance: 600 + base,
+          });
+        }
+      }
+
+      // 5. Did-you-mean: fuzzy hostname match against visited URLs (baseline = 750).
+      // Only fires when the input looks like a domain, has no exact history match,
+      // and a close variant (Levenshtein ≤ 2) exists in history.
+      if (
+        historyStore &&
+        input.length >= 4 &&
+        BARE_DOMAIN_RE.test(lower) &&
+        results.filter((r) => r.type === 'history' || r.type === 'shortcut').length === 0
+      ) {
+        const inputHost = extractHostname(lower);
+        const { entries: histEntries } = historyStore.query({ limit: 200 });
+        const hostsSeen = new Set<string>();
+        let bestDistance = 3;
+        let bestEntry: { url: string; title: string; hostname: string } | null = null;
+
+        for (const e of histEntries) {
+          const hostname = extractHostname(e.url);
+          if (hostsSeen.has(hostname)) continue;
+          hostsSeen.add(hostname);
+          const dist = levenshtein(inputHost, hostname);
+          if (dist > 0 && dist < bestDistance) {
+            bestDistance = dist;
+            bestEntry = { url: e.url, title: e.title || e.url, hostname };
+          }
+        }
+
+        if (bestEntry) {
+          // Rewrite only the hostname in the original URL, preserving scheme, port, and path.
+          let correctedUrl: string;
+          try {
+            const parsed = new URL(bestEntry.url);
+            parsed.hostname = bestEntry.hostname;
+            correctedUrl = parsed.toString();
+          } catch {
+            correctedUrl = `https://${bestEntry.hostname}`;
+          }
+          push({
+            id: `did-you-mean:${bestEntry.hostname}`,
+            type: 'did-you-mean',
+            title: `Did you mean: ${bestEntry.hostname}?`,
+            url: correctedUrl,
+            description: correctedUrl,
+            relevance: 750,
           });
         }
       }

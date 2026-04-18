@@ -10,6 +10,7 @@ import { NavButtons } from './NavButtons';
 import { URLBar } from './URLBar';
 import { BookmarksBar } from './BookmarksBar';
 import { BookmarkDialog } from './BookmarkDialog';
+import { BookmarkAllTabsDialog } from './BookmarkAllTabsDialog';
 import { FindBar } from './FindBar';
 import { TabSearchDropdown } from './TabSearchDropdown';
 import { StatusBar } from './StatusBar';
@@ -99,6 +100,7 @@ declare const electronAPI: {
     clearCompleted: () => Promise<void>;
     getShowOnComplete: () => Promise<boolean>;
     setShowOnComplete: (value: boolean) => Promise<void>;
+    dismissWarning: (id: string) => Promise<void>;
   };
   shell: {
     setChromeHeight: (height: number) => Promise<void>;
@@ -137,8 +139,10 @@ declare const electronAPI: {
     targetLost: (cb: (payload: { tabId: string }) => void) => () => void;
     bookmarksUpdated: (cb: (tree: PersistedBookmarks) => void) => () => void;
     openBookmarkDialog: (cb: () => void) => () => void;
+    openBookmarkAllTabsDialog: (cb: () => void) => () => void;
     toggleBookmarksBar: (cb: () => void) => () => void;
     focusBookmarksBar: (cb: () => void) => () => void;
+    fullscreenChanged: (cb: (payload: { isFullscreen: boolean }) => void) => () => void;
     zoomChanged: (cb: (payload: { percent: number }) => void) => () => void;
     permissionPrompt: (
       cb: (data: { id: string; tabId: string | null; origin: string; permissionType: string; isMainFrame: boolean }) => void,
@@ -183,7 +187,11 @@ export function WindowChrome(): React.ReactElement {
   // Bookmarks state
   const [bookmarksTree, setBookmarksTree] = useState<PersistedBookmarks | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+  const [bookmarkAllTabsDialogOpen, setBookmarkAllTabsDialogOpen] = useState(false);
   const [focusBookmarksBarTick, setFocusBookmarksBarTick] = useState(0);
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Downloads state
   const [downloads, setDownloads] = useState<DownloadItemDTO[]>([]);
@@ -330,6 +338,10 @@ export function WindowChrome(): React.ReactElement {
       setBookmarkDialogOpen(true);
     });
 
+    const unsubOpenAllTabsDialog = electronAPI.on.openBookmarkAllTabsDialog(() => {
+      setBookmarkAllTabsDialogOpen(true);
+    });
+
     const unsubToggleBar = electronAPI.on.toggleBookmarksBar(() => {
       const current = bookmarksTree?.visibility ?? 'always';
       const next: Visibility = current === 'always' ? 'never' : 'always';
@@ -345,6 +357,10 @@ export function WindowChrome(): React.ReactElement {
       setNameWindowDialogOpen(true);
     });
 
+    const unsubFullscreen = electronAPI.on.fullscreenChanged(({ isFullscreen: fs }) => {
+      setIsFullscreen(fs);
+    });
+
     return () => {
       unsubTabsState();
       unsubTabUpdated();
@@ -357,9 +373,11 @@ export function WindowChrome(): React.ReactElement {
       unsubTargetLost();
       unsubBookmarksUpdated();
       unsubOpenDialog();
+      unsubOpenAllTabsDialog();
       unsubToggleBar();
       unsubFocusBar();
       unsubNameWindow();
+      unsubFullscreen();
     };
   }, [bookmarksTree?.visibility]);
 
@@ -568,7 +586,7 @@ export function WindowChrome(): React.ReactElement {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="window-chrome">
+    <div className={['window-chrome', isFullscreen ? 'window-chrome--fullscreen' : ''].filter(Boolean).join(' ')}>
       {/* Tab strip row */}
       <div className="window-chrome__tab-row">
         <div className="window-chrome__traffic-light-spacer" aria-hidden="true" />
@@ -636,6 +654,7 @@ export function WindowChrome(): React.ReactElement {
               onSetOpenWhenDone={(id, v) => electronAPI.downloads.setOpenWhenDone(id, v)}
               onClearCompleted={() => electronAPI.downloads.clearCompleted()}
               onSetShowOnComplete={handleSetShowOnComplete}
+              onDismissWarning={(id) => electronAPI.downloads.dismissWarning(id)}
             />
           )}
         </div>
@@ -679,6 +698,14 @@ export function WindowChrome(): React.ReactElement {
             electronAPI.tabs.create(url);
           }}
           focusTick={focusBookmarksBarTick}
+          onBookmarkAllTabs={() => setBookmarkAllTabsDialogOpen(true)}
+        />
+      )}
+
+      {bookmarkAllTabsDialogOpen && bookmarksTree && (
+        <BookmarkAllTabsDialog
+          tree={bookmarksTree}
+          onClose={() => setBookmarkAllTabsDialogOpen(false)}
         />
       )}
 

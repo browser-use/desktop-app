@@ -129,6 +129,11 @@ export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
     win.loadFile(htmlPath);
   }
 
+  win.webContents.setZoomLevel(0);
+  win.webContents.on("zoom-changed", () => {
+    win.webContents.setZoomLevel(0);
+  });
+
   // Debounced bounds persistence
   let boundsTimer: ReturnType<typeof setTimeout> | null = null;
   const debouncedSave = () => {

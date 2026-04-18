@@ -250,6 +250,28 @@
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------------------------
+   Download warning banners
+   --------------------------------------------------------------------------- */
+.download-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.download-warning--dangerous { background: rgba(var(--color-danger-rgb, 211,47,47), 0.12); color: var(--color-danger, #d32f2f); border: 1px solid rgba(211,47,47,0.3); }
+.download-warning--suspicious { background: rgba(230,162,30,0.12); color: #b26a00; border: 1px solid rgba(230,162,30,0.3); }
+.download-warning--insecure { background: rgba(230,162,30,0.08); color: #7a5800; border: 1px solid rgba(230,162,30,0.2); }
+.download-warning__text { flex: 1; }
+.download-warning__actions { display: flex; gap: 4px; margin-top: 4px; }
+.download-warning__btn { font-size: 11px; padding: 2px 8px; border-radius: 3px; border: 1px solid currentColor; background: transparent; cursor: pointer; color: inherit; }
+.download-warning__btn--primary { background: currentColor; }
+.download-warning__btn--primary span { color: white; }
+
 @media (prefers-reduced-motion: reduce) {
   .download-bubble {
     animation: none;

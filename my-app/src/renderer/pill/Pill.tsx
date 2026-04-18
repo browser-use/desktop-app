@@ -163,7 +163,16 @@ export function Pill(): React.ReactElement {
     const shouldExpand =
       state.phase !== 'idle' ||
       paletteRows.length > 0;
-    window.pillAPI.setExpanded(shouldExpand);
+    if (!shouldExpand) {
+      window.pillAPI.setExpanded(false);
+    } else if (state.phase === 'idle' && paletteRows.length > 0) {
+      const rowHeight = 40;
+      const visibleRows = Math.min(paletteRows.length, 6);
+      const height = 62 + 1 + 12 + (visibleRows * rowHeight) + 4;
+      window.pillAPI.setExpanded(height);
+    } else {
+      window.pillAPI.setExpanded(true);
+    }
   }, [state.phase, paletteRows.length]);
 
   // -------------------------------------------------------------------------

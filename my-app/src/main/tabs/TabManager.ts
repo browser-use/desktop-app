@@ -134,6 +134,8 @@ declare const HISTORY_VITE_DEV_SERVER_URL: string | undefined;
 declare const HISTORY_VITE_NAME: string | undefined;
 declare const DOWNLOADS_VITE_DEV_SERVER_URL: string | undefined;
 declare const DOWNLOADS_VITE_NAME: string | undefined;
+declare const BOOKMARKS_VITE_DEV_SERVER_URL: string | undefined;
+declare const BOOKMARKS_VITE_NAME: string | undefined;
 declare const CHROME_PAGES_VITE_DEV_SERVER_URL: string | undefined;
 declare const CHROME_PAGES_VITE_NAME: string | undefined;
 
@@ -268,6 +270,15 @@ export class TabManager {
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
     this.urlMatchFn = fn;
+  }
+
+  private isFullscreen = false;
+
+  setFullscreen(fullscreen: boolean): void {
+    if (this.isFullscreen === fullscreen) return;
+    this.isFullscreen = fullscreen;
+    mainLogger.debug('TabManager.setFullscreen', { fullscreen });
+    this.relayout();
   }
 
   setChromeOffset(offset: number): void {
@@ -457,11 +468,45 @@ export class TabManager {
     // Focus the URL bar so the user can type immediately. activateTab just
     // called view.webContents.focus(), so we pull OS focus back to the shell
     // window and then fire the same IPC Cmd+L uses.
+    // Re-send after did-finish-load because Electron refocuses the tab's
+    // webContents when the page finishes loading, stealing focus back.
     if (isUserInitiated && !this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
-      this.win.webContents.focus();
-      this.win.webContents.send('focus-url-bar');
+      const focusUrlBar = (): void => {
+        if (!this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
+          this.win.webContents.focus();
+          this.win.webContents.send("focus-url-bar");
+        }
+      };
+      focusUrlBar();
+      view.webContents.once("did-finish-load", focusUrlBar);
     }
 
+    return tabId;
+  }
+
+  createBackgroundTab(url: string): string {
+    const tabId = uuidv4();
+    const webPrefs: Electron.WebPreferences = {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    };
+    if (this.partition) webPrefs.partition = this.partition;
+    const view = new WebContentsView({ webPreferences: webPrefs });
+    this.win.contentView.addChildView(view);
+    this.tabs.set(tabId, view);
+    this.tabOrder.push(tabId);
+    this.navControllers.set(tabId, new NavigationController(view));
+    view.webContents.setVisualZoomLevelLimits(1, 3).catch(() => {});
+    this.attachViewEvents(tabId, view);
+    this.positionView(view);
+    view.setVisible(false);
+    this.onWebContentsCreated?.(view.webContents);
+    view.webContents.loadURL(url);
+    // Do NOT activate — stays in background
+    this.saveSession();
+    this.broadcastState();
+    mainLogger.info('TabManager.createBackgroundTab', { tabId, url });
     return tabId;
   }
 
@@ -789,6 +834,7 @@ export class TabManager {
     const preloadMap: Record<string, string> = {
       history: 'history.js',
       downloads: 'downloads.js',
+      bookmarks: 'bookmarks.js',
     };
     const preloadFile = CHROME_PAGES_PAGES.has(page) ? 'chrome.js' : (preloadMap[page] ?? 'history.js');
     const preloadPath = path.join(__dirname, preloadFile);
@@ -827,6 +873,13 @@ export class TabManager {
       } else {
         const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
         url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
+      }
+    } else if (page === 'bookmarks') {
+      if (typeof BOOKMARKS_VITE_DEV_SERVER_URL !== 'undefined' && BOOKMARKS_VITE_DEV_SERVER_URL) {
+        url = BOOKMARKS_VITE_DEV_SERVER_URL + '/src/renderer/bookmarks/bookmarks.html';
+      } else {
+        const name = typeof BOOKMARKS_VITE_NAME !== 'undefined' ? BOOKMARKS_VITE_NAME : 'bookmarks';
+        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'bookmarks.html');
       }
     } else if (CHROME_PAGES_PAGES.has(page)) {
       let baseUrl: string;
@@ -1463,7 +1516,7 @@ export class TabManager {
 
   private positionView(view: WebContentsView): void {
     const [winWidth, winHeight] = this.win.getContentSize();
-    const top = CHROME_HEIGHT + this.chromeOffset;
+    const top = this.isFullscreen ? 0 : CHROME_HEIGHT + this.chromeOffset;
     const contentWidth = Math.max(0, winWidth - this.sidePanelWidth);
     const x = this.sidePanelPosition === 'left' ? this.sidePanelWidth : 0;
     view.setBounds({
@@ -1734,6 +1787,20 @@ export class TabManager {
     wc.on('new-window' as any, (e: Event, url: string) => {
       e.preventDefault();
       this.createTab(url);
+    });
+
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      if (url && !BLOCKED_SCHEMES.test(url)) {
+        const background =
+          disposition === 'background-tab' ||
+          disposition === 'other';
+        if (background) {
+          this.createBackgroundTab(url);
+        } else {
+          this.createTab(url);
+        }
+      }
+      return { action: 'deny' };
     });
 
     // Find-in-page results stream back here. We only broadcast the final
@@ -2296,6 +2363,19 @@ export class TabManager {
       this.unpinTab(tabId);
     });
 
+    // Issue #8 — Tab hover card thumbnail
+    ipcMain.handle('tabs:capture-thumbnail', async (_e, tabId: string) => {
+      const view = this.tabs.get(tabId);
+      if (!view || view.webContents.isDestroyed()) return null;
+      try {
+        const image = await view.webContents.capturePage({ x: 0, y: 0, width: 560, height: 350 });
+        const resized = image.resize({ width: 280, height: 175 });
+        return resized.toDataURL();
+      } catch {
+        return null;
+      }
+    });
+
     // Issue #19 — back/forward long-press history menu
     ipcMain.handle('tabs:show-back-history', (_e, tabId: string) => {
       this.showBackHistoryMenu(tabId);
@@ -2368,6 +2448,21 @@ export class TabManager {
         isSecure: url.startsWith('https://'),
       };
     });
+
+    ipcMain.handle('security:get-cookie-count', async () => {
+      const url = this.getActiveTabUrl() ?? '';
+      if (!url) return 0;
+      try {
+        const activeView = this.activeTabId ? this.tabs.get(this.activeTabId) : null;
+        const session = activeView
+          ? activeView.webContents.session
+          : this.win.webContents.session;
+        const cookies = await session.cookies.get({ url });
+        return cookies.length;
+      } catch {
+        return 0;
+      }
+    });
   }
 
   destroy(): void {
@@ -2406,5 +2501,6 @@ export class TabManager {
     ipcMain.removeHandler('find:stop');
     ipcMain.removeHandler('find:get-last-query');
     ipcMain.removeHandler('security:get-page-info');
+    ipcMain.removeHandler('security:get-cookie-count');
   }
 }

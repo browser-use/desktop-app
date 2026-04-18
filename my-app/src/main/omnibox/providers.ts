@@ -11,7 +11,8 @@ export type SuggestionType =
   | 'bookmark'
   | 'tab'
   | 'shortcut'
-  | 'search';
+  | 'search'
+  | 'did-you-mean';
 
 export interface OmniboxSuggestion {
   /** Unique key for React rendering (provider:id). */

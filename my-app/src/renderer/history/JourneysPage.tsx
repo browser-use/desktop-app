@@ -111,6 +111,8 @@ export function JourneysPage(): React.ReactElement {
     searchRef.current?.focus();
   }, []);
 
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
   const handleQueryChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setQuery(val);
