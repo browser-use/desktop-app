@@ -2107,6 +2107,10 @@ function SearchEnginesTab(): React.ReactElement {
       toast.show({ variant: 'error', title: 'Search URL must contain %s as the query placeholder' });
       return;
     }
+    if (!/^https?:\/\//i.test(addSearchUrl.trim())) {
+      toast.show({ variant: 'error', title: 'Search URL must start with http:// or https://' });
+      return;
+    }
     setSaving(true);
     try {
       await window.settingsAPI.addCustomSearchEngine({

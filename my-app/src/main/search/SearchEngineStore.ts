@@ -243,6 +243,9 @@ export class SearchEngineStore {
    */
   buildSearchUrl(query: string): string {
     const engine = this.getDefault();
+    if (!engine.searchUrl.includes('%s')) {
+      return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    }
     return engine.searchUrl.replace('%s', encodeURIComponent(query));
   }
 }
