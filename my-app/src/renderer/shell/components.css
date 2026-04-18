@@ -402,6 +402,75 @@
   color: var(--color-fg-primary);
 }
 
+/* ---------------------------------------------------------------------------
+   Multi-select tab state
+   --------------------------------------------------------------------------- */
+.tab-item--selected {
+  background: var(--color-tab-selected-bg, rgba(100, 150, 255, 0.2));
+  border-color: var(--color-accent-default, #6b8cff);
+  outline: 1px solid var(--color-accent-default, #6b8cff);
+  outline-offset: -1px;
+}
+
+.tab-item--selected:hover {
+  background: var(--color-tab-selected-bg, rgba(100, 150, 255, 0.28));
+}
+
+/* Show the close button on selected tabs too */
+.tab-item--selected .tab-item__close {
+  display: flex;
+}
+
+/* Multi-select action bar — floats at the right of the tab strip */
+.tab-strip__multiselect-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 4px 2px;
+  -webkit-app-region: no-drag;
+}
+
+.tab-strip__multiselect-count {
+  font-size: 11px;
+  color: var(--color-fg-secondary);
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.tab-strip__multiselect-btn {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--color-accent-default, #6b8cff);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-default, #6b8cff);
+  color: var(--color-fg-on-accent, #fff);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    opacity    var(--duration-fast) var(--ease-out);
+}
+
+.tab-strip__multiselect-btn:hover {
+  opacity: 0.85;
+}
+
+.tab-strip__multiselect-btn--secondary {
+  background: transparent;
+  color: var(--color-fg-secondary);
+  border-color: var(--color-border-default);
+}
+
+.tab-strip__multiselect-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-fg-primary);
+  opacity: 1;
+}
+
 .tab-strip__new-tab {
   width: 28px;
   height: 28px;

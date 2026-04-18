@@ -61,8 +61,9 @@ interface TabItemProps {
   tab: TabState;
   index: number;
   isActive: boolean;
+  isSelected: boolean;
   isIconOnly: boolean;
-  onActivate: () => void;
+  onTabClick: (e: React.MouseEvent) => void;
   onClose: (e: React.MouseEvent) => void;
   onDragStart: (e: React.DragEvent, tabId: string, index: number) => void;
   onDragOver: (e: React.DragEvent, index: number) => void;
@@ -78,8 +79,9 @@ function TabItem({
   tab,
   index,
   isActive,
+  isSelected,
   isIconOnly,
-  onActivate,
+  onTabClick,
   onClose,
   onDragStart,
   onDragOver,
@@ -101,14 +103,16 @@ function TabItem({
         isDragOver ? 'tab-item--drag-over' : '',
         isPinned ? 'tab-item--pinned' : '',
         isIconOnly && !isPinned ? 'tab-item--icon-only' : '',
+        isSelected ? 'tab-item--selected' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       role="tab"
       aria-selected={isActive}
+      data-selected={isSelected || undefined}
       tabIndex={isActive ? 0 : -1}
       draggable
-      onClick={onActivate}
+      onClick={onTabClick}
       onKeyDown={onKeyDown}
       onDragStart={(e) => onDragStart(e, tab.id, index)}
       onDragOver={(e) => onDragOver(e, index)}
@@ -294,6 +298,8 @@ export function TabStrip({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [iconOnlySet, setIconOnlySet] = useState<Set<string>>(new Set());
   const [searchOpen, setSearchOpen] = useState(false);
+  const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(new Set());
+  const [lastClickedIdx, setLastClickedIdx] = useState<number | null>(null);
   const dragTabId = useRef<string | null>(null);
   const tabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -350,6 +356,18 @@ export function TabStrip({
     return show || iconOnlySet.size > 0;
   })();
 
+  // Escape clears multi-selection
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedTabIds.size > 0) {
+        setSelectedTabIds(new Set());
+        setLastClickedIdx(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedTabIds]);
+
   // Close search dropdown when clicking outside
   useEffect(() => {
     if (!searchOpen) return;
@@ -363,6 +381,47 @@ export function TabStrip({
     window.addEventListener('mousedown', handler);
     return () => window.removeEventListener('mousedown', handler);
   }, [searchOpen]);
+
+  const handleTabClick = useCallback(
+    (e: React.MouseEvent, tab: TabState, index: number) => {
+      if (e.metaKey || e.ctrlKey) {
+        // Toggle this tab in the selection without changing active tab
+        e.stopPropagation();
+        setSelectedTabIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(tab.id)) {
+            next.delete(tab.id);
+          } else {
+            next.add(tab.id);
+          }
+          return next;
+        });
+        setLastClickedIdx(index);
+      } else if (e.shiftKey && lastClickedIdx !== null) {
+        // Select range from lastClickedIdx to current index
+        e.stopPropagation();
+        const start = Math.min(lastClickedIdx, index);
+        const end = Math.max(lastClickedIdx, index);
+        const rangeIds = new Set<string>();
+        for (let i = start; i <= end; i++) {
+          if (tabs[i]) rangeIds.add(tabs[i].id);
+        }
+        setSelectedTabIds(rangeIds);
+      } else {
+        // Normal click: clear selection and activate
+        setSelectedTabIds(new Set());
+        setLastClickedIdx(index);
+        onActivate(tab.id);
+      }
+    },
+    [tabs, lastClickedIdx, onActivate],
+  );
+
+  const handleCloseSelected = useCallback(() => {
+    selectedTabIds.forEach((id) => onClose(id));
+    setSelectedTabIds(new Set());
+    setLastClickedIdx(null);
+  }, [selectedTabIds, onClose]);
 
   const handleTabKeyDown = useCallback(
     (e: React.KeyboardEvent, tab: TabState, index: number) => {
@@ -457,8 +516,9 @@ export function TabStrip({
             tab={tab}
             index={index}
             isActive={tab.id === activeTabId}
+            isSelected={selectedTabIds.has(tab.id)}
             isIconOnly={iconOnlySet.has(tab.id)}
-            onActivate={() => onActivate(tab.id)}
+            onTabClick={(e) => handleTabClick(e, tab, index)}
             onClose={(e) => {
               e.stopPropagation();
               onClose(tab.id);
@@ -498,6 +558,47 @@ export function TabStrip({
           </svg>
         </button>
       </div>
+
+      {/* Multi-select bulk-action toolbar — appears when 2+ tabs are selected */}
+      {selectedTabIds.size > 0 && (
+        <div className="tab-strip__multiselect-bar">
+          <span className="tab-strip__multiselect-count">
+            {selectedTabIds.size} selected
+          </span>
+          <button
+            type="button"
+            className="tab-strip__multiselect-btn"
+            onClick={handleCloseSelected}
+            title={`Close ${selectedTabIds.size} tab${selectedTabIds.size > 1 ? 's' : ''}`}
+          >
+            Close {selectedTabIds.size} tab{selectedTabIds.size > 1 ? 's' : ''}
+          </button>
+          <button
+            type="button"
+            className="tab-strip__multiselect-btn tab-strip__multiselect-btn--secondary"
+            onClick={() => {
+              // Stub: move selected tabs to new window
+              console.log('[TabStrip] Move to new window (stub):', [...selectedTabIds]);
+              setSelectedTabIds(new Set());
+            }}
+            title="Move to new window"
+          >
+            New window
+          </button>
+          <button
+            type="button"
+            className="tab-strip__multiselect-btn tab-strip__multiselect-btn--secondary"
+            onClick={() => {
+              // Stub: pin/unpin selected tabs
+              console.log('[TabStrip] Pin/unpin tabs (stub):', [...selectedTabIds]);
+              setSelectedTabIds(new Set());
+            }}
+            title="Pin/unpin selected tabs"
+          >
+            Pin/unpin
+          </button>
+        </div>
+      )}
 
       {/* Tab search button — appears when tabs are too narrow to read titles */}
       {showSearchBtn && (
