@@ -24,7 +24,6 @@
      WebContentsView below it. */
   min-height: var(--chrome-height);
   background: var(--color-bg-base);
-  border-bottom: 1px solid var(--color-border-default);
   -webkit-app-region: no-drag;
 }
 
@@ -40,7 +39,7 @@
 .window-chrome__traffic-light-spacer {
   /* macOS traffic lights in hiddenInset are positioned ~8px from left edge,
      occupy ~54px, with ~18px right padding. 80px clears them cleanly. */
-  width: 80px;
+  width: 96px;
   height: 100%;
   flex-shrink: 0;
   -webkit-app-region: drag;
