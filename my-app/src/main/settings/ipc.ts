@@ -25,6 +25,8 @@ import {
   type ClearDataResult,
 } from '../privacy/ClearDataController';
 import { isBiometricAvailable } from '../passwords/BiometricAuth';
+import type { PasswordStore } from '../passwords/PasswordStore';
+import type { DownloadManager } from '../downloads/DownloadManager';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,6 +116,10 @@ const CH_SET_LIVE_CAPTION         = 'settings:set-live-caption';
 
 let _accountStore: AccountStore | null = null;
 let _keychainStore: KeychainStore | null = null;
+// Lazy getters — resolved at call-time so DownloadManager can be wired up after
+// registerSettingsHandlers() is first called (it's created inside openShellAndWire).
+let _getPasswordStore:  () => PasswordStore | null  = () => null;
+let _getDownloadManager: () => DownloadManager | null = () => null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -563,7 +569,12 @@ async function handleClearData(
     throw new Error('timeRangeMs must be a non-negative number');
   }
 
-  return clearBrowsingData({ types: validTypes, timeRangeMs: range });
+  return clearBrowsingData({
+    types: validTypes,
+    timeRangeMs: range,
+    passwordStore: _getPasswordStore() ?? undefined,
+    downloadManager: _getDownloadManager() ?? undefined,
+  });
 }
 
 /**
@@ -918,15 +929,20 @@ function handleCloseWindow(): void {
 // ---------------------------------------------------------------------------
 
 export interface RegisterSettingsHandlersOptions {
-  accountStore:  AccountStore;
-  keychainStore: KeychainStore;
+  accountStore:       AccountStore;
+  keychainStore:      KeychainStore;
+  getPasswordStore?:  () => PasswordStore | null;
+  getDownloadManager?: () => DownloadManager | null;
 }
 
 export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions): void {
   mainLogger.info('settings.ipc.register');
 
-  _accountStore  = opts.accountStore;
-  _keychainStore = opts.keychainStore;
+  _accountStore    = opts.accountStore;
+  _keychainStore   = opts.keychainStore;
+  // Stash getters so handleClearData can resolve the live instances at call-time.
+  if (opts.getPasswordStore)  _getPasswordStore  = opts.getPasswordStore;
+  if (opts.getDownloadManager) _getDownloadManager = opts.getDownloadManager;
 
   ipcMain.handle(CH_SAVE_API_KEY,     handleSaveApiKey);
   ipcMain.handle(CH_LOAD_API_KEY,     handleLoadApiKey);
@@ -1016,8 +1032,10 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_GET_LIVE_CAPTION);
   ipcMain.removeHandler(CH_SET_LIVE_CAPTION);
 
-  _accountStore  = null;
-  _keychainStore = null;
+  _accountStore      = null;
+  _keychainStore     = null;
+  _getPasswordStore  = () => null;
+  _getDownloadManager = () => null;
 
   mainLogger.info('settings.ipc.unregister.ok');
 }

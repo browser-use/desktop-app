@@ -477,6 +477,16 @@ export class DownloadManager {
     this.broadcastState();
   }
 
+  /**
+   * Public entry point used by ClearDataController ("Clear browsing data →
+   * Download history"). Clears the in-memory download list and cancels any
+   * active downloads, then broadcasts the empty state to the renderer.
+   */
+  clearAllForPrivacy(): void {
+    mainLogger.info('DownloadManager.clearAllForPrivacy');
+    this.clearAll();
+  }
+
   // ---------------------------------------------------------------------------
   // Settings: show downloads when done
   // ---------------------------------------------------------------------------

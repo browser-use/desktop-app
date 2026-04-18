@@ -48,6 +48,9 @@ export interface ClearDataRequest {
    * clear everything — this is an Electron API limitation.
    */
   timeRangeMs: number;
+  /** Optional stores injected by the caller (main process). */
+  passwordStore?: PasswordStore;
+  downloadManager?: DownloadManager;
 }
 
 export interface ClearDataResult {
@@ -140,6 +143,7 @@ async function clearPasswords(): Promise<{ note?: string }> {
   // digest auth.
   _deps.passwordStore.deleteAllPasswords();
   await session.defaultSession.clearAuthCache();
+  mainLogger.info('privacy.clearPasswords.storeCleared');
   return { note: NOTE_RANGE_IGNORED_PASSWORDS };
 }
 

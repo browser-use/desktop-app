@@ -840,7 +840,12 @@ app.whenReady().then(async () => {
   });
 
   // Track 5 — Settings IPC handlers
-  registerSettingsHandlers({ accountStore, keychainStore });
+  registerSettingsHandlers({
+    accountStore,
+    keychainStore,
+    getPasswordStore:   () => passwordStore,
+    getDownloadManager: () => downloadManager,
+  });
 
   // Issue #200 — let ClearDataController reach the password store + download
   // manager so the "Passwords" / "Download history" checkboxes actually wipe
