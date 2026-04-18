@@ -214,7 +214,15 @@ export function registerOmniboxHandlers(opts: OmniboxIpcOptions): void {
         }
 
         if (bestEntry) {
-          const correctedUrl = `https://${bestEntry.hostname}`;
+          // Rewrite only the hostname in the original URL, preserving scheme, port, and path.
+          let correctedUrl: string;
+          try {
+            const parsed = new URL(bestEntry.url);
+            parsed.hostname = bestEntry.hostname;
+            correctedUrl = parsed.toString();
+          } catch {
+            correctedUrl = `https://${bestEntry.hostname}`;
+          }
           push({
             id: `did-you-mean:${bestEntry.hostname}`,
             type: 'did-you-mean',
