@@ -1586,3 +1586,19 @@
   background: var(--color-bg-hover);
   color: var(--color-fg-primary);
 }
+
+/* Quiet UI variant — compact bar for likely-spam notification requests */
+.permission-bar--quiet {
+  background: var(--color-bg-base);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 4px 12px;
+}
+
+.permission-bar--quiet .permission-bar__icon {
+  color: var(--color-fg-tertiary);
+}
+
+.permission-bar--quiet .permission-bar__message {
+  font-size: 11px;
+  color: var(--color-fg-tertiary);
+}

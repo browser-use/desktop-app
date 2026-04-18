@@ -56,7 +56,7 @@ const DEFAULT_PERMISSION_STATES: Record<PermissionType, PermissionState> = {
   'clipboard-read': 'ask',
   'clipboard-sanitized-write': 'allow',
   media: 'allow',
-  sensors: 'ask',
+  sensors: 'allow',
   'idle-detection': 'ask',
   unknown: 'ask',
 };
@@ -69,16 +69,15 @@ function makeEmpty(): PersistedPermissions {
   };
 }
 
-function getPermissionsPath(): string {
-  return path.join(app.getPath('userData'), PERMISSIONS_FILE_NAME);
-}
-
 export class PermissionStore {
+  private readonly filePath: string;
   private state: PersistedPermissions;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private dirty = false;
 
-  constructor() {
+  constructor(dataDir?: string) {
+    this.filePath = path.join(dataDir ?? app.getPath('userData'), PERMISSIONS_FILE_NAME);
+    mainLogger.info('PermissionStore.constructor', { filePath: this.filePath });
     this.state = this.load();
     mainLogger.info('PermissionStore.init', {
       recordCount: this.state.records.length,
@@ -87,7 +86,7 @@ export class PermissionStore {
 
   private load(): PersistedPermissions {
     try {
-      const raw = fs.readFileSync(getPermissionsPath(), 'utf-8');
+      const raw = fs.readFileSync(this.filePath, 'utf-8');
       const parsed = JSON.parse(raw) as PersistedPermissions;
       if (parsed.version !== 1 || !Array.isArray(parsed.records)) {
         mainLogger.warn('PermissionStore.load.invalid', { msg: 'Resetting permissions' });
@@ -112,8 +111,9 @@ export class PermissionStore {
   flushSync(): void {
     if (!this.dirty) return;
     try {
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
       fs.writeFileSync(
-        getPermissionsPath(),
+        this.filePath,
         JSON.stringify(this.state, null, 2),
         'utf-8',
       );
