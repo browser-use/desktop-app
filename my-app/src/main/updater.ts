@@ -48,7 +48,7 @@ export async function initUpdater(): Promise<void> {
   let autoUpdater: any;
   try {
     const specifier = 'electron-updater';
-    // eslint-disable-next-line import/no-unresolved, @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod: any = await import(/* @vite-ignore */ specifier);
     autoUpdater = mod.autoUpdater;
   } catch (err) {

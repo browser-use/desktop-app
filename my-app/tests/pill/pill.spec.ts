@@ -33,7 +33,7 @@ vi.mock('electron', () => {
     removeAllListeners: vi.fn(),
   };
 
-  const BrowserWindow = vi.fn().mockImplementation(() => mockWin);
+  const BrowserWindow = vi.fn().mockImplementation(function () { return mockWin; });
   // Expose mockWin so tests can assert on it
   (BrowserWindow as unknown as { _mockWin: typeof mockWin })._mockWin = mockWin;
 

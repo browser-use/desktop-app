@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Welcome component tests — written FIRST per D1 (TDD).
  *

@@ -21,7 +21,7 @@ const { systemPreferencesStub, readPrefsSpy, loggerSpy } = vi.hoisted(() => ({
     canPromptTouchID: vi.fn(() => true),
     promptTouchID: vi.fn(() => Promise.resolve()),
   },
-  readPrefsSpy: vi.fn<unknown[], Record<string, unknown>>(() => ({})),
+  readPrefsSpy: vi.fn<() => Record<string, unknown>>(() => ({})),
   loggerSpy: {
     debug: vi.fn(),
     info: vi.fn(),

@@ -66,6 +66,7 @@ function saveBounds(win: BrowserWindow): void {
 
 export interface ShellWindowOptions {
   titleSuffix?: string;
+  incognito?: boolean;
 }
 
 export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {

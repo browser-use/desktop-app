@@ -43,7 +43,7 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
-    "@electron/fuses": "^2.1.1",
+    "@electron/fuses": "^1.8.0",
     "@playwright/test": "^1.59.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
@@ -71,9 +71,6 @@
     "typescript": "~5.4.5",
     "vite": "^5.4.21",
     "vitest": "^4.1.4"
-  },
-  "overrides": {
-    "@electron/fuses": "^2.1.1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

@@ -143,9 +143,9 @@ const {
     mockCreatePillWindow: vi.fn(),
     mockRegisterHotkeys: vi.fn(() => true),
     mockUnregisterHotkeys: vi.fn(),
-    MockTabManager: vi.fn(() => mockTabManagerInstance),
+    MockTabManager: vi.fn(function () { return mockTabManagerInstance; }),
     mockTabManagerInstance,
-    MockAccountStore: vi.fn(() => mockAccountStoreInstance),
+    MockAccountStore: vi.fn(function () { return mockAccountStoreInstance; }),
     mockAccountStoreInstance,
     isOnboardingCompleteFlag,
     whenReadyHolder,
@@ -182,12 +182,12 @@ vi.mock('../../src/main/identity/AccountStore', () => ({
 }));
 
 vi.mock('../../src/main/identity/OAuthClient', () => ({
-  OAuthClient: vi.fn(() => ({ startAuthFlow: vi.fn() })),
+  OAuthClient: vi.fn(function () { return { startAuthFlow: vi.fn() }; }),
   PROTOCOL_SCHEME: 'agentic-browser',
 }));
 
 vi.mock('../../src/main/identity/KeychainStore', () => ({
-  KeychainStore: vi.fn(() => ({ setToken: vi.fn(), getToken: vi.fn() })),
+  KeychainStore: vi.fn(function () { return { setToken: vi.fn(), getToken: vi.fn() }; }),
 }));
 
 vi.mock('../../src/main/pill', () => ({
