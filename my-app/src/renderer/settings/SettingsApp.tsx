@@ -24,19 +24,20 @@ import { ClearDataDialog } from './ClearDataDialog';
 // Constants
 // ---------------------------------------------------------------------------
 
-const TAB_API_KEY      = 'api-key'          as const;
-const TAB_AGENT        = 'agent'            as const;
-const TAB_APPEARANCE   = 'appearance'       as const;
-const TAB_SCOPES       = 'scopes'           as const;
-const TAB_DANGER       = 'danger'           as const;
-const TAB_PROFILES     = 'profiles'         as const;
-const TAB_PRIVACY      = 'privacy'          as const;
-const TAB_PASSWORDS    = 'passwords'        as const;
-const TAB_ZOOM         = 'site-zoom'        as const;
-const TAB_CONTENT      = 'content'          as const;
-const TAB_PERMISSIONS  = 'permissions'     as const;
-const TAB_ADDRESSES    = 'addresses'        as const;
-const TAB_PAYMENTS     = 'payments'         as const;
+const TAB_API_KEY        = 'api-key'          as const;
+const TAB_AGENT          = 'agent'            as const;
+const TAB_APPEARANCE     = 'appearance'       as const;
+const TAB_SCOPES         = 'scopes'           as const;
+const TAB_DANGER         = 'danger'           as const;
+const TAB_PROFILES       = 'profiles'         as const;
+const TAB_PRIVACY        = 'privacy'          as const;
+const TAB_PASSWORDS      = 'passwords'        as const;
+const TAB_ZOOM           = 'site-zoom'        as const;
+const TAB_CONTENT        = 'content'          as const;
+const TAB_PERMISSIONS    = 'permissions'      as const;
+const TAB_ADDRESSES      = 'addresses'        as const;
+const TAB_PAYMENTS       = 'payments'         as const;
+const TAB_SEARCH_ENGINES = 'search-engines'   as const;
 
 type TabId =
   | typeof TAB_API_KEY
@@ -51,22 +52,24 @@ type TabId =
   | typeof TAB_PERMISSIONS
   | typeof TAB_ADDRESSES
   | typeof TAB_PAYMENTS
+  | typeof TAB_SEARCH_ENGINES
   | typeof TAB_DANGER;
 
 const TABS: Array<{ id: TabId; label: string }> = [
-  { id: TAB_API_KEY,    label: 'API Key' },
-  { id: TAB_AGENT,      label: 'Agent' },
-  { id: TAB_APPEARANCE, label: 'Appearance' },
-  { id: TAB_SCOPES,     label: 'Google Scopes' },
-  { id: TAB_PASSWORDS,  label: 'Passwords' },
-  { id: TAB_PROFILES,   label: 'Profiles' },
-  { id: TAB_PRIVACY,    label: 'Privacy and security' },
-  { id: TAB_ZOOM,       label: 'Site Zoom' },
-  { id: TAB_CONTENT,    label: 'Content' },
-  { id: TAB_PERMISSIONS, label: 'Permissions' },
-  { id: TAB_ADDRESSES,   label: 'Addresses' },
-  { id: TAB_PAYMENTS,    label: 'Payments' },
-  { id: TAB_DANGER,     label: 'Danger Zone' },
+  { id: TAB_API_KEY,        label: 'API Key' },
+  { id: TAB_AGENT,          label: 'Agent' },
+  { id: TAB_APPEARANCE,     label: 'Appearance' },
+  { id: TAB_SCOPES,         label: 'Google Scopes' },
+  { id: TAB_PASSWORDS,      label: 'Passwords' },
+  { id: TAB_PROFILES,       label: 'Profiles' },
+  { id: TAB_PRIVACY,        label: 'Privacy and security' },
+  { id: TAB_ZOOM,           label: 'Site Zoom' },
+  { id: TAB_CONTENT,        label: 'Content' },
+  { id: TAB_PERMISSIONS,    label: 'Permissions' },
+  { id: TAB_ADDRESSES,      label: 'Addresses' },
+  { id: TAB_PAYMENTS,       label: 'Payments' },
+  { id: TAB_SEARCH_ENGINES, label: 'Search Engines' },
+  { id: TAB_DANGER,         label: 'Danger Zone' },
 ];
 
 const THEME_ONBOARDING = 'onboarding';
@@ -87,6 +90,14 @@ const PAGE_ZOOM_OPTIONS = [
 // ---------------------------------------------------------------------------
 // Types (mirror preload shape)
 // ---------------------------------------------------------------------------
+
+interface SearchEngineEntry {
+  id: string;
+  name: string;
+  keyword: string;
+  searchUrl: string;
+  isBuiltIn: boolean;
+}
 
 interface OAuthScopeStatus {
   scope: string;
@@ -194,6 +205,12 @@ declare global {
       }>;
       applyAutoRevokePermissions: (revocations: Array<{ origin: string; permissionType: string }>) => Promise<number>;
       optOutAutoRevoke: (origin: string, permissionType: string) => Promise<void>;
+      listSearchEngines: () => Promise<SearchEngineEntry[]>;
+      getDefaultSearchEngine: () => Promise<SearchEngineEntry>;
+      setDefaultSearchEngine: (id: string) => Promise<void>;
+      addCustomSearchEngine: (p: { name: string; keyword: string; searchUrl: string }) => Promise<SearchEngineEntry>;
+      updateCustomSearchEngine: (id: string, p: Partial<{ name: string; keyword: string; searchUrl: string }>) => Promise<boolean>;
+      removeCustomSearchEngine: (id: string) => Promise<boolean>;
     };
   }
 }
@@ -1954,6 +1971,215 @@ function PermissionsTab(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// Search Engines tab
+// ---------------------------------------------------------------------------
+
+function SearchEnginesTab(): React.ReactElement {
+  const toast = useToast();
+  const [engines, setEngines] = useState<SearchEngineEntry[]>([]);
+  const [defaultId, setDefaultId] = useState<string>('google');
+  const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addKeyword, setAddKeyword] = useState('');
+  const [addSearchUrl, setAddSearchUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [all, def] = await Promise.all([
+        window.settingsAPI.listSearchEngines(),
+        window.settingsAPI.getDefaultSearchEngine(),
+      ]);
+      setEngines(all);
+      setDefaultId(def.id);
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to load search engines', message: (err as Error).message });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleSetDefault(id: string): Promise<void> {
+    try {
+      await window.settingsAPI.setDefaultSearchEngine(id);
+      setDefaultId(id);
+      toast.show({ variant: 'success', title: 'Default search engine updated' });
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to set default', message: (err as Error).message });
+    }
+  }
+
+  async function handleDelete(id: string): Promise<void> {
+    try {
+      await window.settingsAPI.removeCustomSearchEngine(id);
+      toast.show({ variant: 'success', title: 'Search engine removed' });
+      void load();
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to remove', message: (err as Error).message });
+    }
+  }
+
+  async function handleAdd(): Promise<void> {
+    if (!addName.trim() || !addSearchUrl.trim()) {
+      toast.show({ variant: 'error', title: 'Name and search URL are required' });
+      return;
+    }
+    if (!addSearchUrl.includes('%s')) {
+      toast.show({ variant: 'error', title: 'Search URL must contain %s as the query placeholder' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await window.settingsAPI.addCustomSearchEngine({
+        name: addName.trim(),
+        keyword: addKeyword.trim(),
+        searchUrl: addSearchUrl.trim(),
+      });
+      setAddName('');
+      setAddKeyword('');
+      setAddSearchUrl('');
+      setShowAddForm(false);
+      toast.show({ variant: 'success', title: 'Custom search engine added' });
+      void load();
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to add', message: (err as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="settings-section">
+        <Spinner size="md" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Search Engines</h2>
+      <p className="settings-section-desc">
+        Choose which search engine is used when you type a search query in the address bar.
+      </p>
+
+      <Card variant="default" padding="md" className="settings-card">
+        {engines.map((engine) => (
+          <div
+            key={engine.id}
+            className="settings-scope-row"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="radio"
+                name="default-search-engine"
+                id={`se-${engine.id}`}
+                checked={defaultId === engine.id}
+                onChange={() => void handleSetDefault(engine.id)}
+              />
+              <label htmlFor={`se-${engine.id}`} style={{ cursor: 'pointer' }}>
+                <span style={{ fontWeight: 500 }}>{engine.name}</span>
+                {engine.keyword && (
+                  <span className="settings-label" style={{ marginLeft: 8 }}>
+                    @{engine.keyword}
+                  </span>
+                )}
+              </label>
+            </div>
+            {!engine.isBuiltIn && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleDelete(engine.id)}
+              >
+                Delete
+              </Button>
+            )}
+          </div>
+        ))}
+      </Card>
+
+      {!showAddForm && (
+        <div style={{ marginTop: 16 }}>
+          <Button variant="secondary" size="sm" onClick={() => setShowAddForm(true)}>
+            Add custom engine
+          </Button>
+        </div>
+      )}
+
+      {showAddForm && (
+        <Card variant="outline" padding="md" className="settings-card" style={{ marginTop: 16 }}>
+          <h3 className="settings-label" style={{ marginBottom: 12 }}>Add custom search engine</h3>
+
+          <div className="settings-field">
+            <label htmlFor="se-add-name" className="settings-label">Name</label>
+            <input
+              id="se-add-name"
+              className="settings-input"
+              type="text"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder="My Search Engine"
+            />
+          </div>
+
+          <div className="settings-field" style={{ marginTop: 8 }}>
+            <label htmlFor="se-add-keyword" className="settings-label">Keyword (optional)</label>
+            <input
+              id="se-add-keyword"
+              className="settings-input"
+              type="text"
+              value={addKeyword}
+              onChange={(e) => setAddKeyword(e.target.value)}
+              placeholder="ms"
+            />
+          </div>
+
+          <div className="settings-field" style={{ marginTop: 8 }}>
+            <label htmlFor="se-add-url" className="settings-label">
+              Search URL (use %s for query placeholder)
+            </label>
+            <input
+              id="se-add-url"
+              className="settings-input"
+              type="text"
+              value={addSearchUrl}
+              onChange={(e) => setAddSearchUrl(e.target.value)}
+              placeholder="https://example.com/search?q=%s"
+            />
+          </div>
+
+          <div className="settings-row-actions" style={{ marginTop: 12 }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setShowAddForm(false); setAddName(''); setAddKeyword(''); setAddSearchUrl(''); }}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void handleAdd()}
+              loading={saving}
+            >
+              Add
+            </Button>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Danger Zone tab
 // ---------------------------------------------------------------------------
 
@@ -2633,19 +2859,20 @@ function SettingsInner(): React.ReactElement {
   }
 
   const content: Record<TabId, React.ReactElement> = {
-    [TAB_API_KEY]:    <ApiKeyTab />,
-    [TAB_AGENT]:      <AgentTab />,
-    [TAB_APPEARANCE]: <AppearanceTab />,
-    [TAB_SCOPES]:     <GoogleScopesTab />,
-    [TAB_PASSWORDS]:  <PasswordsTab />,
-    [TAB_PROFILES]:   <ProfilesTab />,
-    [TAB_PRIVACY]:    <PrivacyTab openDialog={clearDataOpen} onDialogChange={setClearDataOpen} />,
-    [TAB_ZOOM]:       <SiteZoomTab />,
-    [TAB_PERMISSIONS]: <PermissionsTab />,
-    [TAB_ADDRESSES]:   <AddressesTab />,
-    [TAB_PAYMENTS]:    <PaymentsTab />,
-    [TAB_CONTENT]:    <ContentCategoriesTab />,
-    [TAB_DANGER]:     <DangerZoneTab />,
+    [TAB_API_KEY]:        <ApiKeyTab />,
+    [TAB_AGENT]:          <AgentTab />,
+    [TAB_APPEARANCE]:     <AppearanceTab />,
+    [TAB_SCOPES]:         <GoogleScopesTab />,
+    [TAB_PASSWORDS]:      <PasswordsTab />,
+    [TAB_PROFILES]:       <ProfilesTab />,
+    [TAB_PRIVACY]:        <PrivacyTab openDialog={clearDataOpen} onDialogChange={setClearDataOpen} />,
+    [TAB_ZOOM]:           <SiteZoomTab />,
+    [TAB_PERMISSIONS]:    <PermissionsTab />,
+    [TAB_ADDRESSES]:      <AddressesTab />,
+    [TAB_PAYMENTS]:       <PaymentsTab />,
+    [TAB_CONTENT]:        <ContentCategoriesTab />,
+    [TAB_SEARCH_ENGINES]: <SearchEnginesTab />,
+    [TAB_DANGER]:         <DangerZoneTab />,
   };
 
   return (

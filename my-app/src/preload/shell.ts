@@ -17,6 +17,7 @@ import type { ProtocolHandlerRecord } from '../main/permissions/ProtocolHandlerS
 import type { DownloadItemDTO } from '../main/downloads/DownloadManager';
 import type { DevicePickerRequest } from '../main/devices/DeviceManager';
 import type { GrantedDevice, DeviceApiType } from '../main/devices/DeviceStore';
+import type { SearchEngine } from '../main/search/SearchEngineStore';
 
 // ---------------------------------------------------------------------------
 // Type re-exports for renderer consumption
@@ -38,6 +39,7 @@ export type {
   DevicePickerRequest,
   GrantedDevice,
   DeviceApiType,
+  SearchEngine,
 };
 
 // ---------------------------------------------------------------------------
@@ -670,5 +672,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     autofill: (id: string): Promise<string | null> =>
       ipcRenderer.invoke('passwords:autofill', id),
+  },
+
+  // Search engines — issue #21
+  searchEngines: {
+    list: (): Promise<SearchEngine[]> =>
+      ipcRenderer.invoke('search-engines:list'),
+
+    getDefault: (): Promise<SearchEngine> =>
+      ipcRenderer.invoke('search-engines:get-default'),
+
+    setDefault: (id: string): Promise<void> =>
+      ipcRenderer.invoke('search-engines:set-default', id),
+
+    addCustom: (p: { name: string; keyword: string; searchUrl: string }): Promise<SearchEngine> =>
+      ipcRenderer.invoke('search-engines:add-custom', p),
+
+    updateCustom: (
+      id: string,
+      p: Partial<{ name: string; keyword: string; searchUrl: string }>,
+    ): Promise<boolean> =>
+      ipcRenderer.invoke('search-engines:update-custom', { id, ...p }),
+
+    removeCustom: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('search-engines:remove-custom', id),
   },
 });

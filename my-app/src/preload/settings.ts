@@ -15,6 +15,9 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
+import type { SearchEngine } from '../main/search/SearchEngineStore';
+
+export type { SearchEngine };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -269,6 +272,14 @@ export interface SettingsAPI {
   updateCard: (payload: { id: string; nameOnCard?: string; cardNumber?: string; expiryMonth?: string; expiryYear?: string; nickname?: string }) => Promise<boolean>;
   deleteCard: (id: string) => Promise<boolean>;
   deleteAllAutofill: () => Promise<void>;
+
+  // Search engines — issue #21
+  listSearchEngines: () => Promise<SearchEngine[]>;
+  getDefaultSearchEngine: () => Promise<SearchEngine>;
+  setDefaultSearchEngine: (id: string) => Promise<void>;
+  addCustomSearchEngine: (p: { name: string; keyword: string; searchUrl: string }) => Promise<SearchEngine>;
+  updateCustomSearchEngine: (id: string, p: Partial<{ name: string; keyword: string; searchUrl: string }>) => Promise<boolean>;
+  removeCustomSearchEngine: (id: string) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +582,37 @@ const api: SettingsAPI = {
   deleteAllAutofill: async (): Promise<void> => {
     console.debug('[settings-preload] deleteAllAutofill');
     await ipcRenderer.invoke('autofill:delete-all');
+  },
+
+  // Search engines — issue #21
+  listSearchEngines: async (): Promise<SearchEngine[]> => {
+    console.debug('[settings-preload] listSearchEngines');
+    return ipcRenderer.invoke('search-engines:list');
+  },
+
+  getDefaultSearchEngine: async (): Promise<SearchEngine> => {
+    console.debug('[settings-preload] getDefaultSearchEngine');
+    return ipcRenderer.invoke('search-engines:get-default');
+  },
+
+  setDefaultSearchEngine: async (id: string): Promise<void> => {
+    console.debug('[settings-preload] setDefaultSearchEngine', { id });
+    await ipcRenderer.invoke('search-engines:set-default', id);
+  },
+
+  addCustomSearchEngine: async (p: { name: string; keyword: string; searchUrl: string }): Promise<SearchEngine> => {
+    console.debug('[settings-preload] addCustomSearchEngine', { name: p.name });
+    return ipcRenderer.invoke('search-engines:add-custom', p);
+  },
+
+  updateCustomSearchEngine: async (id: string, p: Partial<{ name: string; keyword: string; searchUrl: string }>): Promise<boolean> => {
+    console.debug('[settings-preload] updateCustomSearchEngine', { id });
+    return ipcRenderer.invoke('search-engines:update-custom', { id, ...p });
+  },
+
+  removeCustomSearchEngine: async (id: string): Promise<boolean> => {
+    console.debug('[settings-preload] removeCustomSearchEngine', { id });
+    return ipcRenderer.invoke('search-engines:remove-custom', id);
   },
 
 };

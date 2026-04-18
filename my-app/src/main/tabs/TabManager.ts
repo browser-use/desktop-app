@@ -153,6 +153,7 @@ export class TabManager {
   private sendingF7 = false;
   private zoomStore: ZoomStore;
   private urlMatchFn: UrlMatchFn | null = null;
+  private searchUrlTemplate: string | null = null;
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
   readonly isGuest: boolean;
@@ -241,6 +242,12 @@ export class TabManager {
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
     this.urlMatchFn = fn;
+  }
+
+  /** Update the search URL template (e.g. 'https://www.google.com/search?q=%s'). */
+  setSearchUrlTemplate(url: string | null): void {
+    this.searchUrlTemplate = url;
+    mainLogger.info('TabManager.setSearchUrlTemplate', { url: url ?? '(reset to default)' });
   }
 
   setChromeOffset(offset: number): void {
@@ -673,7 +680,7 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   navigate(tabId: string, input: string): void {
-    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined);
+    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined, this.searchUrlTemplate ?? undefined);
     const chromeMatch = CHROME_URL_RE.exec(url);
     if (chromeMatch) {
       const page = chromeMatch[1].toLowerCase();

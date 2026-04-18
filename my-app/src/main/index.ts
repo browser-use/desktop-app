@@ -44,6 +44,9 @@ import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDial
 // Wave1 P3 — Bookmarks
 import { BookmarkStore } from './bookmarks/BookmarkStore';
 import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
+// Issue #21 — Search Engines
+import { SearchEngineStore } from './search/SearchEngineStore';
+import { registerSearchEngineHandlers, unregisterSearchEngineHandlers } from './search/ipc';
 // Password Manager
 import { PasswordStore } from './passwords/PasswordStore';
 import { registerPasswordHandlers, unregisterPasswordHandlers } from './passwords/ipc';
@@ -150,6 +153,7 @@ let shellWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let bookmarkStore: BookmarkStore | null = null;
+let searchEngineStore: SearchEngineStore | null = null;
 let passwordStore: PasswordStore | null = null;
 let autofillStore: AutofillStore | null = null;
 let profileStore: ProfileStore | null = null;
@@ -190,6 +194,11 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     tabManager.setUrlMatchFn((candidate: string) => {
       return store.isUrlBookmarked(candidate) ? candidate : null;
     });
+  }
+
+  // Wire the default search engine URL template into navigation.
+  if (searchEngineStore) {
+    tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
   }
   if (historyStore) {
     tabManager.setHistoryStore(historyStore);
@@ -378,6 +387,15 @@ function openGuestShell(): BrowserWindow {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   mainLogger.info('main.appReady');
+
+  // Issue #21 — Search Engines: init store + register IPC before the shell loads.
+  searchEngineStore = new SearchEngineStore();
+  registerSearchEngineHandlers({
+    store: searchEngineStore,
+    onDefaultChanged: (searchUrl) => {
+      tabManager?.setSearchUrlTemplate(searchUrl);
+    },
+  });
 
   // Wave1 P3 — Bookmarks: init store + register IPC before the shell loads.
   // NOTE: BookmarkStore/PasswordStore/HistoryStore currently key off
