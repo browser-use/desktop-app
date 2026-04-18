@@ -47,6 +47,14 @@ export interface ClearDataResult {
   notes: Partial<Record<ClearDataType, string>>;
 }
 
+export type CheckupFlag = 'compromised' | 'reused' | 'weak';
+
+export interface PasswordCheckupResult {
+  id: string;
+  flags: CheckupFlag[];
+  breachCount: number;
+}
+
 export interface SettingsAPI {
   /** Save API key to Keychain (never logged) */
   saveApiKey: (key: string) => Promise<void>;
@@ -123,6 +131,9 @@ export interface SettingsAPI {
 
   /** Set the default page zoom (percent) */
   setDefaultPageZoom: (percent: number) => Promise<void>;
+
+  /** Run password checkup — breach check, reused, weak detection */
+  checkPasswords: () => Promise<PasswordCheckupResult[]>;
 
   /** Check if biometric (Touch ID) is available on this device */
   isBiometricAvailable: () => Promise<boolean>;
@@ -298,6 +309,11 @@ const api: SettingsAPI = {
   setDefaultPageZoom: async (percent: number): Promise<void> => {
     console.debug('[settings-preload] setDefaultPageZoom', { percent });
     await ipcRenderer.invoke('settings:set-default-page-zoom', percent);
+  },
+
+  checkPasswords: async (): Promise<PasswordCheckupResult[]> => {
+    console.debug('[settings-preload] checkPasswords');
+    return ipcRenderer.invoke('passwords:checkup') as Promise<PasswordCheckupResult[]>;
   },
 
   isBiometricAvailable: async (): Promise<boolean> => {

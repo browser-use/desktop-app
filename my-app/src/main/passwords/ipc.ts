@@ -14,6 +14,8 @@ import { mainLogger } from '../logger';
 import { assertString } from '../ipc-validators';
 import type { PasswordStore } from './PasswordStore';
 import { requireBiometric } from './BiometricAuth';
+import { runPasswordCheckup } from './PasswordCheckup';
+import type { CheckupFlag } from './PasswordCheckup';
 
 // IPC channels
 const CH_SAVE        = 'passwords:save';
@@ -28,6 +30,7 @@ const CH_LIST_NEVER  = 'passwords:list-never-save';
 const CH_IS_NEVER    = 'passwords:is-never-save';
 const CH_DELETE_ALL  = 'passwords:delete-all';
 const CH_AUTOFILL    = 'passwords:autofill';
+const CH_CHECKUP     = 'passwords:checkup';
 
 let _store: PasswordStore | null = null;
 
@@ -134,7 +137,27 @@ export function registerPasswordHandlers(opts: RegisterPasswordHandlersOptions):
     return _store.revealPassword(validId);
   });
 
-  mainLogger.info('passwords.ipc.register.ok', { channelCount: 12 });
+  ipcMain.handle(CH_CHECKUP, async (): Promise<Array<{ id: string; flags: CheckupFlag[]; breachCount: number }>> => {
+    if (!_store) throw new Error('PasswordStore not initialised');
+    mainLogger.info(CH_CHECKUP, { msg: 'Starting password checkup' });
+    await requireBiometric('check passwords for breaches');
+    const allPasswords = _store.revealAllPasswords();
+    mainLogger.info(CH_CHECKUP, { credentialCount: allPasswords.length });
+    const inputs = allPasswords.map((p) => ({
+      id: p.id,
+      plaintext: p.plaintext,
+      origin: p.origin,
+      username: p.username,
+    }));
+    const results = await runPasswordCheckup(inputs);
+    mainLogger.info(CH_CHECKUP, {
+      msg: 'Password checkup complete',
+      resultCount: results.length,
+    });
+    return results;
+  });
+
+  mainLogger.info('passwords.ipc.register.ok', { channelCount: 13 });
 }
 
 export function unregisterPasswordHandlers(): void {
@@ -151,6 +174,7 @@ export function unregisterPasswordHandlers(): void {
   ipcMain.removeHandler(CH_IS_NEVER);
   ipcMain.removeHandler(CH_DELETE_ALL);
   ipcMain.removeHandler(CH_AUTOFILL);
+  ipcMain.removeHandler(CH_CHECKUP);
   _store = null;
   mainLogger.info('passwords.ipc.unregister.ok');
 }

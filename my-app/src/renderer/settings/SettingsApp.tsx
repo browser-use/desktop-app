@@ -140,8 +140,10 @@ declare global {
       revealPassword: (id: string) => Promise<string | null>;
       updatePassword: (payload: { id: string; username?: string; password?: string }) => Promise<boolean>;
       deletePassword: (id: string) => Promise<boolean>;
+      deleteAllPasswords: () => Promise<void>;
       listNeverSave: () => Promise<string[]>;
       removeNeverSave: (origin: string) => Promise<void>;
+      checkPasswords: () => Promise<Array<{ id: string; flags: Array<'compromised' | 'reused' | 'weak'>; breachCount: number }>>;
       isBiometricAvailable: () => Promise<boolean>;
       getBiometricLock: () => Promise<boolean>;
       setBiometricLock: (enabled: boolean) => Promise<void>;
@@ -964,6 +966,45 @@ interface PasswordEntry {
   updatedAt: number;
 }
 
+type CheckupFlag = 'compromised' | 'reused' | 'weak';
+
+interface CheckupResult {
+  id: string;
+  flags: CheckupFlag[];
+  breachCount: number;
+}
+
+const FLAG_LABELS: Record<CheckupFlag, string> = {
+  compromised: 'Compromised',
+  reused: 'Reused',
+  weak: 'Weak',
+};
+
+const FLAG_COLORS: Record<CheckupFlag, string> = {
+  compromised: 'var(--color-danger, #dc3545)',
+  reused: 'var(--color-warning, #f0ad4e)',
+  weak: 'var(--color-warning, #f0ad4e)',
+};
+
+function CheckupBadge({ flag }: { flag: CheckupFlag }): React.ReactElement {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: 4,
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#fff',
+        backgroundColor: FLAG_COLORS[flag],
+        marginRight: 4,
+      }}
+    >
+      {FLAG_LABELS[flag]}
+    </span>
+  );
+}
+
 function PasswordsTab(): React.ReactElement {
   const toast = useToast();
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
@@ -977,6 +1018,10 @@ function PasswordsTab(): React.ReactElement {
   const [editPassword, setEditPassword] = useState('');
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricLock, setBiometricLock] = useState(false);
+
+  const [checkupResults, setCheckupResults] = useState<Map<string, CheckupResult>>(new Map());
+  const [checkupRunning, setCheckupRunning] = useState(false);
+  const [checkupDone, setCheckupDone] = useState(false);
 
   const loadData = useCallback(async () => {
     const [pw, ns, bioAvail, bioLock] = await Promise.all([
@@ -999,6 +1044,53 @@ function PasswordsTab(): React.ReactElement {
     const q = search.toLowerCase();
     return p.origin.toLowerCase().includes(q) || p.username.toLowerCase().includes(q);
   });
+
+  async function handleCheckPasswords(): Promise<void> {
+    if (passwords.length === 0) {
+      toast.show({ variant: 'error', title: 'No passwords to check' });
+      return;
+    }
+    setCheckupRunning(true);
+    setCheckupDone(false);
+    setCheckupResults(new Map());
+    try {
+      const results = await window.settingsAPI.checkPasswords();
+      const map = new Map<string, CheckupResult>();
+      for (const r of results) {
+        map.set(r.id, r);
+      }
+      setCheckupResults(map);
+      setCheckupDone(true);
+
+      const compromised = results.filter((r) => r.flags.includes('compromised')).length;
+      const reused = results.filter((r) => r.flags.includes('reused')).length;
+      const weak = results.filter((r) => r.flags.includes('weak')).length;
+      const safe = results.filter((r) => r.flags.length === 0).length;
+
+      if (compromised === 0 && reused === 0 && weak === 0) {
+        toast.show({ variant: 'success', title: `All ${safe} passwords look good` });
+      } else {
+        const parts: string[] = [];
+        if (compromised > 0) parts.push(`${compromised} compromised`);
+        if (reused > 0) parts.push(`${reused} reused`);
+        if (weak > 0) parts.push(`${weak} weak`);
+        toast.show({ variant: 'error', title: `Found ${parts.join(', ')}` });
+      }
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Password check failed', message: (err as Error).message });
+    } finally {
+      setCheckupRunning(false);
+    }
+  }
+
+  function getChangePasswordUrl(origin: string): string {
+    try {
+      const url = new URL(origin);
+      return `${url.origin}/.well-known/change-password`;
+    } catch {
+      return origin;
+    }
+  }
 
   async function handleBiometricToggle(checked: boolean): Promise<void> {
     setBiometricLock(checked);
@@ -1048,6 +1140,11 @@ function PasswordsTab(): React.ReactElement {
   async function handleDelete(id: string): Promise<void> {
     await window.settingsAPI.deletePassword(id);
     setPasswords((prev) => prev.filter((p) => p.id !== id));
+    setCheckupResults((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
     toast.show({ variant: 'success', title: 'Password deleted' });
   }
 
@@ -1089,12 +1186,73 @@ function PasswordsTab(): React.ReactElement {
     );
   }
 
+  const compromisedCount = [...checkupResults.values()].filter((r) => r.flags.includes('compromised')).length;
+  const reusedCount = [...checkupResults.values()].filter((r) => r.flags.includes('reused')).length;
+  const weakCount = [...checkupResults.values()].filter((r) => r.flags.includes('weak')).length;
+
   return (
     <div className="settings-section">
       <h2 className="settings-section-title">Passwords</h2>
       <p className="settings-section-desc">
         Manage saved passwords and sites that never save passwords.
       </p>
+
+      {/* Password checkup */}
+      <Card variant="default" padding="md" className="settings-card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Password Checkup</div>
+            <div style={{ fontSize: 13, color: 'var(--color-fg-secondary)' }}>
+              Check your saved passwords against known data breaches, find reused
+              passwords, and identify weak ones.
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void handleCheckPasswords()}
+            loading={checkupRunning}
+            style={{ marginLeft: 16, flexShrink: 0 }}
+          >
+            {checkupRunning ? 'Checking...' : 'Check passwords'}
+          </Button>
+        </div>
+
+        {checkupDone && (
+          <div style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: 8,
+            backgroundColor: (compromisedCount + reusedCount + weakCount) > 0
+              ? 'var(--color-danger-bg, rgba(220, 53, 69, 0.08))'
+              : 'var(--color-success-bg, rgba(40, 167, 69, 0.08))',
+          }}>
+            {(compromisedCount + reusedCount + weakCount) === 0 ? (
+              <span style={{ color: 'var(--color-success, #28a745)', fontWeight: 600 }}>
+                All {passwords.length} passwords are safe
+              </span>
+            ) : (
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                {compromisedCount > 0 && (
+                  <span style={{ color: FLAG_COLORS.compromised, fontWeight: 600 }}>
+                    {compromisedCount} compromised
+                  </span>
+                )}
+                {reusedCount > 0 && (
+                  <span style={{ color: FLAG_COLORS.reused, fontWeight: 600 }}>
+                    {reusedCount} reused
+                  </span>
+                )}
+                {weakCount > 0 && (
+                  <span style={{ color: FLAG_COLORS.weak, fontWeight: 600 }}>
+                    {weakCount} weak
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       {/* Biometric lock toggle */}
       {biometricAvailable && (
@@ -1139,65 +1297,88 @@ function PasswordsTab(): React.ReactElement {
             {passwords.length === 0 ? 'No saved passwords' : 'No matching passwords'}
           </div>
         ) : (
-          filtered.map((entry, idx) => (
-            <div
-              key={entry.id}
-              className={`settings-scope-row ${idx < filtered.length - 1 ? 'settings-scope-row--bordered' : ''}`}
-            >
-              {editId === entry.id ? (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
-                  <input
-                    className="settings-input"
-                    type="text"
-                    value={editUsername}
-                    onChange={(e) => setEditUsername(e.target.value)}
-                    placeholder="Username"
-                  />
-                  <input
-                    className="settings-input"
-                    type="password"
-                    value={editPassword}
-                    onChange={(e) => setEditPassword(e.target.value)}
-                    placeholder="New password (leave blank to keep)"
-                  />
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button variant="primary" size="sm" onClick={() => void handleEditSave()}>
-                      Save
-                    </Button>
-                    <Button variant="secondary" size="sm" onClick={() => setEditId(null)}>
-                      Cancel
-                    </Button>
+          filtered.map((entry, idx) => {
+            const result = checkupResults.get(entry.id);
+            const hasFlags = result && result.flags.length > 0;
+            return (
+              <div
+                key={entry.id}
+                className={`settings-scope-row ${idx < filtered.length - 1 ? 'settings-scope-row--bordered' : ''}`}
+              >
+                {editId === entry.id ? (
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, padding: '4px 0' }}>
+                    <input
+                      className="settings-input"
+                      type="text"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      placeholder="Username"
+                    />
+                    <input
+                      className="settings-input"
+                      type="password"
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      placeholder="New password (leave blank to keep)"
+                    />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Button variant="primary" size="sm" onClick={() => void handleEditSave()}>
+                        Save
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => setEditId(null)}>
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <>
-                  <div className="settings-scope-info">
-                    <span className="settings-scope-label">{entry.origin}</span>
-                    <code className="settings-scope-name">{entry.username}</code>
-                    {revealedId === entry.id && revealedPw !== null && (
-                      <code className="settings-scope-name" style={{ color: 'var(--color-fg-primary)' }}>
-                        {revealedPw}
-                      </code>
-                    )}
-                  </div>
-                  <div className="settings-scope-actions" style={{ gap: 4 }}>
-                    <Button variant="ghost" size="sm" onClick={() => void handleReveal(entry.id)}>
-                      {revealedId === entry.id ? 'Hide' : 'Reveal'}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => void handleCopy(entry.id)}>
-                      Copy
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => startEdit(entry)}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => void handleDelete(entry.id)}>
-                      Delete
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))
+                ) : (
+                  <>
+                    <div className="settings-scope-info">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="settings-scope-label">{entry.origin}</span>
+                        {hasFlags && result.flags.map((f) => (
+                          <CheckupBadge key={f} flag={f} />
+                        ))}
+                      </div>
+                      <code className="settings-scope-name">{entry.username}</code>
+                      {result && result.flags.includes('compromised') && result.breachCount > 0 && (
+                        <span style={{ fontSize: 12, color: FLAG_COLORS.compromised }}>
+                          Found in {result.breachCount.toLocaleString()} data breaches
+                        </span>
+                      )}
+                      {revealedId === entry.id && revealedPw !== null && (
+                        <code className="settings-scope-name" style={{ color: 'var(--color-fg-primary)' }}>
+                          {revealedPw}
+                        </code>
+                      )}
+                    </div>
+                    <div className="settings-scope-actions" style={{ gap: 4 }}>
+                      {hasFlags && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => window.open(getChangePasswordUrl(entry.origin), '_blank')}
+                        >
+                          Change password
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => void handleReveal(entry.id)}>
+                        {revealedId === entry.id ? 'Hide' : 'Reveal'}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => void handleCopy(entry.id)}>
+                        Copy
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(entry)}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => void handleDelete(entry.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })
         )}
       </Card>
 

@@ -264,6 +264,22 @@ export class PasswordStore {
     return [...this.state.neverSaveOrigins];
   }
 
+  // ---------------------------------------------------------------------------
+  // Batch reveal (for checkup)
+  // ---------------------------------------------------------------------------
+
+  revealAllPasswords(): Array<{ id: string; origin: string; username: string; plaintext: string }> {
+    mainLogger.info('PasswordStore.revealAllPasswords', {
+      credentialCount: this.state.credentials.length,
+    });
+    return this.state.credentials.map((c) => ({
+      id: c.id,
+      origin: c.origin,
+      username: c.username,
+      plaintext: this.decryptPassword(c.passwordEncrypted),
+    }));
+  }
+
   deleteAllPasswords(): void {
     this.state.credentials = [];
     this.state.neverSaveOrigins = [];
