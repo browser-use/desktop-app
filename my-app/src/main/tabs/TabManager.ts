@@ -144,6 +144,8 @@ const SKIP_HISTORY_RE = /^(data:|about:|chrome:|devtools:|view-source:)/i;
 const NEWTAB_URL_RE = /newtab\.html$/;
 
 export class TabManager {
+  static readonly instances = new Map<number, TabManager>();
+
   private win: BrowserWindow;
   private tabs: Map<string, WebContentsView> = new Map();
   private tabOrder: string[] = [];
@@ -186,6 +188,7 @@ export class TabManager {
 
   constructor(win: BrowserWindow, opts?: { dataDir?: string; partition?: string; guest?: boolean }) {
     this.win = win;
+    TabManager.instances.set(win.id, this);
     this.isGuest = opts?.guest ?? false;
     this.partition = opts?.partition ?? null;
     this.sessionStore = new SessionStore(opts?.dataDir);
@@ -2390,6 +2393,7 @@ export class TabManager {
   }
 
   destroy(): void {
+    TabManager.instances.delete(this.win.id);
     ipcMain.removeHandler('tabs:create');
     ipcMain.removeHandler('tabs:close');
     ipcMain.removeHandler('tabs:activate');

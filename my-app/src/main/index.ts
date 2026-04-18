@@ -1706,13 +1706,15 @@ function switchTabRelative(delta: number): void {
 ipcMain.handle('shell:get-platform', () => process.platform);
 
 // Tab drag-to-detach / move to new window (issue #1)
-ipcMain.handle('tabs:move-to-new-window', (_e, tabId: string) => {
-  if (!tabManager) return false;
-  const { tabs } = tabManager.getState();
+ipcMain.handle('tabs:move-to-new-window', (e, tabId: string) => {
+  const callerWin = BrowserWindow.fromWebContents(e.sender);
+  const tm = (callerWin ? TabManager.instances.get(callerWin.id) : null) ?? tabManager;
+  if (!tm) return false;
+  const { tabs } = tm.getState();
   if (tabs.length <= 1) return false; // Can't detach the last tab
   const tab = tabs.find((t) => t.id === tabId);
   if (!tab) return false;
-  tabManager.closeTab(tabId);
+  tm.closeTab(tabId);
   openNewWindow(tab.url);
   return true;
 });
