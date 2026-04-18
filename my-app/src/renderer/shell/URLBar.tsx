@@ -12,21 +12,6 @@ import React, {
 import { OmniboxDropdown } from './OmniboxDropdown';
 import type { OmniboxSuggestion } from '../../main/omnibox/providers';
 
-// ---------------------------------------------------------------------------
-// Omnibox types (mirrored from main/omnibox/providers.ts)
-// ---------------------------------------------------------------------------
-interface OmniboxSuggestion {
-  id: string;
-  type: 'history' | 'bookmark' | 'tab' | 'shortcut' | 'search';
-  title: string;
-  url: string;
-  description?: string;
-  favicon?: string;
-  relevance: number;
-}
-
-
-
 const GOOGLE_FAVICON_API = 'https://www.google.com/s2/favicons?sz=32&domain_url=';
 
 // ---------------------------------------------------------------------------
