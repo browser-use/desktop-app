@@ -27,16 +27,25 @@ const ELECTRON_PERMISSION_MAP: Record<string, PermissionType> = {
   'sensors': 'sensors',
   'camera': 'camera',
   'microphone': 'microphone',
+  'xr': 'webxr',
+  'ambient-light-sensor': 'ambient-light-sensor',
+  'payment-handler': 'payment-handler',
+  'background-sync': 'background-sync',
+  'protocol-handler': 'protocol-handler',
 };
 
 // Permissions that are auto-granted without prompting.
 // Sensors auto-grant on desktop (Chrome-parity: granted silently unless blocked).
+// Background sync is auto-granted in Chrome (only blocked explicitly).
+// Payment handler is auto-granted in Chrome (registered sites handle payments).
 const AUTO_GRANT: Set<PermissionType> = new Set([
   'fullscreen',
   'clipboard-sanitized-write',
   'media',
   'pointerLock',
   'sensors',
+  'background-sync',
+  'payment-handler',
 ]);
 
 // How long to wait for a paired camera+mic request before prompting individually (ms)

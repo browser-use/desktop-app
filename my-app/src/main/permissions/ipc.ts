@@ -7,15 +7,17 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
 import { PermissionStore, PermissionType, PermissionState } from './PermissionStore';
 import { PermissionManager, PermissionDecision } from './PermissionManager';
+import { ProtocolHandlerStore } from './ProtocolHandlerStore';
 
 export interface RegisterPermissionHandlersOptions {
   store: PermissionStore;
   manager: PermissionManager;
   getShellWindow: () => BrowserWindow | null;
+  protocolHandlerStore?: ProtocolHandlerStore;
 }
 
 export function registerPermissionHandlers(opts: RegisterPermissionHandlersOptions): void {
-  const { store, manager } = opts;
+  const { store, manager, protocolHandlerStore } = opts;
 
   ipcMain.handle('permissions:respond', (_e, promptId: string, decision: string) => {
     mainLogger.info('permissions:respond', { promptId, decision });
@@ -59,6 +61,48 @@ export function registerPermissionHandlers(opts: RegisterPermissionHandlersOptio
     store.resetAllSitePermissions();
   });
 
+  // Protocol handler management (chrome://settings/handlers parity)
+  if (protocolHandlerStore) {
+    ipcMain.handle('protocol-handlers:get-all', () => {
+      mainLogger.info('protocol-handlers:get-all');
+      return protocolHandlerStore.getAll();
+    });
+
+    ipcMain.handle('protocol-handlers:get-for-protocol', (_e, protocol: string) => {
+      mainLogger.info('protocol-handlers:get-for-protocol', { protocol });
+      return protocolHandlerStore.getForProtocol(protocol);
+    });
+
+    ipcMain.handle('protocol-handlers:get-for-origin', (_e, origin: string) => {
+      mainLogger.info('protocol-handlers:get-for-origin', { origin });
+      return protocolHandlerStore.getForOrigin(origin);
+    });
+
+    ipcMain.handle('protocol-handlers:register', (e, protocol: string, origin: string, url: string) => {
+      const senderOrigin = e.senderFrame?.origin;
+      if (!senderOrigin) {
+        mainLogger.warn('protocol-handlers:register.no-sender-origin', { claimedOrigin: origin });
+        throw new Error('Cannot verify caller origin');
+      }
+      if (senderOrigin !== origin) {
+        mainLogger.warn('protocol-handlers:register.origin-mismatch', { senderOrigin, claimedOrigin: origin });
+        throw new Error('Origin mismatch: caller origin does not match claimed origin');
+      }
+      mainLogger.info('protocol-handlers:register', { protocol, origin, url });
+      protocolHandlerStore.register(protocol, origin, url);
+    });
+
+    ipcMain.handle('protocol-handlers:unregister', (_e, protocol: string, origin: string) => {
+      mainLogger.info('protocol-handlers:unregister', { protocol, origin });
+      return protocolHandlerStore.unregister(protocol, origin);
+    });
+
+    ipcMain.handle('protocol-handlers:clear-all', () => {
+      mainLogger.info('protocol-handlers:clear-all');
+      protocolHandlerStore.clearAll();
+    });
+  }
+
   mainLogger.info('permissions.ipc.registered');
 }
 
@@ -73,5 +117,11 @@ export function unregisterPermissionHandlers(): void {
   ipcMain.removeHandler('permissions:set-default');
   ipcMain.removeHandler('permissions:get-all');
   ipcMain.removeHandler('permissions:reset-all');
+  ipcMain.removeHandler('protocol-handlers:get-all');
+  ipcMain.removeHandler('protocol-handlers:get-for-protocol');
+  ipcMain.removeHandler('protocol-handlers:get-for-origin');
+  ipcMain.removeHandler('protocol-handlers:register');
+  ipcMain.removeHandler('protocol-handlers:unregister');
+  ipcMain.removeHandler('protocol-handlers:clear-all');
   mainLogger.info('permissions.ipc.unregistered');
 }

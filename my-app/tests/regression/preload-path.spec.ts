@@ -131,7 +131,7 @@ test.describe('preload path integrity', () => {
     const page = await getShellWindow(electronApp);
     log(`Shell window URL: ${page.url()}`);
 
-    const hasApi = await page.evaluate(() => typeof window.electronAPI !== 'undefined');
+    const hasApi = await page.evaluate(() => typeof (window as any).electronAPI !== 'undefined');
     expect(hasApi, 'window.electronAPI must be defined — preload path is broken if this fails').toBe(true);
   });
 

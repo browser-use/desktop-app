@@ -29,6 +29,11 @@ export type PermissionType =
   | 'media'
   | 'sensors'
   | 'idle-detection'
+  | 'webxr'
+  | 'ambient-light-sensor'
+  | 'payment-handler'
+  | 'background-sync'
+  | 'protocol-handler'
   | 'unknown';
 
 export interface PermissionRecord {
@@ -58,6 +63,11 @@ const DEFAULT_PERMISSION_STATES: Record<PermissionType, PermissionState> = {
   media: 'allow',
   sensors: 'allow',
   'idle-detection': 'ask',
+  webxr: 'ask',
+  'ambient-light-sensor': 'ask',
+  'payment-handler': 'allow',
+  'background-sync': 'allow',
+  'protocol-handler': 'ask',
   unknown: 'ask',
 };
 

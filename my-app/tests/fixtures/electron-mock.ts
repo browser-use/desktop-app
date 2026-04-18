@@ -27,10 +27,10 @@ export const app = {
 };
 
 export const ipcMain = {
-  handle: (): undefined => undefined,
-  removeHandler: (): undefined => undefined,
-  on: (): undefined => undefined,
-  off: (): undefined => undefined,
+  handle: (): void => undefined,
+  removeHandler: (): void => undefined,
+  on: (): void => undefined,
+  off: (): void => undefined,
   emit: (): boolean => false,
 };
 
@@ -41,8 +41,8 @@ export const BrowserWindow = {
 
 export const globalShortcut = {
   register: (): boolean => false,
-  unregister: (): undefined => undefined,
-  unregisterAll: (): undefined => undefined,
+  unregister: (): void => undefined,
+  unregisterAll: (): void => undefined,
 };
 
 export const screen = {
@@ -56,8 +56,8 @@ export const screen = {
 };
 
 export const nativeImage = {
-  createEmpty: () => ({}),
-  createFromPath: () => ({}),
+  createEmpty: (): Record<string, never> => ({}),
+  createFromPath: (): Record<string, never> => ({}),
 };
 
 export const shell = {
@@ -114,20 +114,20 @@ const sessionStub = {
   removeAllListeners: (_event?: string) => sessionStub,
 
   // permissions
-  setPermissionRequestHandler: (_handler: unknown): undefined => undefined,
-  setPermissionCheckHandler: (_handler: unknown): undefined => undefined,
-  setDevicePermissionHandler: (_handler: unknown): undefined => undefined,
+  setPermissionRequestHandler: (_handler: unknown): void => undefined,
+  setPermissionCheckHandler: (_handler: unknown): void => undefined,
+  setDevicePermissionHandler: (_handler: unknown): void => undefined,
 
   // web request interception (DeclarativeNetRequestEngine)
   webRequest: {
-    onBeforeRequest: (_listener: unknown): undefined => undefined,
-    onBeforeSendHeaders: (_listener: unknown): undefined => undefined,
-    onSendHeaders: (_listener: unknown): undefined => undefined,
-    onHeadersReceived: (_listener: unknown): undefined => undefined,
-    onResponseStarted: (_listener: unknown): undefined => undefined,
-    onBeforeRedirect: (_listener: unknown): undefined => undefined,
-    onCompleted: (_listener: unknown): undefined => undefined,
-    onErrorOccurred: (_listener: unknown): undefined => undefined,
+    onBeforeRequest: (_listener: unknown): void => undefined,
+    onBeforeSendHeaders: (_listener: unknown): void => undefined,
+    onSendHeaders: (_listener: unknown): void => undefined,
+    onHeadersReceived: (_listener: unknown): void => undefined,
+    onResponseStarted: (_listener: unknown): void => undefined,
+    onBeforeRedirect: (_listener: unknown): void => undefined,
+    onCompleted: (_listener: unknown): void => undefined,
+    onErrorOccurred: (_listener: unknown): void => undefined,
   },
 
   // data clearing (ClearDataController)
@@ -136,7 +136,7 @@ const sessionStub = {
   clearHistory: (): Promise<void> => Promise.resolve(),
   clearHostResolverCache: (): Promise<void> => Promise.resolve(),
   clearStorageData: (_options?: unknown): Promise<void> => Promise.resolve(),
-  flushStorageData: (): undefined => undefined,
+  flushStorageData: (): void => undefined,
 
   cookies: {
     get: (): Promise<unknown[]> => Promise.resolve([]),
@@ -146,7 +146,7 @@ const sessionStub = {
   },
 
   // extensions (ExtensionManager)
-  loadExtension: (_path: string, _opts?: unknown) =>
+  loadExtension: (_path: string, _opts?: unknown): Promise<{ id: string; manifest: Record<string, never>; name: string; path: string; version: string }> =>
     Promise.resolve({
       id: 'mock-ext-id',
       manifest: {},
@@ -154,52 +154,52 @@ const sessionStub = {
       path: _path,
       version: '0.0.0',
     }),
-  removeExtension: (_id: string): undefined => undefined,
+  removeExtension: (_id: string): void => undefined,
   getExtension: (_id: string): null => null,
   getAllExtensions: (): unknown[] => [],
 
   // spell check / proxies / misc
-  setSpellCheckerEnabled: (_enabled: boolean): undefined => undefined,
+  setSpellCheckerEnabled: (_enabled: boolean): void => undefined,
   isSpellCheckerEnabled: (): boolean => false,
   setProxy: (_config: unknown): Promise<void> => Promise.resolve(),
   resolveProxy: (_url: string): Promise<string> => Promise.resolve(''),
 
   // service workers (ServiceWorkerManager)
   serviceWorkers: {
-    getAllRunning: (): Record<string, unknown> => ({}),
+    getAllRunning: (): Record<string, never> => ({}),
     getFromVersionID: (_id: number): null => null,
     startWorkerForScope: (_scope: string): Promise<void> => Promise.resolve(),
   },
 
   // user agent
   getUserAgent: (): string => 'mock-ua',
-  setUserAgent: (_ua: string): undefined => undefined,
+  setUserAgent: (_ua: string): void => undefined,
 
   // certificate handlers
-  setCertificateVerifyProc: (_proc: unknown): undefined => undefined,
+  setCertificateVerifyProc: (_proc: unknown): void => undefined,
 };
 
 export const session = {
   defaultSession: sessionStub,
-  fromPartition: (_partition: string) => sessionStub,
+  fromPartition: (_partition: string): typeof sessionStub => sessionStub,
 };
 
 // Many main-process modules reach for app.whenReady via the namespace import.
 // The `protocol` module is also referenced by custom scheme registration code.
 export const protocol = {
-  registerSchemesAsPrivileged: (_schemes: unknown[]): undefined => undefined,
-  registerFileProtocol: (_scheme: string, _handler: unknown): undefined => undefined,
-  registerStringProtocol: (_scheme: string, _handler: unknown): undefined => undefined,
-  registerBufferProtocol: (_scheme: string, _handler: unknown): undefined => undefined,
-  handle: (_scheme: string, _handler: unknown): undefined => undefined,
-  unhandle: (_scheme: string): undefined => undefined,
+  registerSchemesAsPrivileged: (_schemes: unknown[]): void => undefined,
+  registerFileProtocol: (_scheme: string, _handler: unknown): void => undefined,
+  registerStringProtocol: (_scheme: string, _handler: unknown): void => undefined,
+  registerBufferProtocol: (_scheme: string, _handler: unknown): void => undefined,
+  handle: (_scheme: string, _handler: unknown): void => undefined,
+  unhandle: (_scheme: string): void => undefined,
 };
 
 export const Menu = {
-  setApplicationMenu: (_menu: unknown): undefined => undefined,
+  setApplicationMenu: (_menu: unknown): void => undefined,
   buildFromTemplate: (_template: unknown[]) => ({
-    popup: (): undefined => undefined,
-    closePopup: (): undefined => undefined,
+    popup: (): void => undefined,
+    closePopup: (): void => undefined,
   }),
   getApplicationMenu: (): null => null,
 };

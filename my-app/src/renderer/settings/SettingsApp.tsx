@@ -42,6 +42,7 @@ type TabId =
   | typeof TAB_PASSWORDS
   | typeof TAB_PROFILES
   | typeof TAB_PRIVACY
+  | typeof TAB_PASSWORDS
   | typeof TAB_ZOOM
   | typeof TAB_DANGER;
 
@@ -135,7 +136,6 @@ declare global {
       getShowProfilePicker: () => Promise<boolean>;
       setShowProfilePicker: (show: boolean) => Promise<void>;
       closeWindow: () => void;
-      // Password manager bridge (see src/preload/settings.ts)
       listPasswords: () => Promise<PasswordListEntry[]>;
       revealPassword: (id: string) => Promise<string | null>;
       updatePassword: (payload: { id: string; username?: string; password?: string }) => Promise<boolean>;

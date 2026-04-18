@@ -61,6 +61,7 @@ import {
 import { PermissionStore } from './permissions/PermissionStore';
 import { PermissionManager } from './permissions/PermissionManager';
 import { registerPermissionHandlers, unregisterPermissionHandlers } from './permissions/ipc';
+import { ProtocolHandlerStore } from './permissions/ProtocolHandlerStore';
 // Issue #71 — Extensions
 import { ExtensionManager } from './extensions/ExtensionManager';
 import { registerExtensionsHandlers, unregisterExtensionsHandlers } from './extensions/ipc';
@@ -144,6 +145,7 @@ let permissionManager: PermissionManager | null = null;
 let extensionManager: ExtensionManager | null = null;
 let historyStore: HistoryStore | null = null;
 let downloadManager: DownloadManager | null = null;
+let protocolHandlerStore: ProtocolHandlerStore | null = null;
 let activeProfileId = 'default';
 let isGuestSession = false;
 let guestPartitionName: string | null = null;
@@ -193,6 +195,7 @@ function openShellAndWire(profileId?: string): BrowserWindow {
       store: permissionStore,
       manager: permissionManager,
       getShellWindow: () => shellWindow,
+      protocolHandlerStore: protocolHandlerStore ?? undefined,
     });
   }
 
@@ -391,6 +394,7 @@ app.whenReady().then(async () => {
   // only PermissionStore accepts a data dir today.
   bookmarkStore = new BookmarkStore();
   permissionStore = new PermissionStore(getProfileDataDir(activeProfileId));
+  protocolHandlerStore = new ProtocolHandlerStore(getProfileDataDir(activeProfileId));
   registerBookmarkHandlers({
     store: bookmarkStore,
     getShellWindow: () => shellWindow,
@@ -621,6 +625,7 @@ app.whenReady().then(async () => {
       bookmarkStore?.flushSync();
       historyStore?.flushSync();
       permissionStore?.flushSync();
+      protocolHandlerStore?.flushSync();
     }
     await teardownHl();
   });
