@@ -52,6 +52,7 @@ interface PillState {
   streamIteration: number;
   result: ResultState | null;
   paletteTabs: TabLite[];
+  activeTabId: string | null;
   paletteIndex: number;
 }
 
@@ -63,6 +64,7 @@ const INITIAL_STATE: PillState = {
   streamIteration: 0,
   result: null,
   paletteTabs: [],
+  activeTabId: null,
   paletteIndex: 0,
 };
 
@@ -74,7 +76,9 @@ interface PillAPI {
   submit: (prompt: string) => Promise<{ task_id: string }>;
   cancel: (task_id: string) => Promise<{ ok: boolean }>;
   hide: () => void;
-  setExpanded: (expanded: boolean) => void;
+  // `boolean` collapses/expands to default height; `number` expands to that
+  // exact pixel height (used for the palette's visible-rows layout).
+  setExpanded: (expanded: boolean | number) => void;
   onEvent: (cb: (event: AgentEvent) => void) => () => void;
   onHideRequest: (cb: () => void) => () => void;
   onQueuedTask: (cb: (data: { prompt: string; task_id: string }) => void) => () => void;
@@ -163,7 +167,16 @@ export function Pill(): React.ReactElement {
     const shouldExpand =
       state.phase !== 'idle' ||
       paletteRows.length > 0;
-    window.pillAPI.setExpanded(shouldExpand);
+    if (!shouldExpand) {
+      window.pillAPI.setExpanded(false);
+    } else if (state.phase === 'idle' && paletteRows.length > 0) {
+      const rowHeight = 40;
+      const visibleRows = Math.min(paletteRows.length, 6);
+      const height = 62 + 1 + 12 + (visibleRows * rowHeight) + 4;
+      window.pillAPI.setExpanded(height);
+    } else {
+      window.pillAPI.setExpanded(true);
+    }
   }, [state.phase, paletteRows.length]);
 
   // -------------------------------------------------------------------------
@@ -171,8 +184,8 @@ export function Pill(): React.ReactElement {
   // -------------------------------------------------------------------------
   const refreshTabs = useCallback(async () => {
     try {
-      const { tabs } = await window.pillAPI.tabs.getState();
-      setState((prev) => ({ ...prev, paletteTabs: tabs }));
+      const { tabs, activeTabId } = await window.pillAPI.tabs.getState();
+      setState((prev) => ({ ...prev, paletteTabs: tabs, activeTabId }));
     } catch { /* pill might load before tabs are ready — ignore */ }
   }, []);
 

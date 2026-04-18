@@ -100,12 +100,16 @@ declare const electronAPI: {
     clearCompleted: () => Promise<void>;
     getShowOnComplete: () => Promise<boolean>;
     setShowOnComplete: (value: boolean) => Promise<void>;
+    dismissWarning: (id: string) => Promise<void>;
   };
   shell: {
     setChromeHeight: (height: number) => Promise<void>;
     setSidePanelWidth: (width: number) => Promise<void>;
     setSidePanelPosition: (position: 'left' | 'right') => Promise<void>;
     getPlatform: () => Promise<string>;
+  };
+  windowName: {
+    set: (name: string) => Promise<void>;
   };
   share: {
     copyLink: () => Promise<boolean>;
@@ -138,6 +142,7 @@ declare const electronAPI: {
     openBookmarkAllTabsDialog: (cb: () => void) => () => void;
     toggleBookmarksBar: (cb: () => void) => () => void;
     focusBookmarksBar: (cb: () => void) => () => void;
+    fullscreenChanged: (cb: (payload: { isFullscreen: boolean }) => void) => () => void;
     zoomChanged: (cb: (payload: { percent: number }) => void) => () => void;
     permissionPrompt: (
       cb: (data: { id: string; tabId: string | null; origin: string; permissionType: string; isMainFrame: boolean }) => void,
@@ -153,6 +158,11 @@ declare const electronAPI: {
     downloadDone: (cb: (dl: DownloadItemDTO) => void) => () => void;
     downloadsState: (cb: (downloads: DownloadItemDTO[]) => void) => () => void;
     linkHover: (cb: (payload: { url: string }) => void) => () => void;
+    nameWindowDialog: (cb: () => void) => () => void;
+    liveCaptionStateChanged: (cb: (state: { enabled: boolean; language: string }) => void) => () => void;
+  };
+  liveCaption: {
+    getState: () => Promise<{ enabled: boolean; language: string }>;
   };
   permissions: {
     respond: (promptId: string, decision: string) => Promise<void>;
@@ -184,6 +194,9 @@ export function WindowChrome(): React.ReactElement {
   const [bookmarkAllTabsDialogOpen, setBookmarkAllTabsDialogOpen] = useState(false);
   const [focusBookmarksBarTick, setFocusBookmarksBarTick] = useState(0);
 
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   // Downloads state
   const [downloads, setDownloads] = useState<DownloadItemDTO[]>([]);
   const [bubbleOpen, setBubbleOpen] = useState(false);
@@ -193,8 +206,21 @@ export function WindowChrome(): React.ReactElement {
   // PiP state
   const [pipActive, setPipActive] = useState(false);
 
+  // Live Caption state — hydrated from prefs on mount
+  const [liveCaptionEnabled, setLiveCaptionEnabled] = useState(false);
+  const [liveCaptionLanguage, setLiveCaptionLanguage] = useState('en-US');
+  const [captionText, setCaptionText] = useState('');
+  const captionPos = useRef({ x: 0, y: 0 });
+  const captionDragStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+  const captionRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+
   // Side panel state
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
+  // Issue #12 — Window naming dialog state
+  const [nameWindowDialogOpen, setNameWindowDialogOpen] = useState(false);
 
   // Share menu state
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
@@ -340,6 +366,21 @@ export function WindowChrome(): React.ReactElement {
       setFocusBookmarksBarTick((n) => n + 1);
     });
 
+    // Issue #12 — Window naming: main process signals renderer to open dialog
+    const unsubNameWindow = electronAPI.on.nameWindowDialog(() => {
+      setNameWindowDialogOpen(true);
+    });
+
+    const unsubFullscreen = electronAPI.on.fullscreenChanged(({ isFullscreen: fs }) => {
+      setIsFullscreen(fs);
+    });
+
+    const unsubLiveCaptionState = electronAPI.on.liveCaptionStateChanged(({ enabled, language }) => {
+      setLiveCaptionEnabled(enabled);
+      setLiveCaptionLanguage(language);
+      if (!enabled) setCaptionText('');
+    });
+
     return () => {
       unsubTabsState();
       unsubTabUpdated();
@@ -355,8 +396,60 @@ export function WindowChrome(): React.ReactElement {
       unsubOpenAllTabsDialog();
       unsubToggleBar();
       unsubFocusBar();
+      unsubNameWindow();
+      unsubFullscreen();
+      unsubLiveCaptionState();
     };
   }, [bookmarksTree?.visibility]);
+
+  // ---------------------------------------------------------------------------
+  // Live Caption — hydrate from persisted prefs on mount
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    electronAPI.liveCaption.getState().then(({ enabled, language }) => {
+      setLiveCaptionEnabled(enabled);
+      setLiveCaptionLanguage(language);
+    }).catch(() => {});
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Live Caption — Web Speech API
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR: (new () => any) | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!liveCaptionEnabled || !SR) {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      return;
+    }
+    const rec = new SR();
+    rec.lang = liveCaptionLanguage;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (ev: any) => {
+      let text = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        text += ev.results[i][0].transcript;
+      }
+      setCaptionText(text);
+    };
+    let fatalError = false;
+    rec.onerror = (ev: any) => {
+      const fatal = ['not-allowed', 'service-not-available', 'audio-capture'];
+      if (fatal.includes(ev.error)) fatalError = true;
+    };
+    rec.onend = () => {
+      if (liveCaptionEnabled && !fatalError) rec.start();
+    };
+    rec.start();
+    recognitionRef.current = rec;
+    return () => {
+      rec.onend = null;
+      rec.stop();
+    };
+  }, [liveCaptionEnabled, liveCaptionLanguage]);
 
   // ---------------------------------------------------------------------------
   // Download IPC subscriptions
@@ -563,7 +656,7 @@ export function WindowChrome(): React.ReactElement {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="window-chrome">
+    <div className={['window-chrome', isFullscreen ? 'window-chrome--fullscreen' : ''].filter(Boolean).join(' ')}>
       {/* Tab strip row */}
       <div className="window-chrome__tab-row">
         <div className="window-chrome__traffic-light-spacer" aria-hidden="true" />
@@ -631,6 +724,7 @@ export function WindowChrome(): React.ReactElement {
               onSetOpenWhenDone={(id, v) => electronAPI.downloads.setOpenWhenDone(id, v)}
               onClearCompleted={() => electronAPI.downloads.clearCompleted()}
               onSetShowOnComplete={handleSetShowOnComplete}
+              onDismissWarning={(id) => electronAPI.downloads.dismissWarning(id)}
             />
           )}
         </div>
@@ -707,6 +801,169 @@ export function WindowChrome(): React.ReactElement {
       )}
       <FindBar activeTabId={activeTabId} />
       <StatusBar url={hoveredUrl} />
+
+      {nameWindowDialogOpen && (
+        <NameWindowDialog
+          onClose={() => setNameWindowDialogOpen(false)}
+          onSave={(name) => {
+            void electronAPI.windowName.set(name);
+            setNameWindowDialogOpen(false);
+          }}
+        />
+      )}
+
+      {liveCaptionEnabled && (
+        <div
+          ref={captionRef}
+          className="caption-overlay"
+          aria-live="polite"
+          aria-label="Live captions"
+          style={captionPos.current.x || captionPos.current.y ? {
+            bottom: 'auto',
+            top: captionPos.current.y,
+            left: captionPos.current.x,
+            transform: 'none',
+          } : undefined}
+          onMouseDown={(e) => {
+            const el = captionRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            captionDragStart.current = { mx: e.clientX, my: e.clientY, ox: rect.left, oy: rect.top };
+            const onMove = (ev: MouseEvent) => {
+              if (!captionDragStart.current) return;
+              const dx = ev.clientX - captionDragStart.current.mx;
+              const dy = ev.clientY - captionDragStart.current.my;
+              captionPos.current = { x: captionDragStart.current.ox + dx, y: captionDragStart.current.oy + dy };
+              if (el) {
+                el.style.bottom = 'auto';
+                el.style.top = captionPos.current.y + 'px';
+                el.style.left = captionPos.current.x + 'px';
+                el.style.transform = 'none';
+              }
+            };
+            const onUp = () => {
+              captionDragStart.current = null;
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+        >
+          <span className="caption-overlay__text">{captionText || '\u00a0'}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #12 — Name Window dialog
+// ---------------------------------------------------------------------------
+function NameWindowDialog({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (name: string) => void;
+}): React.ReactElement {
+  const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') onClose();
+  };
+
+  return (
+    <div
+      className="name-window-dialog__overlay"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.4)',
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="name-window-dialog"
+        style={{
+          background: 'var(--surface-primary, #fff)',
+          borderRadius: 8,
+          padding: '20px 24px',
+          minWidth: 320,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.24)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}
+        onKeyDown={handleKeyDown}
+      >
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Name Window</div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Window name"
+            maxLength={200}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 4,
+              border: '1px solid var(--border-primary, #ccc)',
+              fontSize: 13,
+              outline: 'none',
+              background: 'var(--surface-secondary, #f5f5f5)',
+              color: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: '1px solid var(--border-primary, #ccc)',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 13,
+                color: 'inherit',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: 'none',
+                background: 'var(--accent-primary, #1a73e8)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              Name
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -19,6 +19,7 @@ interface DownloadBubbleProps {
   onSetOpenWhenDone: (id: string, value: boolean) => void;
   onClearCompleted: () => void;
   onSetShowOnComplete: (value: boolean) => void;
+  onDismissWarning: (id: string) => void;
 }
 
 export function DownloadBubble({
@@ -33,6 +34,7 @@ export function DownloadBubble({
   onSetOpenWhenDone,
   onClearCompleted,
   onSetShowOnComplete,
+  onDismissWarning,
 }: DownloadBubbleProps): React.ReactElement {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +88,7 @@ export function DownloadBubble({
               onOpenFile={onOpenFile}
               onShowInFolder={onShowInFolder}
               onSetOpenWhenDone={onSetOpenWhenDone}
+              onDismissWarning={onDismissWarning}
             />
           ))}
         </ul>
@@ -117,6 +120,7 @@ interface DownloadRowProps {
   onOpenFile: (id: string) => void;
   onShowInFolder: (id: string) => void;
   onSetOpenWhenDone: (id: string, value: boolean) => void;
+  onDismissWarning: (id: string) => void;
 }
 
 function DownloadRow({
@@ -127,6 +131,7 @@ function DownloadRow({
   onOpenFile,
   onShowInFolder,
   onSetOpenWhenDone,
+  onDismissWarning,
 }: DownloadRowProps): React.ReactElement {
   const isActive = dl.status === 'in-progress' || dl.status === 'paused';
   const isCompleted = dl.status === 'completed';
@@ -167,6 +172,15 @@ function DownloadRow({
           )}
         </div>
 
+        {dl.warningLevel && !dl.warningDismissed && (
+          <DownloadWarningBanner
+            id={dl.id}
+            level={dl.warningLevel}
+            onCancel={onCancel}
+            onDismissWarning={onDismissWarning}
+          />
+        )}
+
         {isActive && (
           <div className="download-row__progress-wrap">
             <div className="download-row__progress-bar">
@@ -206,7 +220,7 @@ function DownloadRow({
                   <rect x="8" y="3" width="2.5" height="8" rx="0.5" fill="currentColor" />
                 </svg>
               </button>
-            ) : (
+            ) : !(dl.warningLevel && dl.warningLevel !== 'insecure' && !dl.warningDismissed) && (
               <button
                 className="download-row__action-btn"
                 title="Resume"
@@ -264,6 +278,61 @@ function DownloadRow({
         </label>
       )}
     </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DownloadWarningBanner
+// ---------------------------------------------------------------------------
+
+interface DownloadWarningBannerProps {
+  id: string;
+  level: 'dangerous' | 'suspicious' | 'insecure';
+  onCancel: (id: string) => void;
+  onDismissWarning: (id: string) => void;
+}
+
+function DownloadWarningBanner({ id, level, onCancel, onDismissWarning }: DownloadWarningBannerProps): React.ReactElement {
+  return (
+    <div className={`download-warning download-warning--${level}`}>
+      <div className="download-warning__text">
+        {level === 'dangerous' && (
+          <>
+            <div>This file may be dangerous. Are you sure you want to download it?</div>
+            <div className="download-warning__actions">
+              <button className="download-warning__btn" onClick={() => onCancel(id)}>Cancel</button>
+              <button className="download-warning__btn download-warning__btn--primary" onClick={() => onDismissWarning(id)}>
+                <span>Keep anyway</span>
+              </button>
+            </div>
+          </>
+        )}
+        {level === 'suspicious' && (
+          <>
+            <div>This file type can harm your device.</div>
+            <div className="download-warning__actions">
+              <button className="download-warning__btn" onClick={() => onCancel(id)}>Cancel</button>
+              <button className="download-warning__btn download-warning__btn--primary" onClick={() => onDismissWarning(id)}>
+                <span>Keep</span>
+              </button>
+            </div>
+          </>
+        )}
+        {level === 'insecure' && (
+          <div>This file was downloaded over an insecure connection.</div>
+        )}
+      </div>
+      {level === 'insecure' && (
+        <button
+          className="download-warning__btn"
+          title="Dismiss"
+          onClick={() => onDismissWarning(id)}
+          aria-label="Dismiss warning"
+        >
+          &#x2715;
+        </button>
+      )}
+    </div>
   );
 }
 

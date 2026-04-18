@@ -15,6 +15,9 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
+import type { SearchEngine } from '../main/search/SearchEngineStore';
+
+export type { SearchEngine };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -232,6 +235,27 @@ export interface SettingsAPI {
   /** Set whether Global Privacy Control header is enabled */
   setGpcEnabled: (enabled: boolean) => Promise<void>;
 
+  /** Get sync preferences */
+  getSyncPrefs: () => Promise<object>;
+
+  /** Set (patch) sync preferences */
+  setSyncPrefs: (patch: object) => Promise<boolean>;
+
+  /** Set sync encryption passphrase (min 8 chars); stores PBKDF2 hash */
+  setSyncPassphrase: (passphrase: string) => Promise<boolean>;
+
+  /** Verify the given passphrase against the stored hash */
+  verifySyncPassphrase: (passphrase: string) => Promise<boolean>;
+
+  /** Clear the sync encryption passphrase */
+  clearSyncPassphrase: () => Promise<void>;
+
+  /** Get Live Caption preferences (enabled state and language) */
+  getLiveCaption: () => Promise<{ enabled: boolean; language: string }>;
+
+  /** Set Live Caption preferences */
+  setLiveCaption: (patch: { enabled?: boolean; language?: string }) => Promise<boolean>;
+
   /** Get all global content category defaults */
   getContentCategoryDefaults: () => Promise<Record<ContentCategory, CategoryState>>;
 
@@ -256,6 +280,15 @@ export interface SettingsAPI {
   /** Reset all per-site overrides */
   resetAllContentCategoryOverrides: () => Promise<void>;
 
+  // Downloads settings
+  getDownloadFolder: () => Promise<string>;
+  setDownloadFolder: () => Promise<string | null>;
+  getAskBeforeSave: () => Promise<boolean>;
+  setAskBeforeSave: (enabled: boolean) => Promise<void>;
+  getFileTypeAssociations: () => Promise<Record<string, boolean>>;
+  setFileTypeAssociation: (ext: string, enabled: boolean) => Promise<void>;
+  removeFileTypeAssociation: (ext: string) => Promise<void>;
+
   // Autofill — addresses
   saveAddress: (fields: Omit<SavedAddress, 'id' | 'createdAt' | 'updatedAt'>) => Promise<SavedAddress>;
   listAddresses: () => Promise<SavedAddress[]>;
@@ -269,6 +302,14 @@ export interface SettingsAPI {
   updateCard: (payload: { id: string; nameOnCard?: string; cardNumber?: string; expiryMonth?: string; expiryYear?: string; nickname?: string }) => Promise<boolean>;
   deleteCard: (id: string) => Promise<boolean>;
   deleteAllAutofill: () => Promise<void>;
+
+  // Search engines — issue #21
+  listSearchEngines: () => Promise<SearchEngine[]>;
+  getDefaultSearchEngine: () => Promise<SearchEngine>;
+  setDefaultSearchEngine: (id: string) => Promise<void>;
+  addCustomSearchEngine: (p: { name: string; keyword: string; searchUrl: string }) => Promise<SearchEngine>;
+  updateCustomSearchEngine: (id: string, p: Partial<{ name: string; keyword: string; searchUrl: string }>) => Promise<boolean>;
+  removeCustomSearchEngine: (id: string) => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +522,16 @@ const api: SettingsAPI = {
     await ipcRenderer.invoke('settings:set-gpc-enabled', enabled);
   },
 
+  getLiveCaption: async (): Promise<{ enabled: boolean; language: string }> => {
+    console.debug('[settings-preload] getLiveCaption');
+    return ipcRenderer.invoke('settings:get-live-caption') as Promise<{ enabled: boolean; language: string }>;
+  },
+
+  setLiveCaption: async (patch: { enabled?: boolean; language?: string }): Promise<boolean> => {
+    console.debug('[settings-preload] setLiveCaption', { patch });
+    return ipcRenderer.invoke('settings:set-live-caption', patch) as Promise<boolean>;
+  },
+
   getContentCategoryDefaults: async (): Promise<Record<ContentCategory, CategoryState>> => {
     console.debug('[settings-preload] getContentCategoryDefaults');
     return ipcRenderer.invoke('content-categories:get-defaults') as Promise<Record<ContentCategory, CategoryState>>;
@@ -519,6 +570,42 @@ const api: SettingsAPI = {
   resetAllContentCategoryOverrides: async (): Promise<void> => {
     console.debug('[settings-preload] resetAllContentCategoryOverrides');
     await ipcRenderer.invoke('content-categories:reset-all');
+  },
+
+  // Downloads settings
+  getDownloadFolder: async (): Promise<string> => {
+    console.debug('[settings-preload] getDownloadFolder');
+    return ipcRenderer.invoke('settings:get-download-folder') as Promise<string>;
+  },
+
+  setDownloadFolder: async (): Promise<string | null> => {
+    console.debug('[settings-preload] setDownloadFolder');
+    return ipcRenderer.invoke('settings:set-download-folder') as Promise<string | null>;
+  },
+
+  getAskBeforeSave: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getAskBeforeSave');
+    return ipcRenderer.invoke('settings:get-ask-before-save') as Promise<boolean>;
+  },
+
+  setAskBeforeSave: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setAskBeforeSave', { enabled });
+    await ipcRenderer.invoke('settings:set-ask-before-save', enabled);
+  },
+
+  getFileTypeAssociations: async (): Promise<Record<string, boolean>> => {
+    console.debug('[settings-preload] getFileTypeAssociations');
+    return ipcRenderer.invoke('settings:get-file-type-associations') as Promise<Record<string, boolean>>;
+  },
+
+  setFileTypeAssociation: async (ext: string, enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setFileTypeAssociation', { ext, enabled });
+    await ipcRenderer.invoke('settings:set-file-type-association', ext, enabled);
+  },
+
+  removeFileTypeAssociation: async (ext: string): Promise<void> => {
+    console.debug('[settings-preload] removeFileTypeAssociation', { ext });
+    await ipcRenderer.invoke('settings:remove-file-type-association', ext);
   },
 
   // Autofill — addresses
@@ -571,6 +658,56 @@ const api: SettingsAPI = {
   deleteAllAutofill: async (): Promise<void> => {
     console.debug('[settings-preload] deleteAllAutofill');
     await ipcRenderer.invoke('autofill:delete-all');
+  },
+
+  getSyncPrefs: (): Promise<object> => {
+    console.debug('[settings-preload] getSyncPrefs');
+    return ipcRenderer.invoke('settings:get-sync-prefs') as Promise<object>;
+  },
+
+  setSyncPrefs: (patch: object): Promise<boolean> => {
+    console.debug('[settings-preload] setSyncPrefs');
+    return ipcRenderer.invoke('settings:set-sync-prefs', patch) as Promise<boolean>;
+  },
+
+  setSyncPassphrase: (passphrase: string): Promise<boolean> =>
+    ipcRenderer.invoke('settings:set-sync-passphrase', passphrase) as Promise<boolean>,
+
+  verifySyncPassphrase: (passphrase: string): Promise<boolean> =>
+    ipcRenderer.invoke('settings:verify-sync-passphrase', passphrase) as Promise<boolean>,
+
+  clearSyncPassphrase: (): Promise<void> =>
+    ipcRenderer.invoke('settings:clear-sync-passphrase') as Promise<void>,
+
+  // Search engines — issue #21
+  listSearchEngines: async (): Promise<SearchEngine[]> => {
+    console.debug('[settings-preload] listSearchEngines');
+    return ipcRenderer.invoke('search-engines:list');
+  },
+
+  getDefaultSearchEngine: async (): Promise<SearchEngine> => {
+    console.debug('[settings-preload] getDefaultSearchEngine');
+    return ipcRenderer.invoke('search-engines:get-default');
+  },
+
+  setDefaultSearchEngine: async (id: string): Promise<void> => {
+    console.debug('[settings-preload] setDefaultSearchEngine', { id });
+    await ipcRenderer.invoke('search-engines:set-default', id);
+  },
+
+  addCustomSearchEngine: async (p: { name: string; keyword: string; searchUrl: string }): Promise<SearchEngine> => {
+    console.debug('[settings-preload] addCustomSearchEngine', { name: p.name });
+    return ipcRenderer.invoke('search-engines:add-custom', p);
+  },
+
+  updateCustomSearchEngine: async (id: string, p: Partial<{ name: string; keyword: string; searchUrl: string }>): Promise<boolean> => {
+    console.debug('[settings-preload] updateCustomSearchEngine', { id });
+    return ipcRenderer.invoke('search-engines:update-custom', { id, ...p });
+  },
+
+  removeCustomSearchEngine: async (id: string): Promise<boolean> => {
+    console.debug('[settings-preload] removeCustomSearchEngine', { id });
+    return ipcRenderer.invoke('search-engines:remove-custom', id);
   },
 
 };
