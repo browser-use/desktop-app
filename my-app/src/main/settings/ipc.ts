@@ -95,6 +95,9 @@ const CH_GET_GPC_ENABLED     = 'settings:get-gpc-enabled';
 const CH_SET_GPC_ENABLED     = 'settings:set-gpc-enabled';
 const CH_GET_SYNC_PREFS      = 'settings:get-sync-prefs';
 const CH_SET_SYNC_PREFS      = 'settings:set-sync-prefs';
+const CH_SET_SYNC_PASSPHRASE = 'settings:set-sync-passphrase';
+const CH_CLEAR_SYNC_PASSPHRASE = 'settings:clear-sync-passphrase';
+const CH_VERIFY_SYNC_PASSPHRASE = 'settings:verify-sync-passphrase';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -147,6 +150,9 @@ interface Preferences {
     savedTabGroups: boolean;
     extensions: boolean;
     settings: boolean;
+    encryptionEnabled: boolean;
+    // PBKDF2 hash of the passphrase (stored for verification, never the raw passphrase)
+    encryptionKeyHash?: string;
   };
   [key: string]: unknown;
 }
@@ -700,6 +706,7 @@ function handleGetSyncPrefs() {
     savedTabGroups: true,
     extensions: true,
     settings: true,
+    encryptionEnabled: false,
   };
 }
 
@@ -709,6 +716,44 @@ function handleSetSyncPrefs(_e: Electron.IpcMainInvokeEvent, patch: unknown): bo
   const current = prefs.syncPrefs ?? {};
   mergePrefs({ syncPrefs: { ...current, ...(patch as object) } } as Partial<Preferences>);
   return true;
+}
+
+async function handleSetSyncPassphrase(_e: Electron.IpcMainInvokeEvent, passphrase: unknown): Promise<boolean> {
+  if (typeof passphrase !== 'string' || passphrase.length < 8) return false;
+  // Derive a verification hash using PBKDF2 (never store the raw passphrase)
+  const { pbkdf2 } = await import('node:crypto');
+  const hash = await new Promise<string>((resolve, reject) => {
+    pbkdf2(passphrase, 'sync-passphrase-salt', 100000, 32, 'sha256', (err, key) => {
+      if (err) reject(err);
+      else resolve(key.toString('hex'));
+    });
+  });
+  const prefs = readPrefs();
+  const current = prefs.syncPrefs ?? {};
+  mergePrefs({ syncPrefs: { ...current, encryptionEnabled: true, encryptionKeyHash: hash } } as Partial<Preferences>);
+  return true;
+}
+
+async function handleVerifySyncPassphrase(_e: Electron.IpcMainInvokeEvent, passphrase: unknown): Promise<boolean> {
+  if (typeof passphrase !== 'string') return false;
+  const prefs = readPrefs();
+  const stored = prefs.syncPrefs?.encryptionKeyHash;
+  if (!stored) return false;
+  const { pbkdf2 } = await import('node:crypto');
+  const hash = await new Promise<string>((resolve, reject) => {
+    pbkdf2(passphrase, 'sync-passphrase-salt', 100000, 32, 'sha256', (err, key) => {
+      if (err) reject(err);
+      else resolve(key.toString('hex'));
+    });
+  });
+  return hash === stored;
+}
+
+function handleClearSyncPassphrase(): void {
+  const prefs = readPrefs();
+  const current = prefs.syncPrefs ?? {};
+  const { encryptionKeyHash: _removed, ...rest } = current as typeof current & { encryptionKeyHash?: string };
+  mergePrefs({ syncPrefs: { ...rest, encryptionEnabled: false } } as Partial<Preferences>);
 }
 
 function handleCloseWindow(): void {
@@ -759,8 +804,11 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_SET_DNT_ENABLED,    handleSetDntEnabled);
   ipcMain.handle(CH_GET_GPC_ENABLED,    handleGetGpcEnabled);
   ipcMain.handle(CH_SET_GPC_ENABLED,    handleSetGpcEnabled);
-  ipcMain.handle(CH_GET_SYNC_PREFS,     handleGetSyncPrefs);
-  ipcMain.handle(CH_SET_SYNC_PREFS,     handleSetSyncPrefs);
+  ipcMain.handle(CH_GET_SYNC_PREFS,          handleGetSyncPrefs);
+  ipcMain.handle(CH_SET_SYNC_PREFS,          handleSetSyncPrefs);
+  ipcMain.handle(CH_SET_SYNC_PASSPHRASE,     handleSetSyncPassphrase);
+  ipcMain.handle(CH_VERIFY_SYNC_PASSPHRASE,  handleVerifySyncPassphrase);
+  ipcMain.handle(CH_CLEAR_SYNC_PASSPHRASE,   handleClearSyncPassphrase);
 
   refreshPrivacyHeaders();
 
@@ -797,6 +845,9 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_SET_GPC_ENABLED);
   ipcMain.removeHandler(CH_GET_SYNC_PREFS);
   ipcMain.removeHandler(CH_SET_SYNC_PREFS);
+  ipcMain.removeHandler(CH_SET_SYNC_PASSPHRASE);
+  ipcMain.removeHandler(CH_VERIFY_SYNC_PASSPHRASE);
+  ipcMain.removeHandler(CH_CLEAR_SYNC_PASSPHRASE);
 
   _accountStore  = null;
   _keychainStore = null;

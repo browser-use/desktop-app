@@ -238,6 +238,15 @@ export interface SettingsAPI {
   /** Set (patch) sync preferences */
   setSyncPrefs: (patch: object) => Promise<boolean>;
 
+  /** Set sync encryption passphrase (min 8 chars); stores PBKDF2 hash */
+  setSyncPassphrase: (passphrase: string) => Promise<boolean>;
+
+  /** Verify the given passphrase against the stored hash */
+  verifySyncPassphrase: (passphrase: string) => Promise<boolean>;
+
+  /** Clear the sync encryption passphrase */
+  clearSyncPassphrase: () => Promise<void>;
+
   /** Get all global content category defaults */
   getContentCategoryDefaults: () => Promise<Record<ContentCategory, CategoryState>>;
 
@@ -588,6 +597,15 @@ const api: SettingsAPI = {
     console.debug('[settings-preload] setSyncPrefs');
     return ipcRenderer.invoke('settings:set-sync-prefs', patch) as Promise<boolean>;
   },
+
+  setSyncPassphrase: (passphrase: string): Promise<boolean> =>
+    ipcRenderer.invoke('settings:set-sync-passphrase', passphrase) as Promise<boolean>,
+
+  verifySyncPassphrase: (passphrase: string): Promise<boolean> =>
+    ipcRenderer.invoke('settings:verify-sync-passphrase', passphrase) as Promise<boolean>,
+
+  clearSyncPassphrase: (): Promise<void> =>
+    ipcRenderer.invoke('settings:clear-sync-passphrase') as Promise<void>,
 
 };
 

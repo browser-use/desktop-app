@@ -199,6 +199,9 @@ declare global {
       optOutAutoRevoke: (origin: string, permissionType: string) => Promise<void>;
       getSyncPrefs: () => Promise<SyncPrefs>;
       setSyncPrefs: (patch: object) => Promise<boolean>;
+      setSyncPassphrase: (passphrase: string) => Promise<boolean>;
+      verifySyncPassphrase: (passphrase: string) => Promise<boolean>;
+      clearSyncPassphrase: () => Promise<void>;
     };
   }
 }
@@ -219,12 +222,13 @@ interface SyncPrefs {
   savedTabGroups: boolean;
   extensions: boolean;
   settings: boolean;
+  encryptionEnabled: boolean;
 }
 
 const DEFAULT_SYNC_PREFS: SyncPrefs = {
   enabled: false, syncEverything: true, bookmarks: true, readingList: true,
   passwords: true, addresses: true, payments: true, historyAndTabs: true,
-  savedTabGroups: true, extensions: true, settings: true,
+  savedTabGroups: true, extensions: true, settings: true, encryptionEnabled: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -2751,6 +2755,11 @@ function SettingsInner(): React.ReactElement {
 function SyncTab(): React.ReactElement {
   const [syncPrefs, setSyncPrefsState] = useState<SyncPrefs>(DEFAULT_SYNC_PREFS);
   const [saving, setSaving] = useState(false);
+  const [showPassphraseForm, setShowPassphraseForm] = useState(false);
+  const [newPassphrase, setNewPassphrase] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [passphraseError, setPassphraseError] = useState('');
+  const [passphraseSaved, setPassphraseSaved] = useState(false);
 
   useEffect(() => {
     void window.settingsAPI.getSyncPrefs().then((p: SyncPrefs) => setSyncPrefsState(p));
@@ -2851,6 +2860,87 @@ function SyncTab(): React.ReactElement {
               </div>
             </Card>
           )}
+
+          {/* Encryption passphrase section */}
+          <Card style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 500 }}>Encrypt synced data with your own passphrase</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>
+                  {syncPrefs.encryptionEnabled
+                    ? 'Your synced data is encrypted with your passphrase. Payment methods are excluded.'
+                    : 'Add a passphrase to encrypt all synced data. Payment methods via Google Pay are not encrypted.'}
+                </div>
+              </div>
+              <button
+                className={`settings-sync-toggle ${syncPrefs.encryptionEnabled ? 'settings-sync-toggle--on' : ''}`}
+                role="switch"
+                aria-checked={syncPrefs.encryptionEnabled}
+                onClick={() => {
+                  if (syncPrefs.encryptionEnabled) {
+                    void window.settingsAPI.clearSyncPassphrase().then(() => {
+                      setSyncPrefsState({ ...syncPrefs, encryptionEnabled: false });
+                      setPassphraseSaved(false);
+                      setShowPassphraseForm(false);
+                    });
+                  } else {
+                    setShowPassphraseForm(true);
+                  }
+                }}
+              />
+            </div>
+
+            {showPassphraseForm && !syncPrefs.encryptionEnabled && (
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border, #e0e0e0)', paddingTop: 16 }}>
+                <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 500 }}>Set encryption passphrase</div>
+                <div style={{ marginBottom: 8 }}>
+                  <input
+                    type="password"
+                    value={newPassphrase}
+                    onChange={(e) => { setNewPassphrase(e.target.value); setPassphraseError(''); }}
+                    placeholder="Passphrase (min 8 characters)"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid var(--color-border, #ccc)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <input
+                    type="password"
+                    value={confirmPassphrase}
+                    onChange={(e) => { setConfirmPassphrase(e.target.value); setPassphraseError(''); }}
+                    placeholder="Confirm passphrase"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid var(--color-border, #ccc)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                {passphraseError && (
+                  <div style={{ color: 'var(--color-danger, #d32f2f)', fontSize: 12, marginBottom: 8 }}>{passphraseError}</div>
+                )}
+                {passphraseSaved && (
+                  <div style={{ color: 'var(--color-success, #2e7d32)', fontSize: 12, marginBottom: 8 }}>Passphrase saved successfully.</div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (newPassphrase.length < 8) { setPassphraseError('Passphrase must be at least 8 characters.'); return; }
+                      if (newPassphrase !== confirmPassphrase) { setPassphraseError('Passphrases do not match.'); return; }
+                      void window.settingsAPI.setSyncPassphrase(newPassphrase).then((ok) => {
+                        if (ok) {
+                          setSyncPrefsState({ ...syncPrefs, encryptionEnabled: true });
+                          setShowPassphraseForm(false);
+                          setPassphraseSaved(true);
+                          setNewPassphrase('');
+                          setConfirmPassphrase('');
+                        } else {
+                          setPassphraseError('Failed to save passphrase. Try again.');
+                        }
+                      });
+                    }}
+                  >Save passphrase</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setShowPassphraseForm(false); setNewPassphrase(''); setConfirmPassphrase(''); setPassphraseError(''); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+          </Card>
         </>
       )}
     </div>
