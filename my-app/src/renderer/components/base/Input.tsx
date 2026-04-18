@@ -33,7 +33,10 @@ const VARIANT_CLASSES = {
 export type InputVariant = keyof typeof VARIANT_CLASSES;
 export type InputSize    = keyof typeof SIZE_CLASSES;
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+// Omit the native HTML `size` attribute (which is typed as a `number`) so
+// we can use `size` as a design-system size token ('sm' | 'md' | 'lg')
+// without a structural conflict.
+export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   variant?: InputVariant;
   size?: InputSize;
   error?: boolean;

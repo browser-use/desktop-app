@@ -38,7 +38,7 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   variant?: CardVariant;
   padding?: CardPadding;
   interactive?: boolean;
-  as?: keyof JSX.IntrinsicElements;
+  as?: keyof React.JSX.IntrinsicElements;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,15 +75,21 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         }
       : {};
 
+    // `as` is typed as any IntrinsicElement, but the prop surface is
+    // HTMLDivElement-shaped (see CardProps extending HTMLAttributes<HTMLDivElement>).
+    // Cast Tag to ElementType so the union of per-element prop types doesn't
+    // explode into "union type that is too complex to represent".
+    const Component = Tag as React.ElementType;
+
     return (
-      <Tag
+      <Component
         ref={ref as React.Ref<HTMLDivElement>}
         className={classes}
         {...interactiveProps}
         {...rest}
       >
         {children}
-      </Tag>
+      </Component>
     );
   },
 );
