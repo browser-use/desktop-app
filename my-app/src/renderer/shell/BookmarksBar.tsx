@@ -27,21 +27,29 @@ declare const electronAPI: {
     remove: (id: string) => Promise<boolean>;
     move: (payload: { id: string; newParentId: string; index: number }) => Promise<boolean>;
     addFolder: (payload: { name: string; parentId?: string }) => Promise<BookmarkNode>;
-    bookmarkAllTabs: (payload: { folderName: string }) => Promise<BookmarkNode>;
   };
 };
+
+function collectBookmarkUrls(node: BookmarkNode): string[] {
+  if (node.type === 'bookmark') return node.url ? [node.url] : [];
+  const urls: string[] = [];
+  for (const child of node.children ?? []) urls.push(...collectBookmarkUrls(child));
+  return urls;
+}
 
 interface BookmarksBarProps {
   tree: PersistedBookmarks;
   onOpen: (url: string) => void;
   onOpenInNewTab: (url: string) => void;
   focusTick: number;
+  onBookmarkAllTabs: () => void;
 }
 
 interface ChipProps {
   node: BookmarkNode;
   onOpen: (url: string) => void;
   onOpenInNewTab: (url: string) => void;
+  onOpenAllInFolder: (node: BookmarkNode) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragOver: (e: React.DragEvent, id: string) => void;
   onDrop: (e: React.DragEvent, id: string) => void;
@@ -53,6 +61,7 @@ function Chip({
   node,
   onOpen,
   onOpenInNewTab,
+  onOpenAllInFolder,
   onDragStart,
   onDragOver,
   onDrop,
@@ -71,17 +80,25 @@ function Chip({
       onDrop={(e) => onDrop(e, node.id)}
       onContextMenu={(e) => onContextMenu(e, node)}
       onClick={(e) => {
+        if (node.type === 'folder') {
+          if (e.metaKey || e.ctrlKey) onOpenAllInFolder(node);
+          return;
+        }
         if (!node.url) return;
-        if (e.metaKey || e.ctrlKey || e.button === 1) {
+        if (e.metaKey || e.ctrlKey) {
           onOpenInNewTab(node.url);
         } else {
           onOpen(node.url);
         }
       }}
       onAuxClick={(e) => {
-        if (e.button === 1 && node.url) onOpenInNewTab(node.url);
+        if (e.button !== 1) return;
+        if (node.type === 'folder') { onOpenAllInFolder(node); return; }
+        if (node.url) onOpenInNewTab(node.url);
       }}
-      title={`${node.name}${node.url ? `\n${node.url}` : ''}`}
+      title={node.type === 'folder'
+        ? `${node.name}\nCmd+click to open all`
+        : `${node.name}${node.url ? `\n${node.url}` : ''}`}
     >
       <span className="bookmarks-bar__chip-icon" aria-hidden="true">
         {node.type === 'folder' ? (
@@ -120,6 +137,7 @@ export function BookmarksBar({
   onOpen,
   onOpenInNewTab,
   focusTick,
+  onBookmarkAllTabs,
 }: BookmarksBarProps): React.ReactElement {
   const barRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -259,12 +277,17 @@ export function BookmarksBar({
   }, [tree.roots]);
 
   const handleBookmarkAllTabs = useCallback(() => {
-    const stamp = new Date().toLocaleDateString();
-    void electronAPI.bookmarks.bookmarkAllTabs({
-      folderName: `Tabs — ${stamp}`,
-    });
     setContextMenu(null);
-  }, []);
+    onBookmarkAllTabs();
+  }, [onBookmarkAllTabs]);
+
+  const handleOpenAllInFolder = useCallback(
+    (node: BookmarkNode) => {
+      const urls = collectBookmarkUrls(node);
+      for (const url of urls) onOpenInNewTab(url);
+    },
+    [onOpenInNewTab],
+  );
 
   const handleDelete = useCallback((id: string) => {
     void electronAPI.bookmarks.remove(id);
@@ -301,6 +324,7 @@ export function BookmarksBar({
               node={node}
               onOpen={onOpen}
               onOpenInNewTab={onOpenInNewTab}
+              onOpenAllInFolder={handleOpenAllInFolder}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
@@ -325,6 +349,7 @@ export function BookmarksBar({
               node={node}
               onOpen={() => undefined}
               onOpenInNewTab={() => undefined}
+              onOpenAllInFolder={() => undefined}
               onDragStart={() => undefined}
               onDragOver={() => undefined}
               onDrop={() => undefined}
@@ -395,16 +420,29 @@ export function BookmarksBar({
         >
           {contextMenu.target ? (
             <>
-              <button
-                type="button"
-                className="bookmarks-bar__menu-item"
-                onClick={() => {
-                  if (contextMenu.target?.url) onOpen(contextMenu.target.url);
-                  setContextMenu(null);
-                }}
-              >
-                Open
-              </button>
+              {contextMenu.target.type === 'folder' ? (
+                <button
+                  type="button"
+                  className="bookmarks-bar__menu-item"
+                  onClick={() => {
+                    handleOpenAllInFolder(contextMenu.target!);
+                    setContextMenu(null);
+                  }}
+                >
+                  Open all ({collectBookmarkUrls(contextMenu.target).length})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="bookmarks-bar__menu-item"
+                  onClick={() => {
+                    if (contextMenu.target?.url) onOpen(contextMenu.target.url);
+                    setContextMenu(null);
+                  }}
+                >
+                  Open
+                </button>
+              )}
               <button
                 type="button"
                 className="bookmarks-bar__menu-item bookmarks-bar__menu-item--danger"

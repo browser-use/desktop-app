@@ -1437,7 +1437,10 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         {
           label: 'Bookmark All Tabs…',
           accelerator: 'CommandOrControl+Shift+D',
-          enabled: false,
+          click: () => {
+            mainLogger.debug('shortcuts.bookmarkAllTabs');
+            shellWindow?.webContents.send('open-bookmark-all-tabs-dialog');
+          },
         },
         { type: 'separator' },
         {
@@ -1760,6 +1763,10 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
         {
           label: 'Bookmark This Tab…', accelerator: 'Ctrl+D',
           click: () => { shellWindow?.webContents.send('open-bookmark-dialog'); },
+        },
+        {
+          label: 'Bookmark All Tabs…', accelerator: 'Ctrl+Shift+D',
+          click: () => { shellWindow?.webContents.send('open-bookmark-all-tabs-dialog'); },
         },
         {
           label: 'Show Bookmarks Bar', accelerator: 'Ctrl+Shift+B',
