@@ -865,6 +865,15 @@ app.whenReady().then(async () => {
     getOpenTabs: () => tabManager ? tabManager.getAllTabSummaries().map((s) => ({ title: s.name, url: s.url })) : [],
   });
 
+  // Issue #17 — Omnibox autocomplete
+  shortcutsStore = new ShortcutsStore();
+  registerOmniboxHandlers({
+    shortcutsStore,
+    historyStore,
+    bookmarkStore: bookmarkStore!,
+    getOpenTabs: () => tabManager?.getState().tabs.map((t) => ({ title: t.title, url: t.url })) ?? [],
+  });
+
   // Issue #26 — Chrome internal pages
 
   // Issue #98 — Share menu
