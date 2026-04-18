@@ -315,6 +315,15 @@ export function TabStrip({
     }
   }, []);
 
+  // Prune stale selections when tabs are removed.
+  useEffect(() => {
+    const currentIds = new Set(tabs.map((t) => t.id));
+    setSelectedTabIds((prev) => {
+      const next = new Set([...prev].filter((id) => currentIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tabs]);
+
   // ---------------------------------------------------------------------------
   // ResizeObserver: measure each tab's rendered width and update icon-only state
   // ---------------------------------------------------------------------------
