@@ -89,13 +89,12 @@ const CH_SET_BIOMETRIC_LOCK  = 'settings:set-biometric-lock';
 const CH_BIOMETRIC_AVAILABLE = 'settings:biometric-available';
 const CH_GET_HTTPS_FIRST     = 'settings:get-https-first';
 const CH_SET_HTTPS_FIRST     = 'settings:set-https-first';
-const CH_GET_PREDICTION      = 'settings:get-prediction-service';
-const CH_SET_PREDICTION      = 'settings:set-prediction-service';
-const CH_GET_PRELOAD         = 'settings:get-preload-pages';
-const CH_SET_PRELOAD         = 'settings:set-preload-pages';
+const CH_GET_SAFE_BROWSING   = 'settings:get-safe-browsing';
+const CH_SET_SAFE_BROWSING   = 'settings:set-safe-browsing';
 
-const ALLOWED_PRELOAD_MODES = ['none', 'standard', 'extended'] as const;
-type PreloadMode = typeof ALLOWED_PRELOAD_MODES[number];
+const ALLOWED_SAFE_BROWSING_LEVELS = ['enhanced', 'standard', 'disabled'] as const;
+type SafeBrowsingLevel = typeof ALLOWED_SAFE_BROWSING_LEVELS[number];
+const DEFAULT_SAFE_BROWSING: SafeBrowsingLevel = 'standard';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -597,38 +596,21 @@ function handleSetHttpsFirst(_event: Electron.IpcMainInvokeEvent, enabled: boole
 }
 
 
-function handleGetPredictionService(): boolean {
-  mainLogger.info(CH_GET_PREDICTION);
+function handleGetSafeBrowsing(): string {
+  mainLogger.info(CH_GET_SAFE_BROWSING);
   const prefs = readPrefs();
-  const enabled = prefs.predictionService === true;
-  mainLogger.info(`${CH_GET_PREDICTION}.ok`, { enabled });
-  return enabled;
+  const level = typeof prefs.safeBrowsing === 'string' && (ALLOWED_SAFE_BROWSING_LEVELS as readonly string[]).includes(prefs.safeBrowsing as string)
+    ? prefs.safeBrowsing as string
+    : DEFAULT_SAFE_BROWSING;
+  mainLogger.info(`${CH_GET_SAFE_BROWSING}.ok`, { level });
+  return level;
 }
 
-function handleSetPredictionService(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
-  if (typeof enabled !== 'boolean') {
-    throw new Error('predictionService must be a boolean');
-  }
-  mainLogger.info(CH_SET_PREDICTION, { enabled });
-  mergePrefs({ predictionService: enabled });
-  mainLogger.info(`${CH_SET_PREDICTION}.ok`, { enabled });
-}
-
-function handleGetPreloadPages(): string {
-  mainLogger.info(CH_GET_PRELOAD);
-  const prefs = readPrefs();
-  const mode = (ALLOWED_PRELOAD_MODES as readonly string[]).includes(prefs.preloadPages as string)
-    ? (prefs.preloadPages as string)
-    : 'standard';
-  mainLogger.info(`${CH_GET_PRELOAD}.ok`, { mode });
-  return mode;
-}
-
-function handleSetPreloadPages(_event: Electron.IpcMainInvokeEvent, mode: string): void {
-  const validatedMode: PreloadMode = assertOneOf(mode, 'preloadPages', ALLOWED_PRELOAD_MODES);
-  mainLogger.info(CH_SET_PRELOAD, { mode: validatedMode });
-  mergePrefs({ preloadPages: validatedMode });
-  mainLogger.info(`${CH_SET_PRELOAD}.ok`, { mode: validatedMode });
+function handleSetSafeBrowsing(_event: Electron.IpcMainInvokeEvent, level: string): void {
+  const validated: SafeBrowsingLevel = assertOneOf(level, 'safeBrowsing', ALLOWED_SAFE_BROWSING_LEVELS);
+  mainLogger.info(CH_SET_SAFE_BROWSING, { level: validated });
+  mergePrefs({ safeBrowsing: validated });
+  mainLogger.info(`${CH_SET_SAFE_BROWSING}.ok`, { level: validated });
 }
 
 function handleCloseWindow(): void {
@@ -675,12 +657,10 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_BIOMETRIC_AVAILABLE, handleBiometricAvailable);
   ipcMain.handle(CH_GET_HTTPS_FIRST,    handleGetHttpsFirst);
   ipcMain.handle(CH_SET_HTTPS_FIRST,    handleSetHttpsFirst);
-  ipcMain.handle(CH_GET_PREDICTION,     handleGetPredictionService);
-  ipcMain.handle(CH_SET_PREDICTION,     handleSetPredictionService);
-  ipcMain.handle(CH_GET_PRELOAD,        handleGetPreloadPages);
-  ipcMain.handle(CH_SET_PRELOAD,        handleSetPreloadPages);
+  ipcMain.handle(CH_GET_SAFE_BROWSING,  handleGetSafeBrowsing);
+  ipcMain.handle(CH_SET_SAFE_BROWSING,  handleSetSafeBrowsing);
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 23 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -707,10 +687,8 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_BIOMETRIC_AVAILABLE);
   ipcMain.removeHandler(CH_GET_HTTPS_FIRST);
   ipcMain.removeHandler(CH_SET_HTTPS_FIRST);
-  ipcMain.removeHandler(CH_GET_PREDICTION);
-  ipcMain.removeHandler(CH_SET_PREDICTION);
-  ipcMain.removeHandler(CH_GET_PRELOAD);
-  ipcMain.removeHandler(CH_SET_PRELOAD);
+  ipcMain.removeHandler(CH_GET_SAFE_BROWSING);
+  ipcMain.removeHandler(CH_SET_SAFE_BROWSING);
 
   _accountStore  = null;
   _keychainStore = null;

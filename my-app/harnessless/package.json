@@ -1,0 +1,11 @@
+{
+  "name": "harnessless",
+  "version": "0.1.0",
+  "description": "LLM-first browser control via CDP — JS port",
+  "bin": {
+    "bh": "./run.js"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}

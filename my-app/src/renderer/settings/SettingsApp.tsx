@@ -150,10 +150,8 @@ declare global {
       setBiometricLock: (enabled: boolean) => Promise<void>;
       getHttpsFirst: () => Promise<boolean>;
       setHttpsFirst: (enabled: boolean) => Promise<void>;
-      getPredictionService: () => Promise<boolean>;
-      setPredictionService: (enabled: boolean) => Promise<void>;
-      getPreloadPages: () => Promise<string>;
-      setPreloadPages: (mode: string) => Promise<void>;
+      getSafeBrowsing: () => Promise<string>;
+      setSafeBrowsing: (level: string) => Promise<void>;
     };
   }
 }
@@ -752,10 +750,8 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
   const toast = useToast();
   const [httpsFirst, setHttpsFirst] = useState(false);
   const [httpsFirstLoading, setHttpsFirstLoading] = useState(true);
-  const [predictionService, setPredictionService] = useState(false);
-  const [predictionLoading, setPredictionLoading] = useState(true);
-  const [preloadPages, setPreloadPages] = useState('standard');
-  const [preloadLoading, setPreloadLoading] = useState(true);
+  const [safeBrowsing, setSafeBrowsing] = useState<string>('standard');
+  const [safeBrowsingLoading, setSafeBrowsingLoading] = useState(true);
 
   useEffect(() => {
     void window.settingsAPI.getHttpsFirst().then((val) => {
@@ -764,17 +760,11 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
     }).finally(() => {
       setHttpsFirstLoading(false);
     });
-    void window.settingsAPI.getPredictionService().then((val) => {
-      setPredictionService(val);
+    void window.settingsAPI.getSafeBrowsing().then((val) => {
+      setSafeBrowsing(val);
     }).catch(() => {
     }).finally(() => {
-      setPredictionLoading(false);
-    });
-    void window.settingsAPI.getPreloadPages().then((val) => {
-      setPreloadPages(val);
-    }).catch(() => {
-    }).finally(() => {
-      setPreloadLoading(false);
+      setSafeBrowsingLoading(false);
     });
   }, []);
 
@@ -796,38 +786,22 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
     }
   }
 
-  async function handlePredictionToggle(checked: boolean): Promise<void> {
-    setPredictionService(checked);
+  async function handleSafeBrowsingChange(level: string): Promise<void> {
+    const prev = safeBrowsing;
+    setSafeBrowsing(level);
     try {
-      await window.settingsAPI.setPredictionService(checked);
-      toast.show({
-        variant: 'success',
-        title: checked ? 'Prediction service enabled' : 'Prediction service disabled',
-      });
-    } catch (err) {
-      setPredictionService(!checked);
-      toast.show({
-        variant: 'error',
-        title: 'Failed to update setting',
-        message: (err as Error).message,
-      });
-    }
-  }
-
-  async function handlePreloadChange(mode: string): Promise<void> {
-    setPreloadPages(mode);
-    try {
-      await window.settingsAPI.setPreloadPages(mode);
+      await window.settingsAPI.setSafeBrowsing(level);
       const labels: Record<string, string> = {
-        none: 'No preloading',
-        standard: 'Standard preloading',
-        extended: 'Extended preloading',
+        enhanced: 'Enhanced protection',
+        standard: 'Standard protection',
+        disabled: 'No protection',
       };
       toast.show({
         variant: 'success',
-        title: labels[mode] ?? mode,
+        title: `Safe Browsing set to ${labels[level] ?? level}`,
       });
     } catch (err) {
+      setSafeBrowsing(prev);
       toast.show({
         variant: 'error',
         title: 'Failed to update setting',
@@ -842,6 +816,66 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
       <p className="settings-section-desc">
         Control what local browsing data is stored on this device.
       </p>
+
+      <Card variant="default" padding="md" className="settings-card">
+        <fieldset className="settings-fieldset" disabled={safeBrowsingLoading}>
+          <legend className="settings-label">Safe Browsing</legend>
+          <p className="settings-field-hint" style={{ marginBottom: 12 }}>
+            Protects you against dangerous websites, downloads, and extensions.
+          </p>
+
+          <label className="settings-radio-row">
+            <input
+              type="radio"
+              name="safe-browsing"
+              value="enhanced"
+              checked={safeBrowsing === 'enhanced'}
+              onChange={() => void handleSafeBrowsingChange('enhanced')}
+            />
+            <span className="settings-radio-content">
+              <span className="settings-radio-label">Enhanced protection</span>
+              <span className="settings-radio-desc">
+                Fastest, most proactive protection against dangerous websites,
+                downloads, and extensions. Sends URLs to Google for real-time checks.
+              </span>
+            </span>
+          </label>
+
+          <label className="settings-radio-row">
+            <input
+              type="radio"
+              name="safe-browsing"
+              value="standard"
+              checked={safeBrowsing === 'standard'}
+              onChange={() => void handleSafeBrowsingChange('standard')}
+            />
+            <span className="settings-radio-content">
+              <span className="settings-radio-label">Standard protection</span>
+              <span className="settings-radio-desc">
+                Protects against known dangerous websites, downloads, and
+                extensions using a locally maintained list.
+              </span>
+            </span>
+          </label>
+
+          <label className="settings-radio-row">
+            <input
+              type="radio"
+              name="safe-browsing"
+              value="disabled"
+              checked={safeBrowsing === 'disabled'}
+              onChange={() => void handleSafeBrowsingChange('disabled')}
+            />
+            <span className="settings-radio-content">
+              <span className="settings-radio-label">No protection</span>
+              <span className="settings-radio-desc">
+                Not recommended. Does not protect you against dangerous websites,
+                downloads, and extensions.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      </Card>
 
       <Card variant="default" padding="md" className="settings-card">
         <div className="settings-toggle-row">
@@ -863,54 +897,6 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
             />
             <span className="settings-toggle-track" />
           </label>
-        </div>
-      </Card>
-
-      <Card variant="default" padding="md" className="settings-card">
-        <div className="settings-toggle-row">
-          <div className="settings-toggle-info">
-            <span className="settings-toggle-label">
-              Use a prediction service to help complete searches and URLs
-            </span>
-            <span className="settings-toggle-desc">
-              Sends what you type in the address bar to your default search
-              engine for better suggestions. Not used in Incognito mode.
-            </span>
-          </div>
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              checked={predictionService}
-              disabled={predictionLoading}
-              onChange={(e) => void handlePredictionToggle(e.target.checked)}
-            />
-            <span className="settings-toggle-track" />
-          </label>
-        </div>
-      </Card>
-
-      <Card variant="default" padding="md" className="settings-card">
-        <div className="settings-field">
-          <label className="settings-label" htmlFor="preload-pages-select">
-            Preload pages
-          </label>
-          <p className="settings-field-hint">
-            Preloading makes pages load faster by fetching resources ahead of
-            time. Standard preloading pre-fetches only the page you are likely
-            to visit next. Extended preloading fetches more pages in advance,
-            using more data and memory.
-          </p>
-          <select
-            id="preload-pages-select"
-            className="settings-select"
-            value={preloadPages}
-            disabled={preloadLoading}
-            onChange={(e) => void handlePreloadChange(e.target.value)}
-          >
-            <option value="none">No preloading</option>
-            <option value="standard">Standard preloading</option>
-            <option value="extended">Extended preloading</option>
-          </select>
         </div>
       </Card>
 

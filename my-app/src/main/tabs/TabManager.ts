@@ -35,6 +35,14 @@ import {
   buildInterstitialHtml,
   HTTPS_PROCEED_PREFIX,
 } from '../https/HttpsFirstController';
+import {
+  checkUrl as safeBrowsingCheckUrl,
+  bypassOrigin as safeBrowsingBypassOrigin,
+  buildSafeBrowsingInterstitial,
+  SAFE_BROWSING_PROCEED_PREFIX,
+  SAFE_BROWSING_BACK_PREFIX,
+  type ThreatType,
+} from '../safebrowsing/SafeBrowsingController';
 
 // Forge VitePlugin globals for the new-tab page (injected at build time)
 declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
@@ -675,7 +683,39 @@ export class TabManager {
     } else {
       clearPendingUpgrade(tabId);
     }
-    nav.navigate(upgrade.url);
+
+    // Safe Browsing: check URL before navigating
+    const finalUrl = upgrade.url;
+    void safeBrowsingCheckUrl(finalUrl).then((threat) => {
+      if (threat) {
+        mainLogger.warn('TabManager.navigate.safeBrowsingThreat', {
+          tabId,
+          url: finalUrl,
+          threatType: threat.threatType,
+        });
+        let hostname = '';
+        try { hostname = new URL(finalUrl).hostname; } catch { hostname = finalUrl; }
+        const interstitialHtml = buildSafeBrowsingInterstitial(
+          threat.threatType,
+          finalUrl,
+          hostname,
+        );
+        const view = this.tabs.get(tabId);
+        if (view) {
+          const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(interstitialHtml);
+          view.webContents.loadURL(dataUrl);
+        }
+      } else {
+        nav.navigate(finalUrl);
+      }
+    }).catch((err) => {
+      mainLogger.warn('TabManager.navigate.safeBrowsingError', {
+        tabId,
+        url: finalUrl,
+        error: (err as Error).message,
+      });
+      nav.navigate(finalUrl);
+    });
   }
 
   navigateActive(input: string): void {
@@ -1487,6 +1527,21 @@ export class TabManager {
         } catch { /* ignore parse errors */ }
         clearPendingUpgrade(tabId);
         wc.loadURL(httpUrl);
+        return;
+      }
+      // Safe Browsing: intercept "proceed" and "back" from interstitial
+      if (message.startsWith(SAFE_BROWSING_PROCEED_PREFIX) && currentUrl.startsWith('data:text/html')) {
+        const unsafeUrl = message.slice(SAFE_BROWSING_PROCEED_PREFIX.length);
+        mainLogger.info('TabManager.tab.safeBrowsingProceed', { tabId, unsafeUrl });
+        try {
+          const host = new URL(unsafeUrl).host;
+          safeBrowsingBypassOrigin(host);
+        } catch { /* ignore parse errors */ }
+        wc.loadURL(unsafeUrl);
+        return;
+      }
+      if (message === SAFE_BROWSING_BACK_PREFIX && currentUrl.startsWith('data:text/html')) {
+        mainLogger.info('TabManager.tab.safeBrowsingBack', { tabId });
         return;
       }
       if (!message.startsWith(FORM_DETECTOR_PREFIX)) return;
