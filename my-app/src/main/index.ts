@@ -75,6 +75,9 @@ import { registerChromeHandlers, unregisterChromeHandlers } from './chrome/ipc';
 // Downloads
 // Issue #97 — Print Preview
 import { openPrintPreviewWindow } from './print/PrintPreviewWindow';
+// Issue #77 — DevTools panels
+import { openDevToolsWindow } from './devtools/DevToolsWindow';
+import { registerDevToolsHandlers, unregisterDevToolsHandlers } from './devtools/ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -388,6 +391,13 @@ app.whenReady().then(async () => {
     () => openExtensionsWindow(),
   );
 
+  // Issue #77 — DevTools panels
+  if (tabManager) {
+    registerDevToolsHandlers(tabManager);
+  } else {
+    mainLogger.warn('main.openShellAndWire — tabManager null, skipping DevTools IPC registration');
+  }
+
   // pill:submit — spawns a Docker container with the agent loop.
   ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {
     const validatedPrompt = assertString(prompt, 'prompt', 10000);
@@ -588,6 +598,7 @@ app.whenReady().then(async () => {
     unregisterChromeHandlers();
     unregisterProfileHandlers();
     unregisterPermissionHandlers();
+    unregisterDevToolsHandlers();
     unregisterExtensionsHandlers();
     // ExtensionManager currently has no dispose()/destroy() hook; its
     // internal MV3 runtime tears itself down via its own lifecycle. If a
@@ -1005,6 +1016,14 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
               click: () => {
                 mainLogger.debug('shortcuts.jsConsole');
                 tabManager?.openDevToolsConsoleForActive();
+              },
+            },
+            {
+              label: 'DevTools Panel',
+              accelerator: 'CommandOrControl+Alt+D',
+              click: () => {
+                mainLogger.debug('shortcuts.devToolsPanel');
+                openDevToolsWindow();
               },
             },
             { type: 'separator' },

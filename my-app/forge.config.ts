@@ -220,6 +220,12 @@ const config: ForgeConfig = {
         //   config: 'vite.preload.config.ts',
         //   target: 'preload',
         // },
+        {
+          // Issue #77: devtools panel preload
+          entry: 'src/preload/devtools.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload',
+        },
       ],
       renderer: [
         {
@@ -282,6 +288,11 @@ const config: ForgeConfig = {
         //   name: 'newtab',
         //   config: 'vite.newtab.config.ts',
         // },
+        {
+          // Issue #77: devtools panel renderer
+          name: 'devtools_panel',
+          config: 'vite.devtools.config.ts',
+        },
       ],
     }),
 
