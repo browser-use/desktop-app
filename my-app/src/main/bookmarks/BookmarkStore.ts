@@ -358,10 +358,16 @@ export class BookmarkStore {
     let imported = 0;
     let skipped = 0;
 
+    const safeCodePoint = (cp: number): string => {
+      if (cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+        return String.fromCodePoint(cp);
+      }
+      return '';
+    };
     const decodeHtmlEntities = (s: string): string =>
       s
-        .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-        .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => safeCodePoint(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (_, d) => safeCodePoint(Number(d)))
         .replace(/&quot;/g, '"')
         .replace(/&apos;/g, "'")
         .replace(/&lt;/g, '<')
