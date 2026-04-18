@@ -2378,6 +2378,7 @@
   left: 50%;
   transform: translateX(-50%);
   max-width: 600px;
+  min-width: 200px;
   background: rgba(0, 0, 0, 0.85);
   color: #fff;
   border-radius: 8px;
@@ -2385,8 +2386,13 @@
   font-size: 16px;
   line-height: 1.5;
   z-index: 9999;
-  pointer-events: none;
+  pointer-events: auto;
   user-select: none;
+  cursor: grab;
+}
+
+.caption-overlay:active {
+  cursor: grabbing;
 }
 
 .caption-overlay__text {

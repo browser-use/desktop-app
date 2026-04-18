@@ -653,8 +653,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // Issue #104 — Live Caption: receive state changes from main process
-    liveCaptionStateChanged: (cb: (enabled: boolean) => void): (() => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, enabled: boolean) => cb(enabled);
+    liveCaptionStateChanged: (cb: (state: { enabled: boolean; language: string }) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, state: { enabled: boolean; language: string }) => cb(state);
       ipcRenderer.on('live-caption:state-changed', handler);
       return () => ipcRenderer.removeListener('live-caption:state-changed', handler);
     },

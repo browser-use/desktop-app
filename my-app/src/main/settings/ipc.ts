@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { mainLogger } from '../logger';
 import type { AccountStore } from '../identity/AccountStore';
 import type { KeychainStore } from '../identity/KeychainStore';
@@ -695,6 +695,12 @@ function handleSetLiveCaption(
   if (patch.enabled !== undefined) mergePrefs({ liveCaptionEnabled: Boolean(patch.enabled) });
   if (typeof patch.language === 'string') mergePrefs({ liveCaptionLanguage: patch.language });
   mainLogger.info(`${CH_SET_LIVE_CAPTION}.ok`);
+  const current = handleGetLiveCaption();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('live-caption:state-changed', current);
+    }
+  }
   return true;
 }
 

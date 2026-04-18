@@ -151,7 +151,7 @@ declare const electronAPI: {
     downloadDone: (cb: (dl: DownloadItemDTO) => void) => () => void;
     downloadsState: (cb: (downloads: DownloadItemDTO[]) => void) => () => void;
     linkHover: (cb: (payload: { url: string }) => void) => () => void;
-    liveCaptionStateChanged: (cb: (enabled: boolean) => void) => () => void;
+    liveCaptionStateChanged: (cb: (state: { enabled: boolean; language: string }) => void) => () => void;
   };
   permissions: {
     respond: (promptId: string, decision: string) => Promise<void>;
@@ -193,7 +193,13 @@ export function WindowChrome(): React.ReactElement {
 
   // Live Caption state
   const [liveCaptionEnabled, setLiveCaptionEnabled] = useState(false);
+  const [liveCaptionLanguage, setLiveCaptionLanguage] = useState('en-US');
   const [captionText, setCaptionText] = useState('');
+  const captionPos = useRef({ x: 0, y: 0 });
+  const captionDragStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+  const captionRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   // Side panel state
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -338,8 +344,9 @@ export function WindowChrome(): React.ReactElement {
       setFocusBookmarksBarTick((n) => n + 1);
     });
 
-    const unsubLiveCaptionState = electronAPI.on.liveCaptionStateChanged((enabled) => {
+    const unsubLiveCaptionState = electronAPI.on.liveCaptionStateChanged(({ enabled, language }) => {
       setLiveCaptionEnabled(enabled);
+      setLiveCaptionLanguage(language);
       if (!enabled) setCaptionText('');
     });
 
@@ -360,6 +367,41 @@ export function WindowChrome(): React.ReactElement {
       unsubLiveCaptionState();
     };
   }, [bookmarksTree?.visibility]);
+
+  // ---------------------------------------------------------------------------
+  // Live Caption — Web Speech API
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR: (new () => any) | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!liveCaptionEnabled || !SR) {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      return;
+    }
+    const rec = new SR();
+    rec.lang = liveCaptionLanguage;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (ev: any) => {
+      let text = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        text += ev.results[i][0].transcript;
+      }
+      setCaptionText(text);
+    };
+    rec.onerror = () => { /* ignore */ };
+    rec.onend = () => {
+      if (liveCaptionEnabled) rec.start();
+    };
+    rec.start();
+    recognitionRef.current = rec;
+    return () => {
+      rec.onend = null;
+      rec.stop();
+    };
+  }, [liveCaptionEnabled, liveCaptionLanguage]);
 
   // ---------------------------------------------------------------------------
   // Download IPC subscriptions
@@ -704,7 +746,43 @@ export function WindowChrome(): React.ReactElement {
       <StatusBar url={hoveredUrl} />
 
       {liveCaptionEnabled && (
-        <div className="caption-overlay" aria-live="polite" aria-label="Live captions">
+        <div
+          ref={captionRef}
+          className="caption-overlay"
+          aria-live="polite"
+          aria-label="Live captions"
+          style={captionPos.current.x || captionPos.current.y ? {
+            bottom: 'auto',
+            top: captionPos.current.y,
+            left: captionPos.current.x,
+            transform: 'none',
+          } : undefined}
+          onMouseDown={(e) => {
+            const el = captionRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            captionDragStart.current = { mx: e.clientX, my: e.clientY, ox: rect.left, oy: rect.top };
+            const onMove = (ev: MouseEvent) => {
+              if (!captionDragStart.current) return;
+              const dx = ev.clientX - captionDragStart.current.mx;
+              const dy = ev.clientY - captionDragStart.current.my;
+              captionPos.current = { x: captionDragStart.current.ox + dx, y: captionDragStart.current.oy + dy };
+              if (el) {
+                el.style.bottom = 'auto';
+                el.style.top = captionPos.current.y + 'px';
+                el.style.left = captionPos.current.x + 'px';
+                el.style.transform = 'none';
+              }
+            };
+            const onUp = () => {
+              captionDragStart.current = null;
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+        >
           <span className="caption-overlay__text">{captionText || '\u00a0'}</span>
         </div>
       )}
