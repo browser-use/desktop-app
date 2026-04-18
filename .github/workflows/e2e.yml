@@ -23,7 +23,7 @@ jobs:
     outputs:
       app-path: ${{ steps.locate.outputs.app-path }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
@@ -60,7 +60,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
@@ -106,7 +106,7 @@ jobs:
     # b) introduce xvfb / display tricks. See docs/CI.md.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:

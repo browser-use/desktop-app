@@ -56,7 +56,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history so release-notes generation can walk back to the
           # previous tag.
