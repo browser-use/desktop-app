@@ -154,25 +154,21 @@ export function URLBar({
     return () => clearTimeout(t);
   }, [focused, onFocusClear]);
 
-  // Fetch suggestions on input change (debounced 80ms)
+  // Fetch suggestions on input change (debounced 80ms); empty input → ZeroSuggest
   useEffect(() => {
     if (!isEditing) return;
     if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
-    if (!inputValue.trim()) {
-      setSuggestions([]);
-      setDropdownOpen(false);
-      return;
-    }
     suggestTimerRef.current = setTimeout(async () => {
       try {
         const results = await electronAPI.omnibox.suggest({ input: inputValue.trim() });
-        setSuggestions(results ?? []);
-        setDropdownOpen((results ?? []).length > 0);
+        const limited = (results ?? []).slice(0, inputValue.trim() ? 8 : 6);
+        setSuggestions(limited);
+        setDropdownOpen(limited.length > 0);
         setSelectedIdx(-1);
       } catch {
         setSuggestions([]);
       }
-    }, 80);
+    }, inputValue.trim() ? 80 : 0);
     return () => {
       if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
     };
