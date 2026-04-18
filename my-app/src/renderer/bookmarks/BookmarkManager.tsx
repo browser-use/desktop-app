@@ -86,7 +86,7 @@ interface ContextMenuProps {
   onRename: (node: BookmarkNode) => void;
   onDelete: (node: BookmarkNode) => void;
   onCopyUrl: (node: BookmarkNode) => void;
-  onAddFolder: () => void;
+  onAddFolder: (parentId: string) => void;
 }
 
 function ContextMenu({
@@ -141,7 +141,7 @@ function ContextMenu({
         </>
       )}
       {item('Edit Name', () => onRename(menu.node))}
-      {item('Add Folder Here', () => onAddFolder())}
+      {item('Add Folder Here', () => onAddFolder(menu.node.type === 'folder' ? menu.node.id : (menu.node.parentId ?? 'other')))}
       <div className="bookmarks__context-menu-separator" />
       {item('Delete', () => onDelete(menu.node), true)}
     </div>
@@ -319,11 +319,11 @@ export function BookmarkManager() {
     setRenamingId(null);
   }, [renamingId, renameValue]);
 
-  const handleAddFolder = useCallback(() => {
+  const handleAddFolder = useCallback((parentId: string) => {
     bookmarksAPI
-      .addFolder({ name: 'New folder', parentId: selectedFolderId })
+      .addFolder({ name: 'New folder', parentId })
       .catch(console.error);
-  }, [selectedFolderId]);
+  }, []);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, node: BookmarkNode) => {
