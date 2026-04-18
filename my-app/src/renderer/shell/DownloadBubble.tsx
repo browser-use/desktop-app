@@ -57,7 +57,7 @@ export function DownloadBubble({
   }, [onClose]);
 
   const hasCompleted = downloads.some(
-    (d) => d.status === 'completed' || d.status === 'cancelled',
+    (d) => d.status === 'completed' || d.status === 'cancelled' || d.status === 'interrupted',
   );
 
   return (
@@ -152,6 +152,11 @@ function DownloadRow({
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M5 5l6 6m0-6l-6 6" stroke="var(--color-status-danger)" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
+        ) : dl.status === 'interrupted' ? (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8 4v5" stroke="var(--color-status-warning, #f59e0b)" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="8" cy="12" r="1" fill="var(--color-status-warning, #f59e0b)" />
+          </svg>
         ) : (
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M8 3v7m0 0l-2.5-2.5M8 10l2.5-2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -203,6 +208,9 @@ function DownloadRow({
 
         {dl.status === 'cancelled' && (
           <span className="download-row__cancelled-label">Cancelled</span>
+        )}
+        {dl.status === 'interrupted' && (
+          <span className="download-row__cancelled-label">Interrupted</span>
         )}
       </div>
 

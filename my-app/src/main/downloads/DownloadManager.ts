@@ -205,7 +205,7 @@ export class DownloadManager {
         dlItem.savePath = item.getSavePath() || dlItem.savePath;
 
         if (state === 'interrupted') {
-          dlItem.status = 'paused';
+          dlItem.status = 'interrupted';
           mainLogger.info('DownloadManager.interrupted', { id, received, total });
         } else {
           dlItem.status = 'in-progress';
@@ -247,6 +247,9 @@ export class DownloadManager {
               });
             }
           }
+        } else if (state === 'interrupted') {
+          dlItem.status = 'interrupted';
+          mainLogger.info('DownloadManager.interrupted', { id, state });
         } else {
           dlItem.status = 'cancelled';
           mainLogger.info('DownloadManager.cancelled', { id, state });
