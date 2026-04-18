@@ -98,6 +98,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     unpin: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:unpin', tabId),
 
+    muteTab: (tabId: string): Promise<void> =>
+      ipcRenderer.invoke('tabs:mute-tab', tabId),
+
     showBackHistory: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:show-back-history', tabId),
 
