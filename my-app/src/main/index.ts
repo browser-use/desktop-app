@@ -148,7 +148,7 @@ let isGuestSession = false;
 let guestPartitionName: string | null = null;
 
 const accountStore = new AccountStore();
-const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? 'PLACEHOLDER_CLIENT_ID' });
+const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com' });
 const keychainStore = new KeychainStore();
 
 // ---------------------------------------------------------------------------
@@ -445,7 +445,7 @@ app.whenReady().then(async () => {
   // the WebContentsView below the chrome.
   ipcMain.handle('shell:set-chrome-height', (_e, height: unknown) => {
     if (typeof height !== 'number' || !Number.isFinite(height)) return;
-    const BASE = 76;
+    const BASE = 91;
     const offset = Math.max(0, height - BASE);
     tabManager?.setChromeOffset(offset);
   });

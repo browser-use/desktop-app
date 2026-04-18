@@ -166,7 +166,7 @@ export class OAuthClient {
   private pendingFlow: PendingFlow | null = null;
 
   constructor(opts: OAuthClientOptions) {
-    this.clientId = opts.clientId || process.env.GOOGLE_CLIENT_ID || 'PLACEHOLDER_CLIENT_ID';
+    this.clientId = opts.clientId || process.env.GOOGLE_CLIENT_ID || '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com';
     this.clientSecret = opts.clientSecret || process.env.GOOGLE_CLIENT_SECRET || '';
   }
 

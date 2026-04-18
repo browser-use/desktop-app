@@ -34,7 +34,7 @@ import type {
 import type { DownloadItemDTO } from '../../main/downloads/DownloadManager';
 
 // Layout constants — keep in sync with shell.css.
-const BASE_CHROME_HEIGHT = 76;
+const BASE_CHROME_HEIGHT = 91;
 const BOOKMARKS_BAR_HEIGHT = 32;
 const DROPDOWN_OVERFLOW_HEIGHT = 300;
 // Any tab URL starting with this scheme is a new-tab placeholder; the

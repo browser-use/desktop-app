@@ -22,9 +22,9 @@
 :root {
   /* Layout constants — these are structural, not design tokens.
      Tab row is 40px so tabs (32px) visually match macOS traffic-light height. */
-  --chrome-height:   76px;
+  --chrome-height:   91px;
   --tab-height:      40px;
-  --toolbar-height:  36px;
+  --toolbar-height:  52px;
   --tab-min-width:   120px;
   --tab-max-width:   220px;
 
@@ -49,10 +49,10 @@
      lighter than the surrounding tab row AND merges seamlessly into the
      toolbar bg below it. Inactive tabs are transparent (show the darker
      row). This is how Chrome actually renders active-tab highlighting. */
-  --color-tab-row-bg:    var(--color-bg-base);
-  --color-tab-active:    var(--color-bg-elevated);
+  --color-tab-row-bg:    var(--slate-7);
+  --color-tab-active:    var(--slate-9);
   --color-tab-inactive:  transparent;
-  --color-tab-hover:     rgba(255, 255, 255, 0.05);
+  --color-tab-hover:     rgba(255, 255, 255, 0.08);
   --color-loading:       var(--color-accent-default);
 
   /* Radius aliases for shell component code that predates the token system */

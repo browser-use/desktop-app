@@ -184,8 +184,8 @@
 }
 
 [data-theme="shell"] .url-bar:focus-within {
-  border-color: var(--color-accent-default);
-  box-shadow: var(--glow-accent);
+  border-color: var(--color-border-strong);
+  box-shadow: none;
 }
 
 /* Nav buttons */

@@ -33,6 +33,7 @@
   height: var(--tab-height);
   padding-top: 4px;
   background: var(--color-tab-row-bg);
+  border-bottom: 1px solid var(--color-tab-active);
   -webkit-app-region: drag;
 }
 
@@ -51,9 +52,9 @@
   display: flex;
   align-items: center;
   height: var(--toolbar-height);
-  padding: 0 8px;
+  padding: 8px 8px;
   gap: 4px;
-  background: var(--color-bg-elevated);
+  background: var(--color-tab-active);
   -webkit-app-region: no-drag;
 }
 
@@ -68,7 +69,7 @@
   align-items: center;
   flex: 1;
   height: 100%;
-  overflow: hidden;
+  
   -webkit-app-region: drag;
 }
 
@@ -149,7 +150,7 @@
    active state. */
 .tab-item--active,
 .tab-item--active:hover {
-  background: var(--color-bg-elevated);
+  background: var(--color-tab-active);
   color: var(--color-fg-primary);
   margin-bottom: -1px;
   padding-bottom: 1px;
@@ -349,8 +350,8 @@
 
 .url-bar:focus-within {
   background: var(--color-bg-overlay);
-  border-color: var(--color-accent-default);
-  box-shadow: var(--glow-accent-sm);
+  border-color: var(--color-border-strong);
+  box-shadow: none;
 }
 
 .url-bar--insecure .url-bar__security {
@@ -1255,7 +1256,7 @@
   align-items: center;
   justify-content: center;
   height: 24px;
-  padding: 0 8px;
+  padding: 4px 8px;
   border: 1px solid var(--color-border-default);
   background: transparent;
   color: var(--color-fg-secondary);
@@ -1645,8 +1646,6 @@
 .tab-item:focus-visible,
 .tab-strip__new-tab:focus-visible,
 .nav-btn:focus-visible,
-.url-bar__input:focus-visible,
-.url-bar__star:focus-visible,
 .bookmark-chip:focus-visible,
 .bookmark-folder-chip:focus-visible,
 .side-panel-toggle:focus-visible,

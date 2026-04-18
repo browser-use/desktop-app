@@ -53,7 +53,7 @@ const NEWTAB_PRELOAD = path.join(__dirname, 'newtab.js');
 // Must stay in sync with --chrome-height in shell.css (tab row 40 + toolbar 36).
 // The renderer can add extra height (e.g. a 32 px bookmarks bar) by calling
 // TabManager.setChromeOffset(offset); positionView() uses BASE + offset.
-const CHROME_HEIGHT = 76;
+const CHROME_HEIGHT = 91;
 const BLOCKED_SCHEMES = /^(javascript|file|data|vbscript):/i;
 const MAX_HISTORY_MENU_ITEMS = 15;
 
