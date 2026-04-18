@@ -746,7 +746,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     turnOffSync: (): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('identity:turn-off-sync'),
 
-    getAccountInfo: (): Promise<{ email: string; agentName: string } | null> =>
+    getAccountInfo: (): Promise<{ email: string; agentName: string; syncEnabled: boolean } | null> =>
       ipcRenderer.invoke('identity:get-account-info'),
   },
 

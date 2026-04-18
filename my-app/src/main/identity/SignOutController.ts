@@ -16,6 +16,7 @@ import path from 'node:path';
 import { app, session } from 'electron';
 import { mainLogger } from '../logger';
 import type { AccountStore } from './AccountStore';
+import { getSyncEnabled } from './AccountStore';
 import type { KeychainStore } from './KeychainStore';
 
 // ---------------------------------------------------------------------------
@@ -123,12 +124,16 @@ export async function turnOffSync(
     return { success: false };
   }
 
-  // Mark sync as disabled in account data while keeping the Google association
-  const updated = { ...account, sync_enabled: false } as typeof account & { sync_enabled: boolean };
-  accountStore.save(updated);
+  // Mark sync as disabled in account data while keeping the Google association.
+  // sync_enabled is now a first-class field on AccountData (no cast needed).
+  accountStore.save({ ...account, sync_enabled: false });
 
+  // Verify the flag was persisted correctly.
+  const saved = accountStore.load();
+  const stillEnabled = getSyncEnabled(saved);
   mainLogger.info('SignOutController.turnOffSync.complete', {
     email: account.email,
+    syncEnabled: stillEnabled, // should be false
   });
 
   return { success: true };

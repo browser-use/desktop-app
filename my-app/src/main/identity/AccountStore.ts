@@ -6,7 +6,7 @@
  *
  * File location: ${app.getPath('userData')}/account.json
  *
- * Shape: { agent_name, email, created_at, onboarding_completed_at? }
+ * Shape: { agent_name, email, created_at, onboarding_completed_at?, sync_enabled? }
  *
  * D2 logging: save/load/isComplete transitions logged at debug level.
  * PII policy: email is logged for debugging; no passwords or tokens.
@@ -33,6 +33,32 @@ export interface AccountData {
   created_at?: string;
   /** ISO 8601 — set when the user completes onboarding */
   onboarding_completed_at?: string;
+  /**
+   * When false, background sync with the user's Google account is disabled.
+   * Defaults to true (sync on) if absent, matching Chrome's behaviour.
+   * Set to false by SignOutController.turnOffSync().
+   * Gate any sync-related behaviour on `getSyncEnabled(account)`.
+   */
+  sync_enabled?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns whether sync is enabled for the given account.
+ *
+ * Treats `undefined` as true so that existing accounts that predate the
+ * sync_enabled field behave as if sync is on (Chrome parity: sync is on by
+ * default once the user signs in).
+ *
+ * Usage:
+ *   const account = accountStore.load();
+ *   if (getSyncEnabled(account)) { ... }
+ */
+export function getSyncEnabled(account: AccountData | null | undefined): boolean {
+  return account?.sync_enabled !== false;
 }
 
 // ---------------------------------------------------------------------------

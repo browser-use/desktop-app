@@ -26,7 +26,7 @@ import { registerHotkeys, unregisterHotkeys } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
 import type { AgentEvent } from '../shared/types';
 // Track C — Onboarding gate
-import { AccountStore } from './identity/AccountStore';
+import { AccountStore, getSyncEnabled } from './identity/AccountStore';
 import { OAuthClient } from './identity/OAuthClient';
 import { KeychainStore } from './identity/KeychainStore';
 import { registerProtocol, initOAuthHandler } from './oauth';
@@ -2232,7 +2232,11 @@ ipcMain.handle('identity:turn-off-sync', async () => {
 ipcMain.handle('identity:get-account-info', () => {
   const account = accountStore.load();
   if (!account) return null;
-  return { email: account.email, agentName: account.agent_name };
+  return {
+    email: account.email,
+    agentName: account.agent_name,
+    syncEnabled: getSyncEnabled(account),
+  };
 });
 
 ipcMain.handle('shell:get-cdp-info', async () => {

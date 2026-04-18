@@ -25,7 +25,7 @@ declare const electronAPI: {
       errors: string[];
     }>;
     turnOffSync: () => Promise<{ success: boolean }>;
-    getAccountInfo: () => Promise<{ email: string; agentName: string } | null>;
+    getAccountInfo: () => Promise<{ email: string; agentName: string; syncEnabled: boolean } | null>;
   };
 };
 
