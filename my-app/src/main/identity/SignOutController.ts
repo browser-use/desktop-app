@@ -267,15 +267,8 @@ async function clearSyncedData(localStores?: LocalDataStores): Promise<boolean> 
     // Clear app-local on-disk stores (bookmarks, history, passwords, autofill)
     if (localStores?.bookmarkStore) {
       try {
-        const bs = localStores.bookmarkStore;
-        // Reset to empty state by clearing each root's children
-        const tree = bs.listTree();
-        for (const root of tree.roots) {
-          for (const child of root.children ?? []) {
-            bs.removeBookmark(child.id);
-          }
-        }
-        bs.flushSync();
+        localStores.bookmarkStore.deleteAll();
+        localStores.bookmarkStore.flushSync();
         mainLogger.info('SignOutController.clearSyncedData.bookmarksCleared');
       } catch (err) {
         mainLogger.warn('SignOutController.clearSyncedData.bookmarksClearFailed', {
