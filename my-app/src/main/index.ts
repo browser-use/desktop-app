@@ -890,9 +890,14 @@ app.whenReady().then(async () => {
 
 // Issue #71 — Extensions: init manager + register IPC
   extensionManager = new ExtensionManager();
+  // Wire the shell-window getter so shortcut handlers can dispatch commands.
+  extensionManager.setShellWindowGetter(() => shellWindow);
   registerExtensionsHandlers(extensionManager);
   registerMV3Handlers(extensionManager);
-  void extensionManager.loadAllEnabled();
+  void extensionManager.loadAllEnabled().then(() => {
+    // Bind persisted extension shortcuts after all enabled extensions are loaded.
+    extensionManager?.bindShortcuts();
+  });
 
   // Issue #95 — Settings zoom override IPC (needs tabManager access)
   ipcMain.handle('settings:get-zoom-overrides', () => {
@@ -1021,9 +1026,10 @@ app.whenReady().then(async () => {
     unregisterAutofillHandlers();
     // Issue #202 — cancel the periodic auto-update check timer.
     stopUpdater();
-    // ExtensionManager currently has no dispose()/destroy() hook; its
-    // internal MV3 runtime tears itself down via its own lifecycle. If a
-    // top-level cleanup is ever added, wire it in here.
+    // Unregister extension global shortcuts and tear down the MV3 runtime.
+    extensionManager?.unbindShortcuts();
+    extensionManager?.dispose();
+    extensionManager = null;
     downloadManager?.destroy();
     downloadManager = null;
   });

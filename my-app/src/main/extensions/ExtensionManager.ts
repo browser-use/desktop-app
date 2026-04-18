@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, session } from 'electron';
+import { app, session, globalShortcut, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
 import { ManifestV3Runtime } from './mv3/ManifestV3Runtime';
 import type { MV3ExtensionInfo } from './mv3/ManifestV3Runtime';
@@ -103,6 +103,12 @@ export class ExtensionManager {
   private state: PersistedState;
   readonly mv3Runtime: ManifestV3Runtime;
 
+  /** Tracks accelerator strings currently registered via globalShortcut */
+  private registeredShortcuts = new Set<string>();
+
+  /** Optional getter for the shell window — injected after window creation */
+  private getShellWindow: (() => BrowserWindow | null) | null = null;
+
   constructor() {
     this.statePath = path.join(app.getPath('userData'), STATE_FILE_NAME);
     this.state = this.loadState();
@@ -112,6 +118,15 @@ export class ExtensionManager {
       extensionCount: this.state.extensions.length,
       developerMode: this.state.developerMode,
     });
+  }
+
+  /**
+   * Provide a getter for the shell BrowserWindow so that shortcut handlers
+   * can dispatch extension-command events to the renderer.
+   * Call this once the shell window has been created.
+   */
+  setShellWindowGetter(getter: () => BrowserWindow | null): void {
+    this.getShellWindow = getter;
   }
 
   // -------------------------------------------------------------------------
@@ -496,7 +511,116 @@ export class ExtensionManager {
       this.state.shortcuts[stateKey] = shortcut;
     }
     this.saveState();
+
+    // Re-bind all shortcuts so the new mapping takes effect immediately.
+    this.bindShortcuts();
+
     mainLogger.info(`${LOG_PREFIX}.setExtensionShortcut.ok`, { extensionId, commandName, shortcut });
+  }
+
+  /**
+   * Register all persisted extension shortcuts as Electron global shortcuts.
+   *
+   * Each entry in `state.shortcuts` maps "<extensionId>/<commandName>" to an
+   * Electron accelerator string (e.g. "Ctrl+Shift+F").  When the shortcut
+   * fires we:
+   *   - For action-trigger commands: send `extensions:command-triggered` to the
+   *     shell window so the renderer can open the extension's action popup.
+   *   - For all named commands: send the same message with the command name so
+   *     the renderer (or the extension's service worker) can react.
+   *
+   * Any previously registered extension shortcuts are unregistered first so
+   * this method is safe to call multiple times (e.g. after every mutation).
+   */
+  bindShortcuts(): void {
+    mainLogger.info(`${LOG_PREFIX}.bindShortcuts`);
+
+    // 1. Unregister shortcuts from the previous call.
+    this.unbindShortcuts();
+
+    // 2. Collect the effective shortcut for every command across loaded extensions.
+    //    We use listAllCommands() because it merges manifest defaults with
+    //    persisted overrides, and only covers currently-loaded extensions.
+    const commands = this.listAllCommands();
+
+    for (const cmd of commands) {
+      const { extensionId, commandName, shortcut } = cmd;
+      if (!shortcut) continue;
+
+      // Avoid registering the same accelerator twice (e.g. two extensions
+      // mapping to the same key — first one wins, which matches Chrome behaviour).
+      if (this.registeredShortcuts.has(shortcut)) {
+        mainLogger.warn(`${LOG_PREFIX}.bindShortcuts.duplicate`, {
+          shortcut,
+          extensionId,
+          commandName,
+          msg: 'Accelerator already registered; skipping',
+        });
+        continue;
+      }
+
+      const registered = globalShortcut.register(shortcut, () => {
+        mainLogger.info(`${LOG_PREFIX}.shortcutFired`, { extensionId, commandName, shortcut });
+        this.dispatchExtensionCommand(extensionId, commandName);
+      });
+
+      if (registered) {
+        this.registeredShortcuts.add(shortcut);
+        mainLogger.info(`${LOG_PREFIX}.bindShortcuts.registered`, {
+          extensionId,
+          commandName,
+          shortcut,
+        });
+      } else {
+        mainLogger.warn(`${LOG_PREFIX}.bindShortcuts.registerFailed`, {
+          extensionId,
+          commandName,
+          shortcut,
+          msg: 'globalShortcut.register returned false — accelerator may be claimed by another app',
+        });
+      }
+    }
+
+    mainLogger.info(`${LOG_PREFIX}.bindShortcuts.ok`, {
+      registered: this.registeredShortcuts.size,
+    });
+  }
+
+  /**
+   * Unregister all extension shortcuts that were registered via `bindShortcuts`.
+   * Safe to call even if no shortcuts are registered.
+   */
+  unbindShortcuts(): void {
+    mainLogger.info(`${LOG_PREFIX}.unbindShortcuts`, { count: this.registeredShortcuts.size });
+    for (const shortcut of this.registeredShortcuts) {
+      globalShortcut.unregister(shortcut);
+    }
+    this.registeredShortcuts.clear();
+  }
+
+  /**
+   * Dispatch an extension command to the shell renderer.
+   *
+   * For action-trigger commands (`_execute_action`, `_execute_browser_action`,
+   * `_execute_page_action`) the renderer should open the extension's popup.
+   * For all other commands the renderer forwards the named command to the
+   * extension's content scripts / service worker.
+   *
+   * The IPC channel `extensions:command-triggered` carries:
+   *   { extensionId: string; commandName: string }
+   */
+  private dispatchExtensionCommand(extensionId: string, commandName: string): void {
+    const win = this.getShellWindow?.();
+    if (!win || win.isDestroyed()) {
+      mainLogger.warn(`${LOG_PREFIX}.dispatchExtensionCommand.noWindow`, {
+        extensionId,
+        commandName,
+      });
+      return;
+    }
+
+    win.webContents.send('extensions:command-triggered', { extensionId, commandName });
+    mainLogger.info(`${LOG_PREFIX}.dispatchExtensionCommand.sent`, { extensionId, commandName });
   }
 
   // -------------------------------------------------------------------------
@@ -517,6 +641,7 @@ export class ExtensionManager {
 
   dispose(): void {
     mainLogger.info(`${LOG_PREFIX}.dispose`);
+    this.unbindShortcuts();
     this.mv3Runtime.dispose();
   }
 
