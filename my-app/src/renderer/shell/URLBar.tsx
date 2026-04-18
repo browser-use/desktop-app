@@ -71,6 +71,7 @@ function decodeHostnameForDisplay(hostname: string): string {
     .join('.');
 }
 
+
 interface PermissionEntry {
   permissionType: string;
   state: 'allow' | 'deny' | 'ask';

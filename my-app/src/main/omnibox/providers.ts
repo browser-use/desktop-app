@@ -35,7 +35,8 @@ export type SuggestionType =
   | 'keyword'
   | 'keyword-search'
   | 'zero-suggest'
-  | 'url';
+  | 'url'
+  | 'did-you-mean';
 
 export interface OmniboxSuggestion {
   /** Unique key for deduplication */
@@ -524,6 +525,107 @@ export function zeroSuggestProvider(
 }
 
 // ---------------------------------------------------------------------------
+// 9. DidYouMeanProvider
+// ---------------------------------------------------------------------------
+
+// Levenshtein distance for typo detection.
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1,     // deletion
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+// Looks like a bare domain (no scheme, no spaces, has a dot + TLD).
+const BARE_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*)?(\.[a-z0-9][a-z0-9-]*)+$/i;
+
+function extractHostname(url: string): string {
+  try {
+    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Did-you-mean: fuzzy hostname match against visited URLs (baseline = 750).
+ * Only fires when:
+ *   - Input looks like a bare domain
+ *   - No exact history/shortcut matches already exist in `existing`
+ *   - A close variant (Levenshtein ≤ 2) exists in history
+ */
+export function didYouMeanProvider(
+  input: string,
+  ctx: ProviderContext,
+  existing: OmniboxSuggestion[],
+): OmniboxSuggestion[] {
+  const lower = input.toLowerCase();
+  if (
+    input.length < 4 ||
+    !BARE_DOMAIN_RE.test(lower) ||
+    existing.filter((r) => r.type === 'history' || r.type === 'shortcut').length > 0
+  ) {
+    return [];
+  }
+
+  const inputHost = extractHostname(lower);
+  const hostsSeen = new Set<string>();
+  let bestDistance = 3;
+  let bestEntry: { url: string; title: string; hostname: string } | null = null;
+
+  for (const e of ctx.historyEntries) {
+    const hostname = extractHostname(e.url);
+    if (hostsSeen.has(hostname)) continue;
+    hostsSeen.add(hostname);
+    const dist = levenshtein(inputHost, hostname);
+    if (dist > 0 && dist < bestDistance) {
+      bestDistance = dist;
+      bestEntry = { url: e.url, title: e.title || e.url, hostname };
+    }
+  }
+
+  if (!bestEntry) return [];
+
+  // Rewrite only the hostname in the original URL, preserving scheme, port, and path.
+  let correctedUrl: string;
+  try {
+    const parsed = new URL(bestEntry.url);
+    parsed.hostname = bestEntry.hostname;
+    correctedUrl = parsed.toString();
+  } catch {
+    correctedUrl = `https://${bestEntry.hostname}`;
+  }
+
+  return [
+    {
+      id: `did-you-mean:${bestEntry.hostname}`,
+      type: 'did-you-mean',
+      title: `Did you mean: ${bestEntry.hostname}?`,
+      url: correctedUrl,
+      description: correctedUrl,
+      relevance: 750,
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Master aggregator
 // ---------------------------------------------------------------------------
 
@@ -551,6 +653,9 @@ export async function getSuggestions(opts: SuggestOptions): Promise<OmniboxSugge
     ...historyQuickProvider(input, context),
     ...bookmarkProvider(input, context),
   ];
+
+  // Did-you-mean: fires only when no exact history/shortcut matches were found
+  const didYouMean = didYouMeanProvider(input, context, sync);
 
   // Add a "search for" entry last so there's always a fallback
   const searchFallback: OmniboxSuggestion = {
@@ -585,6 +690,7 @@ export async function getSuggestions(opts: SuggestOptions): Promise<OmniboxSugge
   const all = dedupeById([
     ...(urlEntry ? [urlEntry] : []),
     ...sync,
+    ...didYouMean,
     ...remote,
     searchFallback,
   ]);
