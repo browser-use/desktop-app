@@ -392,7 +392,11 @@ app.whenReady().then(async () => {
   );
 
   // Issue #77 — DevTools panels
-  registerDevToolsHandlers(tabManager!);
+  if (tabManager) {
+    registerDevToolsHandlers(tabManager);
+  } else {
+    mainLogger.warn('main.openShellAndWire — tabManager null, skipping DevTools IPC registration');
+  }
 
   // pill:submit — spawns a Docker container with the agent loop.
   ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {

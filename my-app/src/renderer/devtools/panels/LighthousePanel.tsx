@@ -85,23 +85,43 @@ export function LighthousePanel({ cdpSend, onCdpEvent: _onCdpEvent, isAttached }
     const paintJson = (await evalExpr(
       'JSON.stringify(performance.getEntriesByType("paint"))',
     )) as string;
+    await evalExpr(
+      `(function() {
+        if (!window.__lcp_observer_injected__) {
+          window.__lcp_observer_injected__ = true;
+          try {
+            new PerformanceObserver(function(list) {
+              var entries = list.getEntries();
+              if (entries.length > 0) window.__lcp_entry__ = entries[entries.length - 1];
+            }).observe({ type: 'largest-contentful-paint', buffered: true });
+          } catch(e) {}
+          try {
+            window.__cls_value__ = 0;
+            new PerformanceObserver(function(list) {
+              list.getEntries().forEach(function(e) { if (!e.hadRecentInput) window.__cls_value__ += e.value; });
+            }).observe({ type: 'layout-shift', buffered: true });
+          } catch(e) {}
+        }
+      })()`,
+    );
+    await new Promise((r) => setTimeout(r, 150));
     const lcpJson = (await evalExpr(
-      `JSON.stringify(
+      \`JSON.stringify(
         (() => {
           try {
             return window.__lcp_entry__ ? { startTime: window.__lcp_entry__.startTime } : null;
           } catch(e) { return null; }
         })()
-      )`,
+      )\`,
     )) as string;
     const clsJson = (await evalExpr(
-      `JSON.stringify(
+      \`JSON.stringify(
         (() => {
           try {
             return typeof window.__cls_value__ === 'number' ? { value: window.__cls_value__ } : null;
           } catch(e) { return null; }
         })()
-      )`,
+      )\`,
     )) as string;
     const resourceCountJson = (await evalExpr(
       'performance.getEntriesByType("resource").length',
@@ -207,7 +227,18 @@ export function LighthousePanel({ cdpSend, onCdpEvent: _onCdpEvent, isAttached }
       'document.querySelectorAll("img:not([alt])").length',
     )) as number;
     const inputsWithoutLabel = (await evalExpr(
-      `document.querySelectorAll("input:not([aria-label]):not([aria-labelledby]):not([id])").length`,
+      `(function() {
+        var inputs = document.querySelectorAll('input');
+        var unlabeled = 0;
+        inputs.forEach(function(input) {
+          var hasAriaLabel = input.hasAttribute('aria-label');
+          var hasAriaLabelledBy = input.hasAttribute('aria-labelledby');
+          var hasLabelFor = input.id && document.querySelector('label[for="' + input.id + '"]');
+          var hasWrappingLabel = input.closest('label') !== null;
+          if (!hasAriaLabel && !hasAriaLabelledBy && !hasLabelFor && !hasWrappingLabel) unlabeled++;
+        });
+        return unlabeled;
+      })()`,
     )) as number;
     const hasMainLandmark = (await evalExpr(
       `document.querySelector("main, [role='main']") !== null`,

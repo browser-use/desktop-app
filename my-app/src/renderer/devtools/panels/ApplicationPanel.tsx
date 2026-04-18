@@ -70,7 +70,7 @@ export function ApplicationPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps
   const evalExpr = useCallback(
     async (expression: string): Promise<unknown> => {
       console.log('[ApplicationPanel] Runtime.evaluate:', expression.slice(0, 80));
-      const resp = await cdpSend('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: false });
+      const resp = await cdpSend('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
       if (!resp.success) throw new Error(resp.error ?? 'Runtime.evaluate failed');
       const evalResult = resp.result as { result?: { value?: unknown }; exceptionDetails?: { text?: string } } | undefined;
       if (evalResult?.exceptionDetails) {

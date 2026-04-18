@@ -139,10 +139,11 @@ export function MemoryPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps): Re
           totalSize += statsUpdate[i + 2] ?? 0;
         }
         console.log(PANEL_TAG, 'heapStatsUpdate, size:', totalSize, 'count:', totalCount);
-        setAllocationSamples((prev) => [
-          ...prev,
-          { id: allocationSampleIdCounter++, size: totalSize, count: totalCount, ts: Date.now() },
-        ]);
+        const MAX_ALLOCATION_SAMPLES = 5000;
+        setAllocationSamples((prev) => {
+          const next = [...prev, { id: allocationSampleIdCounter++, size: totalSize, count: totalCount, ts: Date.now() }];
+          return next.length > MAX_ALLOCATION_SAMPLES ? next.slice(-MAX_ALLOCATION_SAMPLES) : next;
+        });
       }
 
       if (method === 'HeapProfiler.lastSeenObjectId') {
@@ -192,14 +193,14 @@ export function MemoryPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps): Re
       console.log(PANEL_TAG, 'takeHeapSnapshot command sent');
       // Finalization happens in the reportHeapSnapshotProgress finished=true handler,
       // but some implementations never send finished=true, so also finalize after command resolves.
-      if (chunkBufferRef.current.length > 0 && snapshotProgress !== null) {
+      if (chunkBufferRef.current.length > 0) {
         finalizeSnapshot();
       }
     } catch (err) {
       console.error(PANEL_TAG, 'takeHeapSnapshot failed:', err);
       setSnapshotProgress(null);
     }
-  }, [cdpSend, finalizeSnapshot, snapshotProgress]);
+  }, [cdpSend, finalizeSnapshot]);
 
   const handleStartTracking = useCallback(async () => {
     console.log(PANEL_TAG, 'starting heap allocation tracking');

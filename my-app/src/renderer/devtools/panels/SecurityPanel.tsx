@@ -103,7 +103,7 @@ export function SecurityPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps): 
   const fetchIsolationStatus = useCallback(async () => {
     console.log('[SecurityPanel] fetching Network.getSecurityIsolationStatus');
     try {
-      const resp = await cdpSend('Network.getSecurityIsolationStatus', { frameId: null as unknown as undefined });
+      const resp = await cdpSend('Network.getSecurityIsolationStatus', {});
       if (resp.success && resp.result) {
         const status = resp.result as Record<string, unknown>;
         console.log('[SecurityPanel] isolation status:', status);

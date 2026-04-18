@@ -185,12 +185,15 @@ export function RecorderPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps): 
 
   // Poll for click/input events from the page
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingInProgressRef = useRef(false);
   const lastClickTsRef = useRef<number>(0);
   const lastInputTsRef = useRef<number>(0);
   const lastKeyTsRef = useRef<number>(0);
   const lastScrollTsRef = useRef<number>(0);
 
   const pollPageEvents = useCallback(async () => {
+    if (pollingInProgressRef.current) return;
+    pollingInProgressRef.current = true;
     try {
       const clickResp = await cdpSend('Runtime.evaluate', {
         expression: 'window.__recorder_last_click__ ? JSON.stringify(window.__recorder_last_click__) : null',
@@ -282,6 +285,8 @@ export function RecorderPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps): 
       }
     } catch {
       // Page may have navigated — silently ignore
+    } finally {
+      pollingInProgressRef.current = false;
     }
   }, [cdpSend]);
 
@@ -298,10 +303,10 @@ export function RecorderPanel({ cdpSend, onCdpEvent, isAttached }: PanelProps): 
       console.log('[RecorderPanel] DOM + Page domains enabled');
 
       recordingStartRef.current = Date.now();
-      lastClickTsRef.current = 0;
-      lastInputTsRef.current = 0;
-      lastKeyTsRef.current = 0;
-      lastScrollTsRef.current = 0;
+      lastClickTsRef.current = recordingStartRef.current;
+      lastInputTsRef.current = recordingStartRef.current;
+      lastKeyTsRef.current = recordingStartRef.current;
+      lastScrollTsRef.current = recordingStartRef.current;
 
       setIsRecording(true);
       startListening();

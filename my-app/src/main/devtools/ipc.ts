@@ -31,6 +31,9 @@ export function registerDevToolsHandlers(tabManager: TabManager): void {
 
     try {
       bridge!.attach(wc, senderWindow);
+      if (!bridge!.isAttached()) {
+        return { success: false, error: 'Debugger attach failed' };
+      }
       return { success: true };
     } catch (err) {
       return { success: false, error: (err as Error).message };

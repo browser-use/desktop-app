@@ -93,35 +93,41 @@ export function DevToolsApp(): React.ReactElement {
     setConnectionState('connecting');
     setError(null);
 
-    const info = await devtoolsAPI.getActiveTabInfo();
-    if (!info) {
-      setError('No active tab found');
-      setConnectionState('disconnected');
-      return;
-    }
-    setTabInfo(info);
-
-    const resp = await devtoolsAPI.attach();
-    if (!resp.success) {
-      console.error('[DevToolsApp] attach failed:', resp.error);
-      setError(resp.error ?? 'Failed to attach debugger');
-      setConnectionState('disconnected');
-      return;
-    }
-
-    const cleanup = devtoolsAPI.onCdpEvent((method, params) => {
-      for (const listener of cdpListenersRef.current) {
-        try {
-          listener(method, params);
-        } catch (err) {
-          console.error('[DevToolsApp] cdp listener error:', err);
-        }
+    try {
+      const info = await devtoolsAPI.getActiveTabInfo();
+      if (!info) {
+        setError('No active tab found');
+        setConnectionState('disconnected');
+        return;
       }
-    });
-    cleanupRef.current = cleanup;
+      setTabInfo(info);
 
-    setConnectionState('connected');
-    console.log('[DevToolsApp] connected to tab:', info.title);
+      const resp = await devtoolsAPI.attach();
+      if (!resp.success) {
+        console.error('[DevToolsApp] attach failed:', resp.error);
+        setError(resp.error ?? 'Failed to attach debugger');
+        setConnectionState('disconnected');
+        return;
+      }
+
+      const cleanup = devtoolsAPI.onCdpEvent((method, params) => {
+        for (const listener of cdpListenersRef.current) {
+          try {
+            listener(method, params);
+          } catch (err) {
+            console.error('[DevToolsApp] cdp listener error:', err);
+          }
+        }
+      });
+      cleanupRef.current = cleanup;
+
+      setConnectionState('connected');
+      console.log('[DevToolsApp] connected to tab:', info.title);
+    } catch (err) {
+      console.error('[DevToolsApp] connect failed:', err);
+      setError(String(err));
+      setConnectionState('disconnected');
+    }
   }, []);
 
   useEffect(() => {

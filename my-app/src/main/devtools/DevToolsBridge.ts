@@ -13,6 +13,8 @@ export class DevToolsBridge {
   private enabledDomains = new Set<string>();
   private targetWebContents: WebContents | null = null;
   private devtoolsWindow: BrowserWindow | null = null;
+  private messageHandler: ((_event: Electron.Event, method: string, params: unknown) => void) | null = null;
+  private detachHandler: ((_event: Electron.Event, reason: string) => void) | null = null;
 
   attach(webContents: WebContents, devtoolsWindow: BrowserWindow): void {
     if (this.attached && this.targetWebContents === webContents) {
@@ -34,25 +36,38 @@ export class DevToolsBridge {
         error: (err as Error).message,
         targetId: webContents.id,
       });
+      this.targetWebContents = null;
+      this.devtoolsWindow = null;
       return;
     }
 
-    webContents.debugger.on('message', (_event, method, params) => {
+    this.messageHandler = (_event, method, params) => {
       if (this.devtoolsWindow && !this.devtoolsWindow.isDestroyed()) {
         this.devtoolsWindow.webContents.send('devtools:cdp-event', method, params);
       }
-    });
-
-    webContents.debugger.on('detach', (_event, reason) => {
+    };
+    this.detachHandler = (_event, reason) => {
       mainLogger.info('DevToolsBridge.detach.event', { reason });
       this.attached = false;
       this.enabledDomains.clear();
       this.targetWebContents = null;
-    });
+    };
+
+    webContents.debugger.on('message', this.messageHandler);
+    webContents.debugger.on('detach', this.detachHandler);
   }
 
   detach(): void {
     if (!this.attached || !this.targetWebContents) return;
+
+    if (this.messageHandler) {
+      this.targetWebContents.debugger.removeListener('message', this.messageHandler);
+      this.messageHandler = null;
+    }
+    if (this.detachHandler) {
+      this.targetWebContents.debugger.removeListener('detach', this.detachHandler);
+      this.detachHandler = null;
+    }
 
     try {
       this.targetWebContents.debugger.detach();

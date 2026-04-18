@@ -280,6 +280,7 @@ function StylesPane({ nodeId, sendCdp }: StylesPaneProps): React.ReactElement {
       return;
     }
 
+    let stale = false;
     setLoading(true);
 
     if (activeTab === 'styles') {
@@ -289,14 +290,16 @@ function StylesPane({ nodeId, sendCdp }: StylesPaneProps): React.ReactElement {
           const result = (await sendCdp('CSS.getMatchedStylesForNode', { nodeId })) as {
             matchedCSSRules?: CdpRuleMatch[];
           };
+          if (stale) return;
           const rules = result?.matchedCSSRules ?? [];
           console.log('[ElementsPanel] matched rules count:', rules.length, 'nodeId:', nodeId);
           setMatchedRules(rules);
         } catch (err) {
+          if (stale) return;
           console.error('[ElementsPanel] CSS.getMatchedStylesForNode error nodeId:', nodeId, err);
           setMatchedRules([]);
         } finally {
-          setLoading(false);
+          if (!stale) setLoading(false);
         }
       })();
     } else if (activeTab === 'computed') {
@@ -306,14 +309,16 @@ function StylesPane({ nodeId, sendCdp }: StylesPaneProps): React.ReactElement {
           const result = (await sendCdp('CSS.getComputedStyleForNode', { nodeId })) as {
             computedStyle?: CdpComputedProperty[];
           };
+          if (stale) return;
           const props = result?.computedStyle ?? [];
           console.log('[ElementsPanel] computed props count:', props.length, 'nodeId:', nodeId);
           setComputedProps(props);
         } catch (err) {
+          if (stale) return;
           console.error('[ElementsPanel] CSS.getComputedStyleForNode error nodeId:', nodeId, err);
           setComputedProps([]);
         } finally {
-          setLoading(false);
+          if (!stale) setLoading(false);
         }
       })();
     } else if (activeTab === 'accessibility') {
@@ -323,17 +328,21 @@ function StylesPane({ nodeId, sendCdp }: StylesPaneProps): React.ReactElement {
           const result = (await sendCdp('Accessibility.getFullAXTree', { nodeId })) as {
             nodes?: AXNode[];
           };
+          if (stale) return;
           const nodes = result?.nodes ?? [];
           console.log('[ElementsPanel] AX nodes count:', nodes.length, 'nodeId:', nodeId);
           setAxNodes(nodes);
         } catch (err) {
+          if (stale) return;
           console.error('[ElementsPanel] Accessibility.getFullAXTree error nodeId:', nodeId, err);
           setAxNodes([]);
         } finally {
-          setLoading(false);
+          if (!stale) setLoading(false);
         }
       })();
     }
+
+    return () => { stale = true; };
   }, [nodeId, activeTab, sendCdp]);
 
   const emptyMsg = (msg: string): React.ReactElement => (

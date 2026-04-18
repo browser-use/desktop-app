@@ -178,8 +178,9 @@ export function NetworkPanel({ sendCdp, subscribeCdp }: CdpPanelProps): React.Re
   // ── CDP domain lifecycle ───────────────────────────────────────────────────
 
   useEffect(() => {
-    console.log(LOG_PREFIX, 'enabling Network domain');
+    console.log(LOG_PREFIX, 'enabling Network + Page domains');
     void sendCdp('Network.enable', { maxTotalBufferSize: 10485760, maxResourceBufferSize: 5242880 });
+    void sendCdp('Page.enable');
 
     const unsubscribe = subscribeCdp((method, params) => {
       if (!isRecordingRef.current) return;
@@ -305,6 +306,7 @@ export function NetworkPanel({ sendCdp, subscribeCdp }: CdpPanelProps): React.Re
       console.log(LOG_PREFIX, 'disabling Network domain');
       unsubscribe();
       void sendCdp('Network.disable').catch(() => {});
+      void sendCdp('Page.disable').catch(() => {});
     };
   }, [sendCdp, subscribeCdp]);
 
@@ -375,18 +377,20 @@ export function NetworkPanel({ sendCdp, subscribeCdp }: CdpPanelProps): React.Re
         const result = (await sendCdp('Network.getResponseBody', { requestId })) as
           | { body?: string; base64Encoded?: boolean }
           | undefined;
+        if (requestId !== selectedId) return;
         const body = result?.body ?? '';
         const display = result?.base64Encoded ? `(base64)\n${body}` : body || '(empty)';
         console.log(LOG_PREFIX, 'response body fetched, length:', body.length);
         setResponseBody(display);
       } catch (err) {
+        if (requestId !== selectedId) return;
         console.warn(LOG_PREFIX, 'getResponseBody failed:', err);
         setResponseBody('(body not available)');
       } finally {
         setLoadingBody(false);
       }
     },
-    [sendCdp],
+    [sendCdp, selectedId],
   );
 
   const handleDetailTabChange = useCallback(

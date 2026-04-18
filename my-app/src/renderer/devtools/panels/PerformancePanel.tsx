@@ -213,30 +213,37 @@ export function PerformancePanel({ cdpSend, onCdpEvent, isAttached }: PanelProps
     console.log(PANEL_TAG, 'fetching Web Vitals via Runtime.evaluate');
     try {
       const expression = `(function() {
-        const entries = performance.getEntriesByType('paint');
-        const nav = performance.getEntriesByType('navigation')[0];
-        const lcp = performance.getEntriesByName ? null : null;
-        const result = {};
-        entries.forEach(e => {
-          if (e.name === 'first-contentful-paint') result.FCP = e.startTime;
-          if (e.name === 'first-paint') result.FP = e.startTime;
+        return new Promise(function(resolve) {
+          var result = {};
+          var entries = performance.getEntriesByType('paint');
+          entries.forEach(function(e) {
+            if (e.name === 'first-contentful-paint') result.FCP = e.startTime;
+            if (e.name === 'first-paint') result.FP = e.startTime;
+          });
+          try {
+            new PerformanceObserver(function(list) {
+              var lcpEntries = list.getEntries();
+              if (lcpEntries.length > 0) result.LCP = lcpEntries[lcpEntries.length - 1].startTime;
+            }).observe({ type: 'largest-contentful-paint', buffered: true });
+          } catch(e) {}
+          try {
+            var clsValue = 0;
+            new PerformanceObserver(function(list) {
+              list.getEntries().forEach(function(e) { if (!e.hadRecentInput) clsValue += e.value; });
+              result.CLS = clsValue;
+            }).observe({ type: 'layout-shift', buffered: true });
+          } catch(e) {}
+          try {
+            new PerformanceObserver(function(list) {
+              var fidEntries = list.getEntries();
+              if (fidEntries.length > 0) result.FID = fidEntries[0].processingStart - fidEntries[0].startTime;
+            }).observe({ type: 'first-input', buffered: true });
+          } catch(e) {}
+          setTimeout(function() { resolve(result); }, 100);
         });
-        const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-        if (lcpEntries && lcpEntries.length > 0) {
-          result.LCP = lcpEntries[lcpEntries.length - 1].startTime;
-        }
-        const layoutShifts = performance.getEntriesByType('layout-shift');
-        if (layoutShifts && layoutShifts.length > 0) {
-          result.CLS = layoutShifts.reduce((sum, e) => sum + (e.value || 0), 0);
-        }
-        const fidEntries = performance.getEntriesByType('first-input');
-        if (fidEntries && fidEntries.length > 0) {
-          result.FID = fidEntries[0].processingStart - fidEntries[0].startTime;
-        }
-        return result;
       })()`;
 
-      const r = await cdpSend('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: false });
+      const r = await cdpSend('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
       const res = r.result as { result?: { value?: Record<string, number> }; exceptionDetails?: unknown };
       if (res.result?.value) {
         const vals = res.result.value;
