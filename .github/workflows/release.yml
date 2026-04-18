@@ -1,20 +1,45 @@
-name: Release (manual)
+name: Release
 
-# Manual-only: produces a DMG from the current ref as a downloadable artifact.
-# Does NOT publish to any store, GitHub Releases, or update channel — this is
-# the "I want a build I can hand to a tester" workflow. Use `gh workflow run
-# release.yml --ref <branch>` or the GitHub UI.
+# Produces a downloadable DMG for a given ref and attaches it to a GitHub
+# Release page. Two entry points:
+#
+#   1. Push a git tag matching v*.*.* (e.g. `git tag v1.2.3 && git push origin v1.2.3`).
+#      This is the primary way to cut a release. The release name equals the tag.
+#
+#   2. Manual `workflow_dispatch` for dry-runs / tester builds. The optional
+#      `tag` input defaults to a timestamp-based pre-release tag
+#      (`v0.0.0-dev-<timestamp>`) so the manual path always yields a
+#      prerelease that is easy to identify and discard.
+#
+# Signing is optional. Without Apple secrets the build is unsigned (the same
+# output the previous manual workflow produced). With the secrets present and
+# `skip-signing=false`, the DMG is signed + notarized. See SIGNING.md.
+#
+# The job also uploads the DMG/zip as a workflow artifact (14-day retention)
+# so internal users can grab builds without waiting for the Release page to
+# finish populating — belt-and-suspenders backup.
 
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       skip-signing:
         description: 'Build unsigned (no Apple Developer credentials needed)'
         type: boolean
         default: true
+      tag:
+        description: 'Tag/release name for this manual run (defaults to v0.0.0-dev-<timestamp>)'
+        type: string
+        required: false
+        default: ''
 
+# Scope concurrency to the tag/input so two simultaneous runs for the same
+# release cannot race each other. `github.ref` resolves to `refs/tags/<tag>`
+# on tag pushes, and the `tag` input (or the fallback) on manual runs.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -26,8 +51,39 @@ jobs:
     name: Package + make DMG (macOS)
     runs-on: macos-latest
     timeout-minutes: 40
+    # Least-privilege: only this job needs contents:write (to publish the
+    # Release + upload assets via softprops/action-gh-release).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so release-notes generation can walk back to the
+          # previous tag.
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${INPUT_TAG}" ]]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="v0.0.0-dev-$(date -u +%Y%m%d%H%M%S)"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          # Prerelease if the tag contains a recognized pre-release suffix.
+          if [[ "${TAG}" == *-dev* || "${TAG}" == *-rc* || "${TAG}" == *-beta* || "${TAG}" == *-alpha* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Resolved tag: ${TAG}"
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -54,15 +110,46 @@ jobs:
         working-directory: my-app/python
         run: bash build.sh
 
+      # Decide signed vs unsigned. The rule:
+      #   - `workflow_dispatch` respects the `skip-signing` input (default true).
+      #   - Tag pushes auto-sign IF the required secrets are present; else
+      #     fall back to unsigned so the workflow still works with just
+      #     GITHUB_TOKEN.
+      # We detect secret presence by testing whether SIGNING_IDENTITY is a
+      # non-empty string — secrets cannot be referenced directly in `if:`
+      # expressions, but they can flow through env + a resolve step.
+      - name: Resolve signing mode
+        id: signing
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SKIP_SIGNING_INPUT: ${{ github.event.inputs.skip-signing }}
+          HAS_SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY != '' }}
+        run: |
+          set -euo pipefail
+          mode="unsigned"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$SKIP_SIGNING_INPUT" == "false" ]]; then
+              mode="signed"
+            fi
+          else
+            # Tag push: sign automatically when the signing secret is present.
+            if [[ "$HAS_SIGNING_IDENTITY" == "true" ]]; then
+              mode="signed"
+            fi
+          fi
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+          echo "Signing mode: ${mode}"
+
       - name: electron-forge make (unsigned)
-        if: inputs.skip-signing
+        if: ${{ steps.signing.outputs.mode == 'unsigned' }}
         working-directory: my-app
         env:
           SKIP_SIGNING: '1'
         run: npm run make
 
       - name: electron-forge make (signed + notarized)
-        if: ${{ !inputs.skip-signing }}
+        if: ${{ steps.signing.outputs.mode == 'signed' }}
         working-directory: my-app
         env:
           # Only exposed to the forge process when signing is explicitly
@@ -73,12 +160,80 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run make
 
-      - name: Upload DMG artifact
+      - name: Collect release assets + compute checksums
+        id: assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          shopt -s nullglob globstar
+
+          dmg_count=0
+          for f in my-app/out/make/**/*.dmg; do
+            cp "$f" release-assets/
+            dmg_count=$((dmg_count + 1))
+          done
+
+          zip_count=0
+          for f in my-app/out/make/**/*.zip; do
+            cp "$f" release-assets/
+            zip_count=$((zip_count + 1))
+          done
+
+          if [[ "$dmg_count" -eq 0 ]]; then
+            echo "::error::No DMG produced by electron-forge make — refusing to publish empty release."
+            ls -R my-app/out/make || true
+            exit 1
+          fi
+
+          # SHA256SUMS.txt covers every asset we're about to publish.
+          # `nullglob` makes non-matching globs vanish instead of expanding
+          # literally — important because `*.zip` may not exist (Forge won't
+          # emit one for unsigned arm64 builds in some configurations).
+          (
+            cd release-assets
+            shopt -s nullglob
+            shasum -a 256 *.dmg *.zip \
+              | sed 's|\./||g' \
+              > SHA256SUMS.txt
+          )
+
+          echo "dmg_count=${dmg_count}" >> "$GITHUB_OUTPUT"
+          echo "zip_count=${zip_count}" >> "$GITHUB_OUTPUT"
+          echo "Collected ${dmg_count} DMG(s) and ${zip_count} zip(s):"
+          ls -la release-assets/
+          echo "---- SHA256SUMS.txt ----"
+          cat release-assets/SHA256SUMS.txt
+
+      # Backup path: the raw DMG/zip/checksums stay available as a workflow
+      # artifact for 14 days regardless of what happens to the Release page.
+      - name: Upload DMG artifact (backup)
         uses: actions/upload-artifact@v4
         with:
           name: agentic-browser-${{ github.sha }}
           path: |
-            my-app/out/make/**/*.dmg
-            my-app/out/make/**/*.zip
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
+          # Auto-generate notes from commits since the previous tag.
+          generate_release_notes: true
+          # For workflow_dispatch runs the tag doesn't exist yet — let the
+          # action create it against the workflow's sha.
+          target_commitish: ${{ github.sha }}
+          # We already hard-fail on missing DMG in the asset-collection
+          # step, so false here tolerates the legitimate case where Forge
+          # didn't emit a .zip.
+          fail_on_unmatched_files: false
+          files: |
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/SHA256SUMS.txt

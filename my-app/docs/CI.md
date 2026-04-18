@@ -34,19 +34,70 @@ build targets `out/my-app-darwin-*/my-app.app`:
 Both Playwright jobs depend on `build`; the build artifact is reused so
 we only pay the ~8 min Forge build cost once per SHA.
 
-### `release.yml` — manual only
+### `release.yml` — tag-driven GitHub Release (+ manual dry-runs)
 
-`workflow_dispatch` produces a DMG as a downloadable artifact. By default
-it builds unsigned (`SKIP_SIGNING=1`). To build signed, flip the input to
-`skip-signing: false` and make sure these repo secrets are set:
+Two entry points:
+
+1. **Push a `v*.*.*` tag.** This is the primary way to cut a release:
+
+   ```bash
+   # make sure my-app/package.json version is what you want in the tag name
+   git tag v1.2.3
+   git push origin v1.2.3
+   ```
+
+   The workflow builds on macOS, produces an unsigned DMG (or a signed +
+   notarized DMG if secrets are present), writes `SHA256SUMS.txt`, and
+   publishes a GitHub Release at `https://github.com/<owner>/<repo>/releases/tag/v1.2.3`
+   with the DMG, zip, and checksums attached. Release notes are
+   auto-generated from commits since the previous tag.
+
+2. **`workflow_dispatch`** — for iteration and tester builds. Inputs:
+
+   - `skip-signing` (bool, default `true`) — build unsigned.
+   - `tag` (string, optional) — defaults to `v0.0.0-dev-<timestamp>`.
+     The workflow always creates a Release at that tag; if it contains
+     `-dev`, `-rc`, `-beta`, or `-alpha`, it is marked **prerelease**.
+
+   Example:
+
+   ```bash
+   gh workflow run release.yml --ref main \
+     -f tag=v0.0.0-smoketest-$(date +%s)
+   ```
+
+**Cutting a signed release.** For tag pushes, signing activates
+automatically when the secrets are set. For `workflow_dispatch`, flip
+`skip-signing: false`. The required secrets:
 
 - `SIGNING_IDENTITY`
 - `APPLE_ID`
 - `APPLE_APP_SPECIFIC_PASSWORD`
 - `APPLE_TEAM_ID`
 
-It does **not** publish to any update channel or create a GitHub Release —
-that workflow is for producing a build you can hand to a tester.
+Without those secrets, every run is unsigned. `GITHUB_TOKEN` alone is
+enough to publish the Release (the workflow grants itself
+`contents: write`).
+
+**Cutting a pre-release.** Use a tag with a recognized suffix:
+`v1.2.3-rc.1`, `v1.2.3-beta.2`, `v1.2.3-alpha`, `v1.2.3-dev-20260101`.
+The workflow flips `prerelease: true` based on substring match.
+
+**Where to find the DMG after release.** Two places:
+
+- **GitHub Release page** — `https://github.com/<owner>/<repo>/releases/tag/<tag>`.
+  This is the canonical user-facing download.
+- **Workflow artifact** (14-day retention) — Actions → Release run →
+  `agentic-browser-<sha>`. Backup path for internal use or if Release
+  publishing fails partway.
+
+The workflow does **not** publish to any update channel (no Squirrel /
+autoUpdater / brew). Users download the DMG from the Release page.
+
+**Version field.** `my-app/package.json`'s `version` is consumed by Forge
+when it names the DMG (`my-app-<version>-arm64.dmg`). Keep the `version`
+in sync with the tag you push — e.g. bump to `1.2.3` in a commit before
+tagging `v1.2.3`. The workflow does **not** auto-bump this for you.
 
 ## Running locally
 
