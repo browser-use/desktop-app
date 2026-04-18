@@ -157,6 +157,7 @@ export class TabManager {
   private onClosedTabsChanged: (() => void) | null = null;
   private onTabClosed: ((tabId: string) => void) | null = null;
   private onWebContentsCreated: ((wc: import("electron").WebContents) => void) | null = null;
+  private onMoveTabToNewWindow: ((url: string, title: string) => void) | null = null;
   // Extra pixels the renderer added on top of the base chrome (e.g. 32 px
   // for a visible bookmarks bar). The page-hosting WebContentsView is then
   // positioned at CHROME_HEIGHT + chromeOffset.
@@ -213,6 +214,10 @@ export class TabManager {
   /** Called by DeviceManager to attach select-bluetooth-device on new tabs */
   setOnWebContentsCreated(cb: ((wc: import("electron").WebContents) => void) | null): void {
     this.onWebContentsCreated = cb;
+  }
+
+  setOnMoveTabToNewWindow(cb: ((url: string, title: string) => void) | null): void {
+    this.onMoveTabToNewWindow = cb;
   }
 
   setHistoryStore(store: HistoryStore): void {
@@ -2104,6 +2109,20 @@ export class TabManager {
         this.safeSend('bookmark-all-tabs-request', {});
       },
     }));
+
+    if (this.onMoveTabToNewWindow) {
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({
+        label: 'Move Tab to New Window',
+        enabled: tabCount > 1,
+        click: () => {
+          const tabUrl = view.webContents.getURL();
+          const tabTitle = view.webContents.getTitle();
+          this.closeTab(tabId);
+          this.onMoveTabToNewWindow?.(tabUrl, tabTitle);
+        },
+      }));
+    }
 
     menu.popup({ window: this.win });
   }

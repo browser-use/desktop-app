@@ -260,6 +260,10 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     rebuildApplicationMenu();
   });
 
+  tabManager.setOnMoveTabToNewWindow((url: string) => {
+    openNewWindow(url);
+  });
+
   setTimeout(async () => {
     if (tabManager) {
       const port = await tabManager.discoverCdpPort();
@@ -398,7 +402,7 @@ function openGuestShell(): BrowserWindow {
 // ---------------------------------------------------------------------------
 // New window (Cmd+N) — fresh window sharing the active profile session
 // ---------------------------------------------------------------------------
-function openNewWindow(): BrowserWindow {
+function openNewWindow(initialUrl?: string): BrowserWindow {
   const pid = activeProfileId;
   const profileDataDir = getProfileDataDir(pid);
   const profilePartition = getProfilePartitionName(pid);
@@ -412,7 +416,11 @@ function openNewWindow(): BrowserWindow {
     const store = bookmarkStore;
     tm.setUrlMatchFn((candidate: string) => store.isUrlBookmarked(candidate) ? candidate : null);
   }
-  tm.restoreSession();
+  if (initialUrl) {
+    tm.createTab(initialUrl);
+  } else {
+    tm.restoreSession();
+  }
   tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
 
   win.webContents.once('did-finish-load', () => {
@@ -1696,6 +1704,18 @@ function switchTabRelative(delta: number): void {
 // IPC: window-level handlers
 // ---------------------------------------------------------------------------
 ipcMain.handle('shell:get-platform', () => process.platform);
+
+// Tab drag-to-detach / move to new window (issue #1)
+ipcMain.handle('tabs:move-to-new-window', (_e, tabId: string) => {
+  if (!tabManager) return false;
+  const { tabs } = tabManager.getState();
+  if (tabs.length <= 1) return false; // Can't detach the last tab
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return false;
+  tabManager.closeTab(tabId);
+  openNewWindow(tab.url);
+  return true;
+});
 
 // Issue #81 — Three-dot app menu for non-macOS platforms.
 ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) => {

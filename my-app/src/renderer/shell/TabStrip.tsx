@@ -18,6 +18,7 @@ declare const electronAPI: {
   tabs: {
     showContextMenu: (tabId: string) => Promise<void>;
     muteTab: (tabId: string) => Promise<void>;
+    moveToNewWindow: (tabId: string) => Promise<boolean>;
   };
 };
 
@@ -426,10 +427,13 @@ export function TabStrip({
     [],
   );
 
+  const droppedRef = useRef(false);
+
   const handleDrop = useCallback(
     (e: React.DragEvent, toIndex: number) => {
       e.preventDefault();
       setDragOverIndex(null);
+      droppedRef.current = true;
       if (dragTabId.current) {
         onMove(dragTabId.current, toIndex);
         dragTabId.current = null;
@@ -438,13 +442,23 @@ export function TabStrip({
     [onMove],
   );
 
-  const handleDragEnd = useCallback(() => {
+  // Detach threshold: if the drag ends more than 80px below the tab strip top, treat it as detach.
+  const DETACH_Y_THRESHOLD = 80;
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    const tabId = dragTabId.current;
+    const wasDroppedInStrip = droppedRef.current;
     setDragOverIndex(null);
     dragTabId.current = null;
+    droppedRef.current = false;
+
+    if (tabId && !wasDroppedInStrip && e.clientY > DETACH_Y_THRESHOLD) {
+      electronAPI.tabs.moveToNewWindow(tabId).catch(() => {/* ignore */});
+    }
   }, []);
 
   return (
-    <div className="tab-strip" role="presentation" onDragEnd={handleDragEnd}>
+    <div className="tab-strip" role="presentation" onDragEnd={(e) => handleDragEnd(e)}>
       <div
         ref={tabsContainerRef}
         className="tab-strip__tabs"
