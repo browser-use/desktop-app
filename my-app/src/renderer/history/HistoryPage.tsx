@@ -22,7 +22,7 @@ declare const historyAPI: {
   navigateTo: (url: string) => Promise<void>;
 };
 
-type HistoryTab = 'list' | 'journeys';
+type HistoryTab = 'list' | 'journeys' | 'other-devices';
 
 const PAGE_SIZE = 100;
 
@@ -290,6 +290,29 @@ function HistoryList(): React.ReactElement {
   );
 }
 
+function OtherDevicesPage(): React.ReactElement {
+  return (
+    <div className="history-other-devices">
+      <div className="history-other-devices__empty">
+        <div className="history-other-devices__icon" aria-hidden="true">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </div>
+        <h2 className="history-other-devices__title">Tabs from other devices</h2>
+        <p className="history-other-devices__desc">
+          Sign in and enable sync to see open tabs from your other devices.
+        </p>
+        <p className="history-other-devices__hint">
+          To enable: <strong>Settings → Sync</strong> → turn on sync and enable &ldquo;History and tabs&rdquo;.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function HistoryPage(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<HistoryTab>('list');
 
@@ -318,9 +341,20 @@ export function HistoryPage(): React.ReactElement {
         >
           Journeys
         </button>
+        <button
+          type="button"
+          role="tab"
+          className={`history__tab ${activeTab === 'other-devices' ? 'history__tab--active' : ''}`}
+          aria-selected={activeTab === 'other-devices'}
+          onClick={() => setActiveTab('other-devices')}
+        >
+          Other devices
+        </button>
       </nav>
 
-      {activeTab === 'list' ? <HistoryList /> : <JourneysPage />}
+      {activeTab === 'list' && <HistoryList />}
+      {activeTab === 'journeys' && <JourneysPage />}
+      {activeTab === 'other-devices' && <OtherDevicesPage />}
     </div>
   );
 }
