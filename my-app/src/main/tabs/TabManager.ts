@@ -2056,25 +2056,27 @@ export class TabManager {
       },
     }));
 
-    const existingGroup = this.tabGroupStore?.getGroupForTab(tabId);
-    if (existingGroup) {
-      menu.append(new MenuItem({
-        label: 'Remove from Group',
-        click: () => {
-          this.tabGroupStore?.removeTabFromGroup(tabId);
-          this.safeSend('tab-groups:updated', this.tabGroupStore?.listGroups() ?? []);
-        },
-      }));
-    } else {
-      menu.append(new MenuItem({
-        label: 'Add to New Group',
-        click: () => {
-          const colors: Array<import('./TabGroupStore').TabGroup['color']> = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
-          const color = colors[Math.floor(Math.random() * colors.length)];
-          this.tabGroupStore?.createGroup('New group', color, [tabId]);
-          this.safeSend('tab-groups:updated', this.tabGroupStore?.listGroups() ?? []);
-        },
-      }));
+    if (this.tabGroupStore) {
+      const existingGroup = this.tabGroupStore.getGroupForTab(tabId);
+      if (existingGroup) {
+        menu.append(new MenuItem({
+          label: 'Remove from Group',
+          click: () => {
+            this.tabGroupStore!.removeTabFromGroup(tabId);
+            this.safeSend('tab-groups:updated', this.tabGroupStore!.listGroups());
+          },
+        }));
+      } else {
+        menu.append(new MenuItem({
+          label: 'Add to New Group',
+          click: () => {
+            const colors: Array<import('./TabGroupStore').TabGroup['color']> = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            this.tabGroupStore!.createGroup('New group', color, [tabId]);
+            this.safeSend('tab-groups:updated', this.tabGroupStore!.listGroups());
+          },
+        }));
+      }
     }
 
     menu.append(new MenuItem({ type: 'separator' }));
