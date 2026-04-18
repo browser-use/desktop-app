@@ -72,9 +72,6 @@
     "vite": "^5.4.21",
     "vitest": "^4.1.4"
   },
-  "overrides": {
-    "@electron/fuses": "^2.1.1"
-  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@types/ws": "^8.18.1",
