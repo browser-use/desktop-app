@@ -48,7 +48,7 @@ jobs:
           ls -la "${APP_DIR}"
 
       - name: Upload built app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electron-app-${{ github.sha }}
           path: my-app/out/
@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-regression-report
           path: |
@@ -142,7 +142,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-e2e-report
           path: |

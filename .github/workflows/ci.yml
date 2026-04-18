@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload coverage (TS)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-ts
           path: my-app/tests/results/coverage/
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vitest-results
           path: my-app/tests/results/
@@ -135,7 +135,7 @@ jobs:
 
       - name: Upload coverage (Python)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-python
           path: my-app/python/coverage.xml

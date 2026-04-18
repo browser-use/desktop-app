@@ -208,7 +208,7 @@ jobs:
       # Backup path: the raw DMG/zip/checksums stay available as a workflow
       # artifact for 14 days regardless of what happens to the Release page.
       - name: Upload DMG artifact (backup)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agentic-browser-${{ github.sha }}
           path: |
