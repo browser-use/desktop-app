@@ -23,13 +23,7 @@ interface OmniboxSuggestion {
   relevance: number;
 }
 
-declare const electronAPI: {
-  omnibox: {
-    suggest: (p: { input: string }) => Promise<OmniboxSuggestion[]>;
-    recordSelection: (p: { inputText: string; url: string; title: string }) => Promise<boolean>;
-    removeHistory: (id: string) => Promise<boolean>;
-  };
-};
+
 
 const GOOGLE_FAVICON_API = 'https://www.google.com/s2/favicons?sz=32&domain_url=';
 
@@ -67,6 +61,11 @@ interface PageInfo {
 }
 
 declare const electronAPI: {
+  omnibox: {
+    suggest: (p: { input: string }) => Promise<OmniboxSuggestion[]>;
+    recordSelection: (p: { inputText: string; url: string; title: string }) => Promise<boolean>;
+    removeHistory: (id: string) => Promise<boolean>;
+  };
   security: {
     getPageInfo: () => Promise<Omit<PageInfo, 'permissions' | 'cookieCount'>>;
     getCookieCount: () => Promise<number>;
