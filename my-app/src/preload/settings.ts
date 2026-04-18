@@ -256,6 +256,15 @@ export interface SettingsAPI {
   /** Reset all per-site overrides */
   resetAllContentCategoryOverrides: () => Promise<void>;
 
+  // Downloads settings
+  getDownloadFolder: () => Promise<string>;
+  setDownloadFolder: () => Promise<string>;
+  getAskBeforeSave: () => Promise<boolean>;
+  setAskBeforeSave: (enabled: boolean) => Promise<void>;
+  getFileTypeAssociations: () => Promise<Record<string, boolean>>;
+  setFileTypeAssociation: (ext: string, enabled: boolean) => Promise<void>;
+  removeFileTypeAssociation: (ext: string) => Promise<void>;
+
   // Autofill — addresses
   saveAddress: (fields: Omit<SavedAddress, 'id' | 'createdAt' | 'updatedAt'>) => Promise<SavedAddress>;
   listAddresses: () => Promise<SavedAddress[]>;
@@ -519,6 +528,42 @@ const api: SettingsAPI = {
   resetAllContentCategoryOverrides: async (): Promise<void> => {
     console.debug('[settings-preload] resetAllContentCategoryOverrides');
     await ipcRenderer.invoke('content-categories:reset-all');
+  },
+
+  // Downloads settings
+  getDownloadFolder: async (): Promise<string> => {
+    console.debug('[settings-preload] getDownloadFolder');
+    return ipcRenderer.invoke('settings:get-download-folder') as Promise<string>;
+  },
+
+  setDownloadFolder: async (): Promise<string> => {
+    console.debug('[settings-preload] setDownloadFolder');
+    return ipcRenderer.invoke('settings:set-download-folder') as Promise<string>;
+  },
+
+  getAskBeforeSave: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getAskBeforeSave');
+    return ipcRenderer.invoke('settings:get-ask-before-save') as Promise<boolean>;
+  },
+
+  setAskBeforeSave: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setAskBeforeSave', { enabled });
+    await ipcRenderer.invoke('settings:set-ask-before-save', enabled);
+  },
+
+  getFileTypeAssociations: async (): Promise<Record<string, boolean>> => {
+    console.debug('[settings-preload] getFileTypeAssociations');
+    return ipcRenderer.invoke('settings:get-file-type-associations') as Promise<Record<string, boolean>>;
+  },
+
+  setFileTypeAssociation: async (ext: string, enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setFileTypeAssociation', { ext, enabled });
+    await ipcRenderer.invoke('settings:set-file-type-association', ext, enabled);
+  },
+
+  removeFileTypeAssociation: async (ext: string): Promise<void> => {
+    console.debug('[settings-preload] removeFileTypeAssociation', { ext });
+    await ipcRenderer.invoke('settings:remove-file-type-association', ext);
   },
 
   // Autofill — addresses
