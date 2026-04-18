@@ -44,6 +44,7 @@ type TabId =
   | typeof TAB_PRIVACY
   | typeof TAB_PASSWORDS
   | typeof TAB_ZOOM
+  | typeof TAB_PASSWORDS
   | typeof TAB_DANGER;
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -1161,6 +1162,11 @@ function PasswordsTab(): React.ReactElement {
     if (editPassword) updates.password = editPassword;
     try {
       await window.settingsAPI.updatePassword({ id: editId, ...updates });
+      setCheckupResults((prev) => {
+        const next = new Map(prev);
+        next.delete(editId);
+        return next;
+      });
       setEditId(null);
       setEditUsername('');
       setEditPassword('');

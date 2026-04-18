@@ -139,6 +139,18 @@ async function fetchHibpRange(prefix: string): Promise<string> {
         body += chunk.toString('utf-8');
       });
 
+
+      response.on('error', (err) => {
+        if (!settled) {
+          clearTimeout(timer);
+          settled = true;
+          mainLogger.error('PasswordCheckup.fetchHibpRange.responseError', {
+            prefix,
+            error: err.message,
+          });
+          reject(err);
+        }
+      });
       response.on('end', () => {
         if (!settled) {
           clearTimeout(timer);
