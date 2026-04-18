@@ -607,6 +607,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('device-picker-dismiss', handler);
       return () => ipcRenderer.removeListener('device-picker-dismiss', handler);
     },
+
+    // Issue #86 — Status bar: hovered link URL from the active tab's webContents
+    linkHover: (
+      cb: (payload: { url: string }) => void,
+    ): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { url: string }) => cb(payload);
+      ipcRenderer.on('link-hover', handler);
+      return () => ipcRenderer.removeListener('link-hover', handler);
+    },
   },
 
   // Profiles — current profile info + switch

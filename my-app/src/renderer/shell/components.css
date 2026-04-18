@@ -1796,3 +1796,35 @@
   pointer-events: none;
   opacity: 0.9;
 }
+
+/* ---------------------------------------------------------------------------
+   StatusBar — Issue #86: bottom-left URL preview on link hover
+   Positioned fixed so it overlays page content, matching Chrome behaviour.
+   Not shown inside PWA windows (handled by omitting the component there).
+   --------------------------------------------------------------------------- */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  max-width: 60%;
+  height: 20px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-border-subtle);
+  border-right: 1px solid var(--color-border-subtle);
+  border-top-right-radius: var(--radius-sm);
+  z-index: 9998;
+  pointer-events: none;
+}
+
+.status-bar__url {
+  font-size: 11px;
+  color: var(--color-fg-secondary);
+  font-family: var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}

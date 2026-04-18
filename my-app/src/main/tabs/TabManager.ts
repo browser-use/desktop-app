@@ -1600,6 +1600,14 @@ export class TabManager {
       this.safeSend('find-result', payload);
     });
 
+    // Issue #86 — Status bar: forward hovered link URL to shell renderer.
+    // Only emit for the active tab so inactive tabs don't clobber the bar.
+    wc.on('update-target-url', (_e, url) => {
+      if (tabId !== this.activeTabId) return;
+      mainLogger.debug('TabManager.tab.updateTargetUrl', { tabId, url: url.slice(0, 120) });
+      this.safeSend('link-hover', { url });
+    });
+
     // Handle target_lost for active tab agent enforcement
     wc.on('destroyed', () => {
       mainLogger.info('TabManager.tab.destroyed', { tabId });
