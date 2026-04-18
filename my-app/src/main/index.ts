@@ -689,7 +689,7 @@ app.whenReady().then(async () => {
   // Issue #26 — Chrome internal pages
 
   // Issue #98 — Share menu
-  registerShareHandlers(tabManager!, shellWindow!);
+  registerShareHandlers(() => tabManager, () => shellWindow);
   // Issue #5 — Tab groups
   registerTabGroupHandlers(tabGroupStore, () => shellWindow);
   registerChromeHandlers(
