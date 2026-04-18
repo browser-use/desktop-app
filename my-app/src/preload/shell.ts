@@ -297,6 +297,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('menu:show-app-menu', bounds),
   },
 
+
+  // Issue #84 — NTP Customization
+  ntp: {
+    get: (): Promise<unknown> =>
+      ipcRenderer.invoke('ntp:get-customization'),
+
+    set: (patch: Record<string, unknown>): Promise<unknown> =>
+      ipcRenderer.invoke('ntp:set-customization', patch),
+
+    reset: (): Promise<unknown> =>
+      ipcRenderer.invoke('ntp:reset-customization'),
+
+    addShortcut: (s: { name: string; url: string }): Promise<unknown> =>
+      ipcRenderer.invoke('ntp:add-shortcut', s),
+
+    editShortcut: (s: { id: string; name: string; url: string }): Promise<unknown> =>
+      ipcRenderer.invoke('ntp:edit-shortcut', s),
+
+    deleteShortcut: (id: string): Promise<unknown> =>
+      ipcRenderer.invoke('ntp:delete-shortcut', id),
+
+    pickImage: (): Promise<string | null> =>
+      ipcRenderer.invoke('ntp:pick-background-image'),
+  },
+
   // Event listeners
   on: {
     tabsState: (
@@ -524,6 +549,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_e: Electron.IpcRendererEvent, downloads: DownloadItemDTO[]) => cb(downloads);
       ipcRenderer.on('downloads-state', handler);
       return () => ipcRenderer.removeListener('downloads-state', handler);
+    },
+
+    ntpCustomizationUpdated: (
+      cb: (data: unknown) => void,
+    ): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, data: unknown) => cb(data);
+      ipcRenderer.on('ntp-customization-updated', handler);
+      return () => ipcRenderer.removeListener('ntp-customization-updated', handler);
     },
   },
 

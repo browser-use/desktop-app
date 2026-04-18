@@ -1,18 +1,19 @@
 /**
  * SidePanel: toggleable side panel hosting built-in panels (Bookmarks, History,
- * Reading List). Positioned absolutely in the shell window, occupying the right
- * (or left) side below the chrome. The main process shrinks the WebContentsView
- * to reveal this panel behind it.
+ * Reading List, Customize). Positioned absolutely in the shell window, occupying
+ * the right (or left) side below the chrome. The main process shrinks the
+ * WebContentsView to reveal this panel behind it.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { BookmarkNode, PersistedBookmarks } from '../../main/bookmarks/BookmarkStore';
+import { CustomizePanel } from './CustomizePanel';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-export type SidePanelId = 'bookmarks' | 'history' | 'reading-list';
+export type SidePanelId = 'bookmarks' | 'history' | 'reading-list' | 'customize';
 export type SidePanelPosition = 'left' | 'right';
 
 const MIN_PANEL_WIDTH = 280;
@@ -46,6 +47,16 @@ const PANEL_DEFS: Array<{ id: SidePanelId; label: string; icon: React.ReactNode 
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         <rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" strokeWidth="1.3" />
         <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    id: 'customize',
+    label: 'Customize',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 1.5a1 1 0 011 1v1.126a4.5 4.5 0 011.95 1.124l.975-.563a1 1 0 011.366.366l.5.866a1 1 0 01-.366 1.366l-.975.563A4.5 4.5 0 0113 8.5c0 .362-.043.715-.124 1.052l.975.563a1 1 0 01.366 1.366l-.5.866a1 1 0 01-1.366.366l-.975-.563a4.5 4.5 0 01-1.95 1.124V14.5a1 1 0 01-1 1H7a1 1 0 01-1-1v-1.126a4.5 4.5 0 01-1.95-1.124l-.975.563a1 1 0 01-1.366-.366l-.5-.866a1 1 0 01.366-1.366l.975-.563A4.5 4.5 0 013 8.5c0-.362.043-.715.124-1.052l-.975-.563a1 1 0 01-.366-1.366l.5-.866a1 1 0 011.366-.366l.975.563A4.5 4.5 0 016 3.626V2.5a1 1 0 011-1h1z" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="7.5" cy="8.5" r="2" stroke="currentColor" strokeWidth="1.2" />
       </svg>
     ),
   },
@@ -383,6 +394,7 @@ export function SidePanel({
         {activePanel === 'bookmarks' && <BookmarksPanel onNavigate={handleNavigate} />}
         {activePanel === 'history' && <HistoryPanel onNavigate={handleNavigate} />}
         {activePanel === 'reading-list' && <ReadingListPanel />}
+        {activePanel === 'customize' && <CustomizePanel />}
       </div>
     </div>
   );

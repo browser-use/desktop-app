@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { BookmarkNode, PersistedBookmarks } from '../../main/bookmarks/BookmarkStore';
+import type { NtpCustomization, NtpShortcut } from '../../main/ntp/NtpCustomizationStore';
 
 const MAX_TILES = 8;
 
@@ -9,6 +10,13 @@ declare const electronAPI: {
   };
   bookmarks: {
     list: () => Promise<PersistedBookmarks>;
+  };
+  ntp: {
+    get: () => Promise<NtpCustomization>;
+    set: (patch: Partial<NtpCustomization>) => Promise<NtpCustomization>;
+  };
+  on: {
+    ntpCustomizationUpdated: (cb: (data: NtpCustomization) => void) => () => void;
   };
 };
 
@@ -30,6 +38,13 @@ function extractTiles(tree: PersistedBookmarks): Tile[] {
     }));
 }
 
+function shortcutsToTiles(shortcuts: NtpShortcut[]): Tile[] {
+  return shortcuts.slice(0, MAX_TILES).map((s) => ({
+    name: s.name,
+    url: s.url,
+  }));
+}
+
 function faviconUrl(pageUrl: string): string {
   try {
     const host = new URL(pageUrl).hostname;
@@ -47,16 +62,62 @@ function domainLabel(pageUrl: string): string {
   }
 }
 
+function getBackgroundStyle(config: NtpCustomization): React.CSSProperties {
+  if (config.backgroundType === 'uploaded-image' && config.backgroundImageDataUrl) {
+    return {
+      backgroundImage: `url(${config.backgroundImageDataUrl})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    };
+  }
+  if (config.backgroundType === 'solid-color' && config.backgroundColor) {
+    return { background: config.backgroundColor };
+  }
+  return {};
+}
+
 export function NewTab(): React.ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [tiles, setTiles] = useState<Tile[]>([]);
+  const [config, setConfig] = useState<NtpCustomization | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
-    electronAPI.bookmarks.list().then((tree) => {
-      setTiles(extractTiles(tree));
+
+    console.log('[NewTab] Loading NTP customization and bookmarks');
+
+    electronAPI.ntp.get().then((ntpConfig) => {
+      console.log('[NewTab] NTP config loaded:', ntpConfig.backgroundType, ntpConfig.shortcutMode);
+      setConfig(ntpConfig);
+
+      if (ntpConfig.shortcutMode === 'custom') {
+        setTiles(shortcutsToTiles(ntpConfig.customShortcuts));
+      } else {
+        electronAPI.bookmarks.list().then((tree) => {
+          setTiles(extractTiles(tree));
+        });
+      }
+    }).catch(() => {
+      console.warn('[NewTab] NTP customization not available, falling back to bookmarks');
+      electronAPI.bookmarks.list().then((tree) => {
+        setTiles(extractTiles(tree));
+      });
     });
+
+    const unsub = electronAPI.on.ntpCustomizationUpdated((data) => {
+      console.log('[NewTab] NTP customization updated:', data.backgroundType);
+      setConfig(data);
+      if (data.shortcutMode === 'custom') {
+        setTiles(shortcutsToTiles(data.customShortcuts));
+      } else {
+        electronAPI.bookmarks.list().then((tree) => {
+          setTiles(extractTiles(tree));
+        });
+      }
+    });
+
+    return unsub;
   }, []);
 
   const handleSubmit = useCallback(
@@ -74,8 +135,11 @@ export function NewTab(): React.ReactElement {
     electronAPI.tabs.navigateActive(url);
   }, []);
 
+  const bgStyle = config ? getBackgroundStyle(config) : {};
+  const showShortcuts = config ? config.shortcutsVisible : true;
+
   return (
-    <div className="newtab">
+    <div className="newtab" style={bgStyle}>
       <form className="newtab__search" onSubmit={handleSubmit}>
         <input
           ref={inputRef}
@@ -92,7 +156,7 @@ export function NewTab(): React.ReactElement {
         />
       </form>
 
-      {tiles.length > 0 && (
+      {showShortcuts && tiles.length > 0 && (
         <div className="newtab__tiles">
           {tiles.map((tile) => (
             <button

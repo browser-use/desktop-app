@@ -77,6 +77,9 @@ import { registerChromeHandlers, unregisterChromeHandlers } from './chrome/ipc';
 import { openPrintPreviewWindow } from './print/PrintPreviewWindow';
 // Issue #98 — Share menu
 import { registerShareHandlers, unregisterShareHandlers } from './share/ipc';
+// Issue #84 — NTP Customization
+import { NtpCustomizationStore } from './ntp/NtpCustomizationStore';
+import { registerNtpHandlers, unregisterNtpHandlers } from './ntp/ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -488,6 +491,25 @@ app.whenReady().then(async () => {
   // Track 5 — Settings IPC handlers
   registerSettingsHandlers({ accountStore, keychainStore });
 
+  // Issue #84 — NTP Customization store + IPC
+  const ntpStore = new NtpCustomizationStore();
+  registerNtpHandlers({
+    store: ntpStore,
+    notifyShell: (data) => {
+      const shellWin = BrowserWindow.getAllWindows().find(w => !w.isDestroyed());
+      if (shellWin) {
+        shellWin.webContents.send('ntp-customization-updated', data);
+      }
+    },
+    notifyNewTab: (data) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('ntp-customization-updated', data);
+        }
+      }
+    },
+  });
+
   // Issue #71 — Extensions: init manager + register IPC
   extensionManager = new ExtensionManager();
   registerExtensionsHandlers(extensionManager);
@@ -588,6 +610,7 @@ app.whenReady().then(async () => {
     ipcMain.removeHandler('settings:get-zoom-overrides');
     ipcMain.removeHandler('settings:remove-zoom-override');
     ipcMain.removeHandler('settings:clear-all-zoom-overrides');
+    unregisterNtpHandlers();
     unregisterShareHandlers();
     unregisterBookmarkHandlers();
     unregisterHistoryHandlers();
