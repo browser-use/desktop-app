@@ -186,6 +186,8 @@ let isGuestSession = false;
 let guestPartitionName: string | null = null;
 // Issue #12 — Window naming: in-memory custom title; cleared on window close
 let windowCustomName: string | null = null;
+// Stores the default (pre-rename) title for each window, keyed by window.id.
+const windowDefaultTitles = new Map<number, string>();
 
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com' });
@@ -1719,7 +1721,19 @@ ipcMain.handle('window:set-name', (e, name: string) => {
   const callerWin = BrowserWindow.fromWebContents(e.sender);
   const targetWin = callerWin ?? shellWindow;
   if (targetWin && !targetWin.isDestroyed()) {
-    targetWin.setTitle(windowCustomName ?? app.getName());
+    const winId = targetWin.id;
+    if (windowCustomName) {
+      // Save default title before first rename so we can restore it later.
+      if (!windowDefaultTitles.has(winId)) {
+        windowDefaultTitles.set(winId, targetWin.getTitle());
+      }
+      targetWin.setTitle(windowCustomName);
+    } else {
+      // Restore the original title (preserves Guest/Incognito suffix).
+      const defaultTitle = windowDefaultTitles.get(winId) ?? app.getName();
+      windowDefaultTitles.delete(winId);
+      targetWin.setTitle(defaultTitle);
+    }
   }
 });
 
