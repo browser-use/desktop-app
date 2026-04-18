@@ -184,7 +184,6 @@ export function WindowChrome(): React.ReactElement {
 
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [chromeRevealed, setChromeRevealed] = useState(false);
 
   // Downloads state
   const [downloads, setDownloads] = useState<DownloadItemDTO[]>([]);
@@ -340,7 +339,6 @@ export function WindowChrome(): React.ReactElement {
 
     const unsubFullscreen = electronAPI.on.fullscreenChanged(({ isFullscreen: fs }) => {
       setIsFullscreen(fs);
-      setChromeRevealed(false);
     });
 
     return () => {
