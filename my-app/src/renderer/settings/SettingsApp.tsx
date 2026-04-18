@@ -30,6 +30,7 @@ const TAB_APPEARANCE   = 'appearance'       as const;
 const TAB_SCOPES       = 'scopes'           as const;
 const TAB_DANGER       = 'danger'           as const;
 const TAB_PROFILES     = 'profiles'         as const;
+const TAB_SYNC         = 'sync'             as const;
 const TAB_PRIVACY      = 'privacy'          as const;
 const TAB_PASSWORDS    = 'passwords'        as const;
 const TAB_ZOOM         = 'site-zoom'        as const;
@@ -46,6 +47,7 @@ type TabId =
   | typeof TAB_SCOPES
   | typeof TAB_PASSWORDS
   | typeof TAB_PROFILES
+  | typeof TAB_SYNC
   | typeof TAB_PRIVACY
   | typeof TAB_ZOOM
   | typeof TAB_CONTENT
@@ -62,6 +64,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: TAB_SCOPES,     label: 'Google Scopes' },
   { id: TAB_PASSWORDS,  label: 'Passwords' },
   { id: TAB_PROFILES,   label: 'Profiles' },
+  { id: TAB_SYNC,       label: 'Sync' },
   { id: TAB_PRIVACY,    label: 'Privacy and security' },
   { id: TAB_ZOOM,       label: 'Site Zoom' },
   { id: TAB_CONTENT,    label: 'Content' },
@@ -197,6 +200,11 @@ declare global {
       }>;
       applyAutoRevokePermissions: (revocations: Array<{ origin: string; permissionType: string }>) => Promise<number>;
       optOutAutoRevoke: (origin: string, permissionType: string) => Promise<void>;
+      getSyncPrefs: () => Promise<SyncPrefs>;
+      setSyncPrefs: (patch: object) => Promise<boolean>;
+      setSyncPassphrase: (passphrase: string) => Promise<boolean>;
+      verifySyncPassphrase: (passphrase: string) => Promise<boolean>;
+      clearSyncPassphrase: () => Promise<void>;
       getDownloadFolder: () => Promise<string>;
       setDownloadFolder: () => Promise<string>;
       getAskBeforeSave: () => Promise<boolean>;
@@ -207,6 +215,31 @@ declare global {
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sync types and defaults
+// ---------------------------------------------------------------------------
+
+interface SyncPrefs {
+  enabled: boolean;
+  syncEverything: boolean;
+  bookmarks: boolean;
+  readingList: boolean;
+  passwords: boolean;
+  addresses: boolean;
+  payments: boolean;
+  historyAndTabs: boolean;
+  savedTabGroups: boolean;
+  extensions: boolean;
+  settings: boolean;
+  encryptionEnabled: boolean;
+}
+
+const DEFAULT_SYNC_PREFS: SyncPrefs = {
+  enabled: false, syncEverything: true, bookmarks: true, readingList: true,
+  passwords: true, addresses: true, payments: true, historyAndTabs: true,
+  savedTabGroups: true, extensions: true, settings: true, encryptionEnabled: false,
+};
 
 // ---------------------------------------------------------------------------
 // Eye icon (show/hide password)
@@ -2795,6 +2828,7 @@ function SettingsInner(): React.ReactElement {
     [TAB_SCOPES]:     <GoogleScopesTab />,
     [TAB_PASSWORDS]:  <PasswordsTab />,
     [TAB_PROFILES]:   <ProfilesTab />,
+    [TAB_SYNC]:       <SyncTab />,
     [TAB_PRIVACY]:    <PrivacyTab openDialog={clearDataOpen} onDialogChange={setClearDataOpen} />,
     [TAB_ZOOM]:       <SiteZoomTab />,
     [TAB_PERMISSIONS]: <PermissionsTab />,
@@ -2867,6 +2901,225 @@ function SettingsInner(): React.ReactElement {
           {content[activeTab]}
         </main>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sync tab
+// ---------------------------------------------------------------------------
+
+function SyncTab(): React.ReactElement {
+  const toast = useToast();
+  const [syncPrefs, setSyncPrefsState] = useState<SyncPrefs>(DEFAULT_SYNC_PREFS);
+  const [saving, setSaving] = useState(false);
+  const [showPassphraseForm, setShowPassphraseForm] = useState(false);
+  const [newPassphrase, setNewPassphrase] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [passphraseError, setPassphraseError] = useState('');
+  const [passphraseSaved, setPassphraseSaved] = useState(false);
+
+  useEffect(() => {
+    void window.settingsAPI.getSyncPrefs().then((p: SyncPrefs) => setSyncPrefsState(p));
+  }, []);
+
+  const toggle = useCallback(async (key: keyof SyncPrefs) => {
+    const previous = syncPrefs;
+    const next = { ...syncPrefs, [key]: !syncPrefs[key] };
+    // If toggling syncEverything ON, enable all data categories (but not encryption settings)
+    const NON_CATEGORY_KEYS = new Set(['enabled', 'syncEverything', 'encryptionEnabled']);
+    if (key === 'syncEverything' && next.syncEverything) {
+      Object.keys(DEFAULT_SYNC_PREFS).forEach((k) => {
+        if (!NON_CATEGORY_KEYS.has(k)) {
+          (next as Record<string, boolean>)[k] = true;
+        }
+      });
+    }
+    setSyncPrefsState(next);
+    setSaving(true);
+    try {
+      await window.settingsAPI.setSyncPrefs(next);
+    } catch (err) {
+      setSyncPrefsState(previous);
+      toast.show({ variant: 'error', title: 'Failed to update sync setting', message: (err as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }, [syncPrefs, toast]);
+
+  const categories: Array<{ key: keyof SyncPrefs; label: string; description: string }> = [
+    { key: 'bookmarks',      label: 'Bookmarks',             description: 'Sync bookmarks across devices' },
+    { key: 'readingList',    label: 'Reading list',          description: 'Sync reading list items' },
+    { key: 'passwords',      label: 'Passwords and passkeys', description: 'Sync saved passwords' },
+    { key: 'addresses',      label: 'Addresses and more',    description: 'Sync autofill data' },
+    { key: 'payments',       label: 'Payment methods',       description: 'Sync payment methods' },
+    { key: 'historyAndTabs', label: 'History and tabs',      description: 'Sync browsing history and open tabs' },
+    { key: 'savedTabGroups', label: 'Saved tab groups',      description: 'Sync saved tab groups' },
+    { key: 'extensions',     label: 'Extensions and apps',   description: 'Sync installed extensions' },
+    { key: 'settings',       label: 'Settings and theme',    description: 'Sync browser preferences' },
+  ];
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Sync</h2>
+      <p className="settings-section-desc">
+        Keep your data up-to-date across all your devices.
+        {saving && <span style={{ marginLeft: 8, color: 'var(--color-text-secondary, #666)', fontSize: 12 }}>Saving…</span>}
+      </p>
+
+      {/* Master enable toggle */}
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>Sync is {syncPrefs.enabled ? 'on' : 'off'}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>
+              {syncPrefs.enabled ? 'Your data is being synced.' : 'Turn on sync to keep your data up-to-date.'}
+            </div>
+          </div>
+          <button
+            className={`settings-sync-toggle ${syncPrefs.enabled ? 'settings-sync-toggle--on' : ''}`}
+            role="switch"
+            aria-checked={syncPrefs.enabled}
+            disabled={saving}
+            onClick={() => void toggle('enabled')}
+          />
+        </div>
+      </Card>
+
+      {syncPrefs.enabled && (
+        <>
+          {/* Sync everything toggle */}
+          <Card style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+              <div>
+                <div style={{ fontWeight: 500 }}>Sync everything</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>
+                  Automatically sync all data types
+                </div>
+              </div>
+              <button
+                className={`settings-sync-toggle ${syncPrefs.syncEverything ? 'settings-sync-toggle--on' : ''}`}
+                role="switch"
+                aria-checked={syncPrefs.syncEverything}
+                disabled={saving}
+                onClick={() => void toggle('syncEverything')}
+              />
+            </div>
+          </Card>
+
+          {/* Individual category toggles */}
+          {!syncPrefs.syncEverything && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {categories.map(({ key, label, description }) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>{description}</div>
+                    </div>
+                    <button
+                      className={`settings-sync-toggle ${syncPrefs[key] ? 'settings-sync-toggle--on' : ''}`}
+                      role="switch"
+                      aria-checked={Boolean(syncPrefs[key])}
+                      disabled={saving}
+                      onClick={() => void toggle(key)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Encryption passphrase section */}
+          <Card style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 500 }}>Encrypt synced data with your own passphrase</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>
+                  {syncPrefs.encryptionEnabled
+                    ? 'Your synced data is encrypted with your passphrase. Payment methods are excluded.'
+                    : 'Add a passphrase to encrypt all synced data. Payment methods via Google Pay are not encrypted.'}
+                </div>
+              </div>
+              <button
+                className={`settings-sync-toggle ${syncPrefs.encryptionEnabled ? 'settings-sync-toggle--on' : ''}`}
+                role="switch"
+                aria-checked={syncPrefs.encryptionEnabled}
+                onClick={() => {
+                  if (syncPrefs.encryptionEnabled) {
+                    void window.settingsAPI.clearSyncPassphrase()
+                      .then(() => {
+                        setSyncPrefsState(prev => ({ ...prev, encryptionEnabled: false }));
+                        setPassphraseSaved(false);
+                        setShowPassphraseForm(false);
+                      })
+                      .catch((err: Error) => {
+                        toast.show({ variant: 'error', title: 'Failed to clear passphrase', message: err.message });
+                      });
+                  } else {
+                    setShowPassphraseForm(true);
+                  }
+                }}
+              />
+            </div>
+
+            {showPassphraseForm && !syncPrefs.encryptionEnabled && (
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--color-border, #e0e0e0)', paddingTop: 16 }}>
+                <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 500 }}>Set encryption passphrase</div>
+                <div style={{ marginBottom: 8 }}>
+                  <input
+                    type="password"
+                    value={newPassphrase}
+                    onChange={(e) => { setNewPassphrase(e.target.value); setPassphraseError(''); }}
+                    placeholder="Passphrase (min 8 characters)"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid var(--color-border, #ccc)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <input
+                    type="password"
+                    value={confirmPassphrase}
+                    onChange={(e) => { setConfirmPassphrase(e.target.value); setPassphraseError(''); }}
+                    placeholder="Confirm passphrase"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 4, border: '1px solid var(--color-border, #ccc)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                {passphraseError && (
+                  <div style={{ color: 'var(--color-danger, #d32f2f)', fontSize: 12, marginBottom: 8 }}>{passphraseError}</div>
+                )}
+                {passphraseSaved && (
+                  <div style={{ color: 'var(--color-success, #2e7d32)', fontSize: 12, marginBottom: 8 }}>Passphrase saved successfully.</div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (newPassphrase.length < 8) { setPassphraseError('Passphrase must be at least 8 characters.'); return; }
+                      if (newPassphrase !== confirmPassphrase) { setPassphraseError('Passphrases do not match.'); return; }
+                      void window.settingsAPI.setSyncPassphrase(newPassphrase)
+                        .then((ok) => {
+                          if (ok) {
+                            setSyncPrefsState(prev => ({ ...prev, encryptionEnabled: true }));
+                            setShowPassphraseForm(false);
+                            setPassphraseSaved(true);
+                            setNewPassphrase('');
+                            setConfirmPassphrase('');
+                          } else {
+                            setPassphraseError('Failed to save passphrase. Try again.');
+                          }
+                        })
+                        .catch((err: Error) => {
+                          setPassphraseError(`Error: ${err.message}`);
+                        });
+                    }}
+                  >Save passphrase</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setShowPassphraseForm(false); setNewPassphrase(''); setConfirmPassphrase(''); setPassphraseError(''); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }
