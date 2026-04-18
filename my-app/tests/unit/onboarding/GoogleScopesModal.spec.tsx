@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * GoogleScopesModal component tests — written FIRST per D1 (TDD).
  *

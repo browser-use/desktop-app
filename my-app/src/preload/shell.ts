@@ -17,6 +17,9 @@ import type { ProtocolHandlerRecord } from '../main/permissions/ProtocolHandlerS
 import type { DownloadItemDTO } from '../main/downloads/DownloadManager';
 import type { DevicePickerRequest } from '../main/devices/DeviceManager';
 import type { GrantedDevice, DeviceApiType } from '../main/devices/DeviceStore';
+import type { OmniboxSuggestion } from '../main/omnibox/providers';
+import type { TabGroup } from '../main/tabs/TabGroupStore';
+import type { SearchEngine } from '../main/search/SearchEngineStore';
 
 // ---------------------------------------------------------------------------
 // Type re-exports for renderer consumption
@@ -38,6 +41,9 @@ export type {
   DevicePickerRequest,
   GrantedDevice,
   DeviceApiType,
+  OmniboxSuggestion,
+  TabGroup,
+  SearchEngine,
 };
 
 // ---------------------------------------------------------------------------
@@ -49,8 +55,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (url?: string): Promise<string> =>
       ipcRenderer.invoke('tabs:create', url),
 
-    close: (tabId: string): Promise<void> =>
-      ipcRenderer.invoke('tabs:close', tabId),
+    close: (tabId: string, force = false): Promise<void> =>
+      ipcRenderer.invoke('tabs:close', tabId, force),
 
     activate: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:activate', tabId),
@@ -98,11 +104,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     unpin: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:unpin', tabId),
 
+    muteTab: (tabId: string): Promise<void> =>
+      ipcRenderer.invoke('tabs:mute-tab', tabId),
+
+    captureThumbnail: (tabId: string): Promise<string | null> =>
+      ipcRenderer.invoke('tabs:capture-thumbnail', tabId),
+
     showBackHistory: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:show-back-history', tabId),
 
     showForwardHistory: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:show-forward-history', tabId),
+
+    moveToNewWindow: (tabId: string): Promise<boolean> =>
+      ipcRenderer.invoke('tabs:move-to-new-window', tabId),
   },
 
   // CDP info for agent integration
@@ -146,8 +161,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getVisibility: (): Promise<Visibility> =>
       ipcRenderer.invoke('bookmarks:get-visibility'),
 
-    bookmarkAllTabs: (payload: { folderName: string }): Promise<BookmarkNode> =>
+    bookmarkAllTabs: (payload: { folderName: string; parentId?: string }): Promise<BookmarkNode> =>
       ipcRenderer.invoke('bookmarks:bookmark-all-tabs', payload),
+
+    exportHtml: (): Promise<{ ok: boolean; filePath?: string }> =>
+      ipcRenderer.invoke('bookmarks:export-html'),
+
+    importHtml: (): Promise<{ ok: boolean; imported: number; skipped: number }> =>
+      ipcRenderer.invoke('bookmarks:import-html'),
   },
 
   // Zoom controls — per-origin persistence + badge UI
@@ -202,6 +223,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('downloads:get-show-on-complete'),
     setShowOnComplete: (value: boolean): Promise<void> =>
       ipcRenderer.invoke('downloads:set-show-on-complete', value),
+    dismissWarning: (id: string): Promise<void> =>
+      ipcRenderer.invoke('downloads:dismiss-warning', id),
   },
 
   // Permissions — renderer -> main decision relay + query API
@@ -289,6 +312,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
     setChromeHeight: (height: number): Promise<void> =>
       ipcRenderer.invoke('shell:set-chrome-height', height),
+    setContentVisible: (visible: boolean): Promise<void> =>
+      ipcRenderer.invoke('shell:set-content-visible', visible),
     getPlatform: (): Promise<string> =>
       ipcRenderer.invoke('shell:get-platform'),
 
@@ -309,6 +334,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
 
+  // Issue #12 — Window naming
+  windowName: {
+    set: (name: string): Promise<void> =>
+      ipcRenderer.invoke('window:set-name', name),
+  },
+
   // Issue #98 — Share menu
   share: {
     copyLink: (): Promise<boolean> =>
@@ -323,6 +354,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPageInfo: (): Promise<{ url: string; title: string } | null> =>
       ipcRenderer.invoke('share:get-page-info'),
   },
+  // Issue #100 — Picture-in-Picture
+  pip: {
+    enter: (): Promise<{ ok: boolean; action?: string; error?: string }> =>
+      ipcRenderer.invoke('pip:enter'),
+
+    exit: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('pip:exit'),
+
+    getStatus: (): Promise<{ supported: boolean; active: boolean; hasVideo: boolean } | null> =>
+      ipcRenderer.invoke('pip:get-status'),
+  },
+
+  // Security — HSTS and cert error page info
+  security: {
+    getPageInfo: (): Promise<{
+      url: string;
+      isHSTS: boolean;
+      hstsMaxAge: number | null;
+      hstsIncludeSubdomains: boolean;
+      isSecure: boolean;
+    }> => ipcRenderer.invoke('security:get-page-info'),
+    getCookieCount: (): Promise<number> =>
+      ipcRenderer.invoke('security:get-cookie-count'),
+  },
+
   // Issue #81 — Three-dot app menu (non-macOS)
   menu: {
     showAppMenu: (bounds: { x: number; y: number }): Promise<void> =>
@@ -352,6 +408,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     pickImage: (): Promise<string | null> =>
       ipcRenderer.invoke('ntp:pick-background-image'),
+  },
+
+  // Issue #104 — Live Caption: get current persisted state for initial hydration
+  liveCaption: {
+    getState: (): Promise<{ enabled: boolean; language: string }> =>
+      ipcRenderer.invoke('settings:get-live-caption') as Promise<{ enabled: boolean; language: string }>,
   },
 
   // Event listeners
@@ -444,6 +506,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('open-bookmark-dialog', handler);
       return () => ipcRenderer.removeListener('open-bookmark-dialog', handler);
+    },
+
+    openBookmarkAllTabsDialog: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('open-bookmark-all-tabs-dialog', handler);
+      return () => ipcRenderer.removeListener('open-bookmark-all-tabs-dialog', handler);
     },
 
     toggleBookmarksBar: (cb: () => void): (() => void) => {
@@ -616,6 +684,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('link-hover', handler);
       return () => ipcRenderer.removeListener('link-hover', handler);
     },
+
+    // Issue #12 — Window naming: main asks renderer to open the name dialog
+    nameWindowDialog: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('name-window-dialog', handler);
+      return () => ipcRenderer.removeListener('name-window-dialog', handler);
+    },
+
+    // Issue #6 — Tab search (Cmd+Shift+A)
+    openTabSearch: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('open-tab-search', handler);
+      return () => ipcRenderer.removeListener('open-tab-search', handler);
+    },
+
+    // Issue #13 — Fullscreen
+    fullscreenChanged: (cb: (payload: { isFullscreen: boolean }) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: { isFullscreen: boolean }) => cb(payload);
+      ipcRenderer.on('fullscreen-changed', handler);
+      return () => ipcRenderer.removeListener('fullscreen-changed', handler);
+    },
+
+    // Issue #104 — Live Caption: receive state changes from main process
+    liveCaptionStateChanged: (cb: (state: { enabled: boolean; language: string }) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, state: { enabled: boolean; language: string }) => cb(state);
+      ipcRenderer.on('live-caption:state-changed', handler);
+      return () => ipcRenderer.removeListener('live-caption:state-changed', handler);
+    },
   },
 
   // Profiles — current profile info + switch
@@ -654,6 +750,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('identity:get-account-info'),
   },
 
+  // Issue #17 — Omnibox autocomplete providers
+  omnibox: {
+    suggest: (payload: { input: string; remoteSearch?: boolean }): Promise<OmniboxSuggestion[]> =>
+      ipcRenderer.invoke('omnibox:suggest', payload),
+
+    recordSelection: (payload: { inputText: string; url: string; title: string }): Promise<boolean> =>
+      ipcRenderer.invoke('omnibox:record-selection', payload),
+
+    removeHistory: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('omnibox:remove-history', id),
+
+    getKeywordEngines: (): Promise<Array<{ keyword: string; name: string; template: string }>> =>
+      ipcRenderer.invoke('omnibox:get-keyword-engines'),
+  },
+
   // Passwords
   passwords: {
     save: (payload: { origin: string; username: string; password: string }): Promise<unknown> =>
@@ -670,5 +781,56 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     autofill: (id: string): Promise<string | null> =>
       ipcRenderer.invoke('passwords:autofill', id),
+  },
+
+  // Issue #5 — Tab groups
+  tabGroups: {
+    list: (): Promise<TabGroup[]> =>
+      ipcRenderer.invoke('tab-groups:list'),
+
+    create: (p: { name: string; color: string; tabIds: string[] }): Promise<TabGroup> =>
+      ipcRenderer.invoke('tab-groups:create', p),
+
+    update: (p: { id: string; patch: object }): Promise<void> =>
+      ipcRenderer.invoke('tab-groups:update', p),
+
+    addTab: (p: { groupId: string; tabId: string }): Promise<void> =>
+      ipcRenderer.invoke('tab-groups:add-tab', p),
+
+    removeTab: (p: { tabId: string }): Promise<void> =>
+      ipcRenderer.invoke('tab-groups:remove-tab', p),
+
+    delete: (p: { id: string }): Promise<void> =>
+      ipcRenderer.invoke('tab-groups:delete', p),
+
+    onUpdated: (cb: (groups: TabGroup[]) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, groups: TabGroup[]) => cb(groups);
+      ipcRenderer.on('tab-groups:updated', handler);
+      return () => ipcRenderer.removeListener('tab-groups:updated', handler);
+    },
+  },
+
+  // Search engines — issue #21
+  searchEngines: {
+    list: (): Promise<SearchEngine[]> =>
+      ipcRenderer.invoke('search-engines:list'),
+
+    getDefault: (): Promise<SearchEngine> =>
+      ipcRenderer.invoke('search-engines:get-default'),
+
+    setDefault: (id: string): Promise<void> =>
+      ipcRenderer.invoke('search-engines:set-default', id),
+
+    addCustom: (p: { name: string; keyword: string; searchUrl: string }): Promise<SearchEngine> =>
+      ipcRenderer.invoke('search-engines:add-custom', p),
+
+    updateCustom: (
+      id: string,
+      p: Partial<{ name: string; keyword: string; searchUrl: string }>,
+    ): Promise<boolean> =>
+      ipcRenderer.invoke('search-engines:update-custom', { id, ...p }),
+
+    removeCustom: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('search-engines:remove-custom', id),
   },
 });

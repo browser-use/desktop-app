@@ -9,7 +9,6 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-// eslint-disable-next-line import/no-unresolved
 import { v4 as uuidv4 } from 'uuid';
 import { mainLogger } from '../logger';
 
@@ -310,5 +309,143 @@ export class BookmarkStore {
     this.schedulePersist();
     mainLogger.info('BookmarkStore.toggleVisibility', { state });
     return state;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Import / Export — Netscape HTML bookmark format
+  // ---------------------------------------------------------------------------
+
+  exportNetscapeHtml(): string {
+    const lines: string[] = [
+      '<!DOCTYPE NETSCAPE-Bookmark-file-1>',
+      '<!-- This is an automatically generated file.',
+      '     It will be read and overwritten.',
+      '     DO NOT EDIT! -->',
+      '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
+      '<TITLE>Bookmarks</TITLE>',
+      '<H1>Bookmarks</H1>',
+      '<DL><p>',
+    ];
+
+    const escape = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const renderNode = (node: BookmarkNode, indent: number): void => {
+      const pad = '    '.repeat(indent);
+      const ts = Math.floor((node.createdAt ?? Date.now()) / 1000);
+      if (node.type === 'folder') {
+        lines.push(`${pad}<DT><H3 ADD_DATE="${ts}">${escape(node.name)}</H3>`);
+        lines.push(`${pad}<DL><p>`);
+        for (const child of node.children ?? []) renderNode(child, indent + 1);
+        lines.push(`${pad}</DL><p>`);
+      } else if (node.url) {
+        lines.push(
+          `${pad}<DT><A HREF="${escape(node.url)}" ADD_DATE="${ts}">${escape(node.name)}</A>`,
+        );
+      }
+    };
+
+    for (const root of this.state.roots) {
+      renderNode(root, 1);
+    }
+    lines.push('</DL><p>');
+    return lines.join('\n');
+  }
+
+  importNetscapeHtml(html: string): { imported: number; skipped: number } {
+    // Parse folder/bookmark entries with a two-pass regex approach.
+    // We walk the Netscape DL structure by tracking open/close DL tags.
+    let imported = 0;
+    let skipped = 0;
+
+    const safeCodePoint = (cp: number): string => {
+      if (cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+        return String.fromCodePoint(cp);
+      }
+      return '';
+    };
+    const decodeHtmlEntities = (s: string): string =>
+      s
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => safeCodePoint(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (_, d) => safeCodePoint(Number(d)))
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+
+    // Normalise line endings.
+    const text = html.replace(/\r\n?/g, '\n');
+
+    // Stack of [folderId]: top of stack = current parent.
+    const folderStack: string[] = [OTHER_ROOT_ID];
+
+    // Tokenize: extract DT lines and DL open/close markers in document order.
+    const tokenRe =
+      /<DL[^>]*>|<\/DL[^>]*>|<DT>\s*<H3[^>]*ADD_DATE="(\d+)"[^>]*>([^<]*)<\/H3>|<DT>\s*<H3[^>]*>([^<]*)<\/H3>|<DT>\s*<A\s[^>]*HREF="([^"]*)"[^>]*ADD_DATE="(\d+)"[^>]*>([^<]*)<\/A>|<DT>\s*<A\s[^>]*HREF="([^"]*)"[^>]*>([^<]*)<\/A>/gi;
+
+    let m: RegExpExecArray | null;
+    // Detect where "Bookmarks bar" root folder starts so we can import into the right root.
+    let nextFolderIsRoot: 'bar' | 'other' | null = null;
+    let depth = 0;
+
+    while ((m = tokenRe.exec(text)) !== null) {
+      const raw = m[0];
+
+      if (/<DL/i.test(raw)) {
+        depth++;
+        // Push the folder that was just created (set by the H3 handler below)
+        // — handled by using folderStack directly.
+        continue;
+      }
+
+      if (/<\/DL/i.test(raw)) {
+        depth--;
+        if (folderStack.length > 1) folderStack.pop();
+        continue;
+      }
+
+      // H3 folder header
+      const h3Name = decodeHtmlEntities((m[2] ?? m[3] ?? '').trim());
+      if (h3Name) {
+        const h3Ts = m[1] ? parseInt(m[1], 10) * 1000 : Date.now();
+        const lowerName = h3Name.toLowerCase();
+
+        if (lowerName === 'bookmarks bar' || lowerName === 'bookmarks toolbar') {
+          nextFolderIsRoot = 'bar';
+          folderStack.push(BAR_ROOT_ID);
+        } else if (lowerName === 'other bookmarks' || lowerName === 'other') {
+          nextFolderIsRoot = 'other';
+          folderStack.push(OTHER_ROOT_ID);
+        } else {
+          nextFolderIsRoot = null;
+          const parentId = folderStack[folderStack.length - 1] ?? OTHER_ROOT_ID;
+          const folder = this.addFolder({ name: h3Name, parentId });
+          folder.createdAt = h3Ts;
+          folderStack.push(folder.id);
+        }
+        continue;
+      }
+
+      // A bookmark anchor
+      const href = decodeHtmlEntities((m[4] ?? m[7] ?? '').trim());
+      const name = decodeHtmlEntities((m[6] ?? m[8] ?? '').trim());
+      const ts = m[5] ? parseInt(m[5], 10) * 1000 : Date.now();
+
+      if (!href || !/^https?:\/\//i.test(href)) {
+        skipped++;
+        continue;
+      }
+
+      const parentId = folderStack[folderStack.length - 1] ?? OTHER_ROOT_ID;
+      const node = this.addBookmark({ name: name || href, url: href, parentId });
+      node.createdAt = ts;
+      imported++;
+      nextFolderIsRoot = null;
+    }
+
+    this.schedulePersist();
+    mainLogger.info('BookmarkStore.importNetscapeHtml', { imported, skipped });
+    return { imported, skipped };
   }
 }

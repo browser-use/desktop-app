@@ -14,11 +14,11 @@ import {
   MenuItem,
   dialog,
 } from 'electron';
-// eslint-disable-next-line import/no-unresolved
 import { v4 as uuidv4 } from 'uuid';
 import { NavigationController } from './NavigationController';
 import { SessionStore, PersistedSession, PersistedTab } from './SessionStore';
 import { ZoomStore, extractOrigin, zoomLevelToPercent, type ZoomEntry } from './ZoomStore';
+import { MutedSitesStore } from './MutedSitesStore';
 import { parseNavigationInput, UrlMatchFn } from '../navigation';
 import path from 'node:path';
 import { mainLogger } from '../logger';
@@ -44,6 +44,29 @@ import {
   SAFE_BROWSING_BACK_PREFIX,
   type ThreatType,
 } from '../safebrowsing/SafeBrowsingController';
+import {
+  processHSTSHeader,
+  isHSTSHost,
+  getHSTSEntry,
+} from '../https/HSTSStore';
+import {
+  allowCertBypassForOrigin,
+  isCertBypassed,
+  buildCertErrorInterstitial,
+  CERT_BYPASS_PREFIX,
+  CERT_BACK_PREFIX,
+} from '../https/CertErrorController';
+import {
+  shouldShowErrorPage,
+  buildNetworkErrorPage,
+  buildCertErrorPage,
+  allowCertForOrigin,
+  isCertAllowedForOrigin,
+  NET_ERROR_RETRY_PREFIX,
+  CERT_ERROR_PROCEED_PREFIX,
+  CERT_ERROR_BACK_PREFIX,
+} from '../errors/NetworkErrorController';
+import type { TabGroupStore } from './TabGroupStore';
 
 // Forge VitePlugin globals for the new-tab page (injected at build time)
 declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
@@ -77,6 +100,7 @@ export interface TabState {
   zoomLevel: number;
   pinned: boolean;
   audible: boolean;
+  muted: boolean;
 }
 
 export interface TabManagerState {
@@ -111,6 +135,8 @@ declare const HISTORY_VITE_DEV_SERVER_URL: string | undefined;
 declare const HISTORY_VITE_NAME: string | undefined;
 declare const DOWNLOADS_VITE_DEV_SERVER_URL: string | undefined;
 declare const DOWNLOADS_VITE_NAME: string | undefined;
+declare const BOOKMARKS_VITE_DEV_SERVER_URL: string | undefined;
+declare const BOOKMARKS_VITE_NAME: string | undefined;
 declare const CHROME_PAGES_VITE_DEV_SERVER_URL: string | undefined;
 declare const CHROME_PAGES_VITE_NAME: string | undefined;
 
@@ -121,6 +147,16 @@ const SKIP_HISTORY_RE = /^(data:|about:|chrome:|devtools:|view-source:)/i;
 const NEWTAB_URL_RE = /newtab\.html$/;
 
 export class TabManager {
+  // ---------------------------------------------------------------------------
+  // Static instance registry — lets callers look up by window id and broadcast
+  // to all active windows.
+  // ---------------------------------------------------------------------------
+  static readonly instances = new Map<number, TabManager>();
+
+  static getAllInstances(): TabManager[] {
+    return Array.from(TabManager.instances.values());
+  }
+
   private win: BrowserWindow;
   private tabs: Map<string, WebContentsView> = new Map();
   private tabOrder: string[] = [];
@@ -134,6 +170,7 @@ export class TabManager {
   private onClosedTabsChanged: (() => void) | null = null;
   private onTabClosed: ((tabId: string) => void) | null = null;
   private onWebContentsCreated: ((wc: import("electron").WebContents) => void) | null = null;
+  private onMoveTabToNewWindow: ((url: string, title: string) => void) | null = null;
   // Extra pixels the renderer added on top of the base chrome (e.g. 32 px
   // for a visible bookmarks bar). The page-hosting WebContentsView is then
   // positioned at CHROME_HEIGHT + chromeOffset.
@@ -153,14 +190,23 @@ export class TabManager {
   private caretBrowsingToggle: (() => void) | null = null;
   private sendingF7 = false;
   private zoomStore: ZoomStore;
+  private mutedSitesStore: MutedSitesStore;
   private urlMatchFn: UrlMatchFn | null = null;
+  private searchUrlTemplate: string | null = null;
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
+  private tabGroupStore: TabGroupStore | null = null;
   readonly isGuest: boolean;
   private readonly partition: string | null;
 
+  /** Returns the Electron session partition name used by this TabManager's tabs, or null for the default session. */
+  getGuestPartition(): string | null {
+    return this.partition;
+  }
+
   constructor(win: BrowserWindow, opts?: { dataDir?: string; partition?: string; guest?: boolean }) {
     this.win = win;
+    TabManager.instances.set(win.id, this);
     this.isGuest = opts?.guest ?? false;
     this.partition = opts?.partition ?? null;
     this.sessionStore = new SessionStore(opts?.dataDir);
@@ -168,7 +214,9 @@ export class TabManager {
     // `opts.dataDir` plumbing is a no-op for it today. Tracked as a
     // follow-up with the rest of the profile-scoped stores.
     this.zoomStore = new ZoomStore();
+    this.mutedSitesStore = new MutedSitesStore();
     this.registerIpcHandlers();
+    this.registerCertErrorHandler();
     mainLogger.info('TabManager.init', {
       isGuest: this.isGuest,
       partition: this.partition,
@@ -187,6 +235,14 @@ export class TabManager {
   /** Called by DeviceManager to attach select-bluetooth-device on new tabs */
   setOnWebContentsCreated(cb: ((wc: import("electron").WebContents) => void) | null): void {
     this.onWebContentsCreated = cb;
+  }
+
+  setTabGroupStore(store: TabGroupStore | null): void {
+    this.tabGroupStore = store;
+  }
+
+  setOnMoveTabToNewWindow(cb: ((url: string, title: string) => void) | null): void {
+    this.onMoveTabToNewWindow = cb;
   }
 
   setHistoryStore(store: HistoryStore): void {
@@ -242,6 +298,29 @@ export class TabManager {
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
     this.urlMatchFn = fn;
+  }
+
+  /** Update the search URL template (e.g. 'https://www.google.com/search?q=%s'). */
+  setSearchUrlTemplate(url: string | null): void {
+    this.searchUrlTemplate = url;
+    mainLogger.info('TabManager.setSearchUrlTemplate', { url: url ?? '(reset to default)' });
+  }
+
+  private isFullscreen = false;
+
+  setFullscreen(fullscreen: boolean): void {
+    if (this.isFullscreen === fullscreen) return;
+    this.isFullscreen = fullscreen;
+    mainLogger.debug('TabManager.setFullscreen', { fullscreen });
+    this.relayout();
+  }
+
+  setContentVisible(visible: boolean): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    mainLogger.debug('TabManager.setContentVisible', { visible, activeTabId: this.activeTabId });
+    view.setVisible(visible);
   }
 
   setChromeOffset(offset: number): void {
@@ -431,11 +510,45 @@ export class TabManager {
     // Focus the URL bar so the user can type immediately. activateTab just
     // called view.webContents.focus(), so we pull OS focus back to the shell
     // window and then fire the same IPC Cmd+L uses.
+    // Re-send after did-finish-load because Electron refocuses the tab's
+    // webContents when the page finishes loading, stealing focus back.
     if (isUserInitiated && !this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
-      this.win.webContents.focus();
-      this.win.webContents.send('focus-url-bar');
+      const focusUrlBar = (): void => {
+        if (!this.win.isDestroyed() && !this.win.webContents.isDestroyed()) {
+          this.win.webContents.focus();
+          this.win.webContents.send("focus-url-bar");
+        }
+      };
+      focusUrlBar();
+      view.webContents.once("did-finish-load", focusUrlBar);
     }
 
+    return tabId;
+  }
+
+  createBackgroundTab(url: string): string {
+    const tabId = uuidv4();
+    const webPrefs: Electron.WebPreferences = {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    };
+    if (this.partition) webPrefs.partition = this.partition;
+    const view = new WebContentsView({ webPreferences: webPrefs });
+    this.win.contentView.addChildView(view);
+    this.tabs.set(tabId, view);
+    this.tabOrder.push(tabId);
+    this.navControllers.set(tabId, new NavigationController(view));
+    view.webContents.setVisualZoomLevelLimits(1, 3).catch(() => {});
+    this.attachViewEvents(tabId, view);
+    this.positionView(view);
+    view.setVisible(false);
+    this.onWebContentsCreated?.(view.webContents);
+    view.webContents.loadURL(url);
+    // Do NOT activate — stays in background
+    this.saveSession();
+    this.broadcastState();
+    mainLogger.info('TabManager.createBackgroundTab', { tabId, url });
     return tabId;
   }
 
@@ -479,6 +592,12 @@ export class TabManager {
     this.lastFindQuery.delete(tabId);
     this.pinnedTabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
+
+    // Remove tab from its group before any early return so the store is always clean.
+    if (this.tabGroupStore?.getGroupForTab(tabId)) {
+      this.tabGroupStore.removeTabFromGroup(tabId);
+      this.broadcastTabGroups();
+    }
 
     if (this.activeTabId === tabId) {
       const newActive = this.tabOrder[this.tabOrder.length - 1] ?? null;
@@ -674,7 +793,7 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   navigate(tabId: string, input: string): void {
-    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined);
+    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined, this.searchUrlTemplate ?? undefined);
     const chromeMatch = CHROME_URL_RE.exec(url);
     if (chromeMatch) {
       const page = chromeMatch[1].toLowerCase();
@@ -688,7 +807,20 @@ export class TabManager {
       return;
     }
 
-    const upgrade = maybeUpgradeUrl(url);
+    // HSTS: upgrade http:// to https:// pre-request for known HSTS hosts
+    let hstsUrl = url;
+    if (isHSTSHost(url)) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:') {
+          parsed.protocol = 'https:';
+          hstsUrl = parsed.toString();
+          mainLogger.info('TabManager.navigate.hstsUpgrade', { tabId, originalUrl: url, upgradedUrl: hstsUrl });
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    const upgrade = maybeUpgradeUrl(hstsUrl);
     if (upgrade.upgraded) {
       mainLogger.info('TabManager.navigate.httpsUpgrade', {
         tabId,
@@ -750,6 +882,7 @@ export class TabManager {
     const preloadMap: Record<string, string> = {
       history: 'history.js',
       downloads: 'downloads.js',
+      bookmarks: 'bookmarks.js',
     };
     const preloadFile = CHROME_PAGES_PAGES.has(page) ? 'chrome.js' : (preloadMap[page] ?? 'history.js');
     const preloadPath = path.join(__dirname, preloadFile);
@@ -788,6 +921,13 @@ export class TabManager {
       } else {
         const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
         url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
+      }
+    } else if (page === 'bookmarks') {
+      if (typeof BOOKMARKS_VITE_DEV_SERVER_URL !== 'undefined' && BOOKMARKS_VITE_DEV_SERVER_URL) {
+        url = BOOKMARKS_VITE_DEV_SERVER_URL + '/src/renderer/bookmarks/bookmarks.html';
+      } else {
+        const name = typeof BOOKMARKS_VITE_NAME !== 'undefined' ? BOOKMARKS_VITE_NAME : 'bookmarks';
+        url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'bookmarks.html');
       }
     } else if (CHROME_PAGES_PAGES.has(page)) {
       let baseUrl: string;
@@ -1404,6 +1544,7 @@ export class TabManager {
         zoomLevel: view.webContents.getZoomLevel(),
         pinned: this.pinnedTabs.has(id),
         audible: view.webContents.isCurrentlyAudible(),
+        muted: view.webContents.isAudioMuted(),
       };
     });
     return { tabs, activeTabId: this.activeTabId, cdpPort: this.cdpPort };
@@ -1423,7 +1564,7 @@ export class TabManager {
 
   private positionView(view: WebContentsView): void {
     const [winWidth, winHeight] = this.win.getContentSize();
-    const top = CHROME_HEIGHT + this.chromeOffset;
+    const top = this.isFullscreen ? 0 : CHROME_HEIGHT + this.chromeOffset;
     const contentWidth = Math.max(0, winWidth - this.sidePanelWidth);
     const x = this.sidePanelPosition === 'left' ? this.sidePanelWidth : 0;
     view.setBounds({
@@ -1437,6 +1578,34 @@ export class TabManager {
   // ---------------------------------------------------------------------------
   // Internal: event attachment
   // ---------------------------------------------------------------------------
+
+  // Issue #27 — Register a single app-level certificate-error handler.
+  // Electron's certificate-error fires on app, not per-webContents session,
+  // so we register once and look up the owning tab by webContents id.
+  private registerCertErrorHandler(): void {
+    app.on('certificate-error', (event, webContents, certUrl, certError, _certificate, callback) => {
+      event.preventDefault();
+
+      let origin = certUrl;
+      try { origin = new URL(certUrl).host; } catch { /* use raw */ }
+
+      // If user has already bypassed this cert, allow it
+      if (isCertAllowedForOrigin(origin)) {
+        mainLogger.info('TabManager.certError.bypassed', { certUrl, origin });
+        callback(true);
+        return;
+      }
+
+      mainLogger.info('TabManager.certError', { certUrl, certError });
+      callback(false);
+
+      // Find the tab that owns this webContents and show the error page
+      if (webContents.isDestroyed()) return;
+      const certHtml = buildCertErrorPage(certUrl, certError);
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(certHtml);
+      webContents.loadURL(dataUrl);
+    });
+  }
 
   private attachViewEvents(tabId: string, view: WebContentsView): void {
     const wc = view.webContents;
@@ -1495,6 +1664,7 @@ export class TabManager {
         clearPendingUpgrade(tabId);
       }
       this.applyPersistedZoom(wc);
+      this.applyPersistedMute(wc);
       this.sendTabUpdate(tabId);
       this.saveSession();
       if (tabId === this.activeTabId) this.broadcastZoom();
@@ -1523,27 +1693,46 @@ export class TabManager {
       }
     });
 
-    // HTTPS-First: if an HTTPS upgrade fails, show an interstitial warning page
-    wc.on('did-fail-load', (_e, errorCode, _errorDesc, validatedURL) => {
+    // did-fail-load: handle HTTPS-First upgrade failures AND generic network errors
+    wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
+      // HTTPS-First: if a pending upgrade failed, show the HTTPS interstitial
       const pendingHttpUrl = getPendingUpgrade(tabId);
-      if (!pendingHttpUrl) return;
+      if (pendingHttpUrl) {
+        mainLogger.info('TabManager.tab.httpsUpgradeFailed', {
+          tabId,
+          errorCode,
+          validatedURL,
+          pendingHttpUrl,
+        });
 
-      mainLogger.info('TabManager.tab.httpsUpgradeFailed', {
+        clearPendingUpgrade(tabId);
+
+        let hostname = '';
+        try { hostname = new URL(pendingHttpUrl).hostname; } catch { hostname = pendingHttpUrl; }
+
+        const interstitialHtml = buildInterstitialHtml(pendingHttpUrl, hostname);
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(interstitialHtml);
+        wc.loadURL(dataUrl);
+        return;
+      }
+
+      // Issue #27 — branded network error pages
+      if (!shouldShowErrorPage(errorCode)) return;
+      // Skip sub-frame failures (isMainFrame is the 4th arg after validatedURL in some Electron versions)
+      if (!validatedURL) return;
+
+      mainLogger.info('TabManager.tab.networkError', {
         tabId,
         errorCode,
+        errorDescription,
         validatedURL,
-        pendingHttpUrl,
       });
 
-      clearPendingUpgrade(tabId);
-
-      let hostname = '';
-      try { hostname = new URL(pendingHttpUrl).hostname; } catch { hostname = pendingHttpUrl; }
-
-      const interstitialHtml = buildInterstitialHtml(pendingHttpUrl, hostname);
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(interstitialHtml);
+      const errorHtml = buildNetworkErrorPage(errorCode, errorDescription, validatedURL);
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml);
       wc.loadURL(dataUrl);
     });
+
 
     // Listen for password form submissions via console-message prefix
     wc.on('console-message', (_e, _level, message) => {
@@ -1576,6 +1765,50 @@ export class TabManager {
         mainLogger.info('TabManager.tab.safeBrowsingBack', { tabId });
         return;
       }
+      // Cert error: bypass (thisisunsafe typed on interstitial) — from #153 HSTSStore
+      if (message.startsWith(CERT_BYPASS_PREFIX) && currentUrl.startsWith('data:text/html')) {
+        const certUrl = message.slice(CERT_BYPASS_PREFIX.length);
+        mainLogger.info('TabManager.tab.certBypass', { tabId, certUrl });
+        try {
+          const origin = new URL(certUrl).origin;
+          allowCertBypassForOrigin(origin);
+        } catch { /* ignore parse errors */ }
+        wc.loadURL(certUrl);
+        return;
+      }
+      // Cert error: back button pressed — from #153 HSTSStore
+      if (message === CERT_BACK_PREFIX && currentUrl.startsWith('data:text/html')) {
+        mainLogger.info('TabManager.tab.certBack', { tabId });
+        if (wc.canGoBack()) {
+          wc.goBack();
+        } else {
+          wc.loadURL('about:blank');
+        }
+        return;
+      }
+      // Issue #27 — network error page retry
+      if (message.startsWith(NET_ERROR_RETRY_PREFIX) && currentUrl.startsWith('data:text/html')) {
+        const retryUrl = message.slice(NET_ERROR_RETRY_PREFIX.length);
+        mainLogger.info('TabManager.tab.netErrorRetry', { tabId, retryUrl });
+        wc.loadURL(retryUrl);
+        return;
+      }
+      // Issue #27 — cert error: proceed (thisisunsafe bypass)
+      if (message.startsWith(CERT_ERROR_PROCEED_PREFIX) && currentUrl.startsWith('data:text/html')) {
+        const unsafeUrl = message.slice(CERT_ERROR_PROCEED_PREFIX.length);
+        mainLogger.info('TabManager.tab.certErrorProceed', { tabId, unsafeUrl });
+        try {
+          const host = new URL(unsafeUrl).host;
+          allowCertForOrigin(host);
+        } catch { /* ignore parse errors */ }
+        wc.loadURL(unsafeUrl);
+        return;
+      }
+      // Issue #27 — cert error: back to safety
+      if (message === CERT_ERROR_BACK_PREFIX && currentUrl.startsWith('data:text/html')) {
+        mainLogger.info('TabManager.tab.certErrorBack', { tabId });
+        return;
+      }
       if (!message.startsWith(FORM_DETECTOR_PREFIX)) return;
       try {
         const json = message.slice(FORM_DETECTOR_PREFIX.length);
@@ -1602,6 +1835,20 @@ export class TabManager {
     wc.on('new-window' as any, (e: Event, url: string) => {
       e.preventDefault();
       this.createTab(url);
+    });
+
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      if (url && !BLOCKED_SCHEMES.test(url)) {
+        const background =
+          disposition === 'background-tab' ||
+          disposition === 'other';
+        if (background) {
+          this.createBackgroundTab(url);
+        } else {
+          this.createTab(url);
+        }
+      }
+      return { action: 'deny' };
     });
 
     // Find-in-page results stream back here. We only broadcast the final
@@ -1641,10 +1888,63 @@ export class TabManager {
       }
     });
 
+    // HSTS header capture: register a one-time onHeadersReceived listener per
+    // navigation to capture Strict-Transport-Security response headers.
+    wc.on('did-start-navigation', (_e, navUrl) => {
+      if (!navUrl.startsWith('https://')) return;
+      const wcSession = wc.session;
+      // Electron allows only one onHeadersReceived listener per session.
+      // We use a filter to narrow to this URL, and unregister after one hit.
+      let captured = false;
+      const filter = { urls: [navUrl.replace(/#.*$/, '') + '*'] };
+      wcSession.webRequest.onHeadersReceived(filter, (details, callback) => {
+        if (!captured && details.responseHeaders) {
+          const hsts = details.responseHeaders['strict-transport-security']?.[0]
+            ?? details.responseHeaders['Strict-Transport-Security']?.[0];
+          if (hsts) {
+            try { processHSTSHeader(navUrl, hsts); } catch { /* ignore */ }
+          }
+          captured = true;
+        }
+        callback({ responseHeaders: details.responseHeaders });
+      });
+    });
+
+    // Certificate errors: show interstitial or allow bypass for session-bypassed origins
+    wc.on('certificate-error', (_e, certUrl, _error, _cert, callback) => {
+      let origin = '';
+      try { origin = new URL(certUrl).origin; } catch { origin = certUrl; }
+
+      if (isCertBypassed(origin)) {
+        mainLogger.info('TabManager.tab.certError.bypassed', { tabId, certUrl, origin });
+        callback(true);
+        return;
+      }
+
+      mainLogger.warn('TabManager.tab.certError', { tabId, certUrl, origin });
+      callback(false);
+
+      let hostname = '';
+      try { hostname = new URL(certUrl).hostname; } catch { hostname = certUrl; }
+      const hstsEntry = getHSTSEntry(certUrl);
+      const isHSTS = !!hstsEntry;
+      const interstitialHtml = buildCertErrorInterstitial(certUrl, hostname, isHSTS, -202);
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(interstitialHtml);
+      wc.loadURL(dataUrl);
+    });
+
     // Route Cmd+K from tab webContents to the pill toggle. On macOS Chromium
     // swallows the keystroke in the renderer before the NSMenu accelerator
     // fires, so a webpage-focused Cmd+K would otherwise never reach togglePill.
     this.attachGlobalKeyHandlers(wc);
+
+    // Issue #7 — audio playback state changes: update tab state so the
+    // renderer can show/hide the speaker icon without waiting for a full reload.
+    wc.on('audio-output-device-changed' as any, () => {
+      mainLogger.debug('TabManager.tab.audioOutputChanged', { tabId });
+      this.sendTabUpdate(tabId);
+      this.broadcastState();
+    });
   }
 
   /**
@@ -1714,6 +2014,7 @@ export class TabManager {
       zoomLevel: view.webContents.getZoomLevel(),
       pinned: this.pinnedTabs.has(tabId),
       audible: view.webContents.isCurrentlyAudible(),
+      muted: view.webContents.isAudioMuted(),
     };
     this.safeSend('tab-updated', state);
   }
@@ -1741,6 +2042,17 @@ export class TabManager {
   private safeSend(channel: string, payload: unknown): void {
     if (this.win.isDestroyed() || this.win.webContents.isDestroyed()) return;
     this.win.webContents.send(channel, payload);
+  }
+
+  /** Broadcast tab-group updates to every open window so all shells stay in sync. */
+  private broadcastTabGroups(): void {
+    if (!this.tabGroupStore) return;
+    const groups = this.tabGroupStore.listGroups();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('tab-groups:updated', groups);
+      }
+    }
   }
 
 
@@ -1858,13 +2170,52 @@ export class TabManager {
       },
     }));
 
+    if (this.tabGroupStore) {
+      const existingGroup = this.tabGroupStore.getGroupForTab(tabId);
+      if (existingGroup) {
+        menu.append(new MenuItem({
+          label: 'Remove from Group',
+          click: () => {
+            this.tabGroupStore!.removeTabFromGroup(tabId);
+            this.broadcastTabGroups();
+          },
+        }));
+      } else {
+        menu.append(new MenuItem({
+          label: 'Add to New Group',
+          click: () => {
+            const colors: Array<import('./TabGroupStore').TabGroup['color']> = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            this.tabGroupStore!.createGroup('New group', color, [tabId]);
+            this.broadcastTabGroups();
+          },
+        }));
+      }
+    }
+
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
       label: isMuted ? 'Unmute Tab' : 'Mute Tab',
       click: () => {
-        view.webContents.setAudioMuted(!isMuted);
-        mainLogger.info('TabManager.tabContextMenu.toggleMute', { tabId, muted: !isMuted });
+        this.toggleMuteTab(tabId);
+      },
+    }));
+
+    let isSiteMuted = false;
+    try {
+      const origin = new URL(url).origin;
+      isSiteMuted = this.mutedSitesStore.isMutedOrigin(origin);
+    } catch { /* non-standard URL, skip */ }
+    menu.append(new MenuItem({
+      label: isSiteMuted ? 'Unmute Site' : 'Mute Site',
+      enabled: !!url && !url.startsWith('about:') && !url.startsWith('chrome:'),
+      click: () => {
+        if (isSiteMuted) {
+          this.unmuteSite(tabId);
+        } else {
+          this.muteSite(tabId);
+        }
       },
     }));
 
@@ -1903,7 +2254,116 @@ export class TabManager {
       },
     }));
 
+    if (this.onMoveTabToNewWindow) {
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({
+        label: 'Move Tab to New Window',
+        enabled: tabCount > 1,
+        click: () => {
+          const tabUrl = view.webContents.getURL();
+          const tabTitle = view.webContents.getTitle();
+          this.closeTab(tabId);
+          this.onMoveTabToNewWindow?.(tabUrl, tabTitle);
+        },
+      }));
+    }
+
     menu.popup({ window: this.win });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab mute (Issue #7)
+  // ---------------------------------------------------------------------------
+
+  muteTab(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) {
+      mainLogger.warn('TabManager.muteTab.unknown', { tabId });
+      return;
+    }
+    view.webContents.setAudioMuted(true);
+    mainLogger.info('TabManager.muteTab', { tabId });
+    this.sendTabUpdate(tabId);
+    this.broadcastState();
+  }
+
+  unmuteTab(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) {
+      mainLogger.warn('TabManager.unmuteTab.unknown', { tabId });
+      return;
+    }
+    view.webContents.setAudioMuted(false);
+    mainLogger.info('TabManager.unmuteTab', { tabId });
+    this.sendTabUpdate(tabId);
+    this.broadcastState();
+  }
+
+  toggleMuteTab(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) return;
+    const isMuted = view.webContents.isAudioMuted();
+    if (isMuted) {
+      this.unmuteTab(tabId);
+    } else {
+      this.muteTab(tabId);
+    }
+  }
+
+  muteSite(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) return;
+    const url = view.webContents.getURL();
+    try {
+      const origin = new URL(url).origin;
+      this.mutedSitesStore.muteOrigin(origin);
+      // Apply to all tabs on this origin
+      for (const [id, v] of this.tabs) {
+        try {
+          const tabOrigin = new URL(v.webContents.getURL()).origin;
+          if (tabOrigin === origin) {
+            v.webContents.setAudioMuted(true);
+            this.sendTabUpdate(id);
+          }
+        } catch { /* ignore */ }
+      }
+      this.broadcastState();
+      mainLogger.info('TabManager.muteSite', { tabId, origin });
+    } catch (err) {
+      mainLogger.warn('TabManager.muteSite.parseError', { tabId, url, error: (err as Error).message });
+    }
+  }
+
+  unmuteSite(tabId: string): void {
+    const view = this.tabs.get(tabId);
+    if (!view) return;
+    const url = view.webContents.getURL();
+    try {
+      const origin = new URL(url).origin;
+      this.mutedSitesStore.unmuteOrigin(origin);
+      // Remove mute from all tabs on this origin (unless tab was individually muted)
+      for (const [id, v] of this.tabs) {
+        try {
+          const tabOrigin = new URL(v.webContents.getURL()).origin;
+          if (tabOrigin === origin) {
+            v.webContents.setAudioMuted(false);
+            this.sendTabUpdate(id);
+          }
+        } catch { /* ignore */ }
+      }
+      this.broadcastState();
+      mainLogger.info('TabManager.unmuteSite', { tabId, origin });
+    } catch (err) {
+      mainLogger.warn('TabManager.unmuteSite.parseError', { tabId, url, error: (err as Error).message });
+    }
+  }
+
+  private applyPersistedMute(wc: Electron.WebContents): void {
+    const url = wc.getURL();
+    if (this.mutedSitesStore.isMutedUrl(url)) {
+      wc.setAudioMuted(true);
+      mainLogger.debug('TabManager.applyPersistedMute', { url });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1915,8 +2375,8 @@ export class TabManager {
       return this.createTab(url);
     });
 
-    ipcMain.handle('tabs:close', (_e, tabId: string) => {
-      this.closeTab(tabId);
+    ipcMain.handle('tabs:close', (_e, tabId: string, force = false) => {
+      this.closeTab(tabId, force);
     });
 
     ipcMain.handle('tabs:activate', (_e, tabId: string) => {
@@ -1983,6 +2443,10 @@ export class TabManager {
     });
 
 
+    ipcMain.handle('tabs:mute-tab', (_e, tabId: string) => {
+      this.toggleMuteTab(tabId);
+    });
+
     ipcMain.handle('tabs:show-context-menu', (_e, tabId: string) => {
       this.showTabContextMenu(tabId);
     });
@@ -1993,6 +2457,19 @@ export class TabManager {
 
     ipcMain.handle('tabs:unpin', (_e, tabId: string) => {
       this.unpinTab(tabId);
+    });
+
+    // Issue #8 — Tab hover card thumbnail
+    ipcMain.handle('tabs:capture-thumbnail', async (_e, tabId: string) => {
+      const view = this.tabs.get(tabId);
+      if (!view || view.webContents.isDestroyed()) return null;
+      try {
+        const image = await view.webContents.capturePage({ x: 0, y: 0, width: 560, height: 350 });
+        const resized = image.resize({ width: 280, height: 175 });
+        return resized.toDataURL();
+      } catch {
+        return null;
+      }
     });
 
     // Issue #19 — back/forward long-press history menu
@@ -2055,9 +2532,50 @@ export class TabManager {
     ipcMain.handle('find:get-last-query', () => {
       return this.getActiveTabLastFindQuery();
     });
+
+    ipcMain.handle('security:get-page-info', () => {
+      const url = this.getActiveTabUrl() ?? '';
+      const hstsEntry = getHSTSEntry(url);
+      return {
+        url,
+        isHSTS: !!hstsEntry,
+        hstsMaxAge: hstsEntry?.maxAge ?? null,
+        hstsIncludeSubdomains: hstsEntry?.includeSubdomains ?? false,
+        isSecure: url.startsWith('https://'),
+      };
+    });
+
+    ipcMain.handle('security:get-cookie-count', async () => {
+      const url = this.getActiveTabUrl() ?? '';
+      if (!url) return 0;
+      try {
+        const activeView = this.activeTabId ? this.tabs.get(this.activeTabId) : null;
+        const session = activeView
+          ? activeView.webContents.session
+          : this.win.webContents.session;
+        const cookies = await session.cookies.get({ url });
+        return cookies.length;
+      } catch {
+        return 0;
+      }
+    });
   }
 
   destroy(): void {
+    TabManager.instances.delete(this.win.id);
+
+    // Only unregister process-wide IPC handlers when the last TabManager
+    // instance is being destroyed. With multiple windows open (e.g. from
+    // tab-detach), closing one window must not tear down IPC handlers that
+    // are still needed by the remaining windows.
+    if (TabManager.instances.size > 0) {
+      mainLogger.info('TabManager.destroy.skipIpcRemoval', {
+        remainingInstances: TabManager.instances.size,
+        msg: 'Other windows still open — preserving shared IPC handlers',
+      });
+      return;
+    }
+
     ipcMain.removeHandler('tabs:create');
     ipcMain.removeHandler('tabs:close');
     ipcMain.removeHandler('tabs:activate');
@@ -2074,6 +2592,7 @@ export class TabManager {
     ipcMain.removeHandler('tabs:reopen-last-closed');
     ipcMain.removeHandler('tabs:reopen-closed-at');
     ipcMain.removeHandler('tabs:get-closed-tabs');
+    ipcMain.removeHandler('tabs:mute-tab');
     ipcMain.removeHandler('tabs:show-context-menu');
     ipcMain.removeHandler('tabs:pin');
     ipcMain.removeHandler('tabs:unpin');
@@ -2091,5 +2610,7 @@ export class TabManager {
     ipcMain.removeHandler('find:prev');
     ipcMain.removeHandler('find:stop');
     ipcMain.removeHandler('find:get-last-query');
+    ipcMain.removeHandler('security:get-page-info');
+    ipcMain.removeHandler('security:get-cookie-count');
   }
 }

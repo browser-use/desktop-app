@@ -20,6 +20,8 @@ export interface DownloadItemDTO {
   openWhenDone: boolean;
   speed: number;
   eta: number;
+  warningLevel?: 'dangerous' | 'suspicious' | 'insecure' | null;
+  warningDismissed?: boolean;
 }
 
 contextBridge.exposeInMainWorld('downloadsAPI', {
@@ -46,6 +48,9 @@ contextBridge.exposeInMainWorld('downloadsAPI', {
 
   clearAll: (): Promise<void> =>
     ipcRenderer.invoke('downloads:clear-all'),
+
+  dismissWarning: (id: string): Promise<void> =>
+    ipcRenderer.invoke('downloads:dismiss-warning', id),
 
   onStateChanged: (cb: (downloads: DownloadItemDTO[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: DownloadItemDTO[]) => cb(data);

@@ -192,6 +192,12 @@ const config: ForgeConfig = {
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
+        {
+          // Issue #31: bookmarks manager preload
+          entry: 'src/preload/bookmarks.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload',
+        },
         // Issue #37: downloads internal page preload — disabled in CI until
         // src/preload/downloads.ts lands alongside the downloads renderer.
         // {
@@ -260,6 +266,11 @@ const config: ForgeConfig = {
           // Issue #40: history internal page renderer
           name: 'history',
           config: 'vite.history.config.ts',
+        },
+        {
+          // Issue #31: bookmarks manager renderer
+          name: 'bookmarks',
+          config: 'vite.bookmarks.config.ts',
         },
         // Issue #37: downloads internal page renderer — disabled in CI until
         // the missing vite.downloads.config.ts + src/renderer/downloads/

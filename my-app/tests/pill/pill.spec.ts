@@ -26,14 +26,17 @@ vi.mock('electron', () => {
     webContents: {
       send: vi.fn(),
       once: vi.fn(),
+      on: vi.fn(),
       openDevTools: vi.fn(),
+      setZoomFactor: vi.fn(),
+      setVisualZoomLevelLimits: vi.fn(),
     },
     on: vi.fn(),
     once: vi.fn(),
     removeAllListeners: vi.fn(),
   };
 
-  const BrowserWindow = vi.fn().mockImplementation(() => mockWin);
+  const BrowserWindow = vi.fn().mockImplementation(function () { return mockWin; });
   // Expose mockWin so tests can assert on it
   (BrowserWindow as unknown as { _mockWin: typeof mockWin })._mockWin = mockWin;
 
@@ -88,6 +91,8 @@ interface MockBrowserWindow {
     send: Mock;
     once: Mock;
     openDevTools: Mock;
+    setZoomFactor: Mock;
+    setVisualZoomLevelLimits: Mock;
   };
   on: Mock;
   once: Mock;
@@ -125,7 +130,7 @@ describe('PillWindowManager', () => {
     expect(BrowserWindow).toHaveBeenCalledWith(
       expect.objectContaining({
         width: 480,
-        height: 56,
+        height: 62,
         transparent: false,
         frame: false,
         alwaysOnTop: true,

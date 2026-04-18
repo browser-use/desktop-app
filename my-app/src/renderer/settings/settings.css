@@ -707,3 +707,41 @@
   line-height: var(--line-height-relaxed);
   margin-top: -2px;
 }
+
+/* ---------------------------------------------------------------------------
+   Sync toggle button (button[role="switch"] style)
+--------------------------------------------------------------------------- */
+
+.settings-sync-toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--color-bg-overlay, #e0e0e0);
+  cursor: pointer;
+  transition: background var(--duration-normal, 0.15s) var(--ease-out, ease);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.settings-sync-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  transition: transform var(--duration-normal, 0.15s) var(--ease-out, ease);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.settings-sync-toggle--on {
+  background: var(--color-accent-default, #1a73e8);
+}
+
+.settings-sync-toggle--on::after {
+  transform: translateX(20px);
+}

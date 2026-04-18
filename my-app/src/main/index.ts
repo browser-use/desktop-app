@@ -9,6 +9,7 @@
 
 import { config as loadDotEnv } from 'dotenv';
 import path from 'node:path';
+import fs from 'node:fs';
 
 // Load .env from the app root (my-app/.env) BEFORE any module reads
 // process.env. In production the key comes from the keychain; .env is the
@@ -44,6 +45,9 @@ import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDial
 // Wave1 P3 — Bookmarks
 import { BookmarkStore } from './bookmarks/BookmarkStore';
 import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
+// Issue #21 — Search Engines
+import { SearchEngineStore } from './search/SearchEngineStore';
+import { registerSearchEngineHandlers, unregisterSearchEngineHandlers } from './search/ipc';
 // Password Manager
 import { PasswordStore } from './passwords/PasswordStore';
 import { registerPasswordHandlers, unregisterPasswordHandlers } from './passwords/ipc';
@@ -75,6 +79,9 @@ import { openExtensionsWindow } from './extensions/ExtensionsWindow';
 // Issue #40 — History
 import { HistoryStore } from './history/HistoryStore';
 import { registerHistoryHandlers, unregisterHistoryHandlers } from './history/ipc';
+// Issue #17 — Omnibox autocomplete providers
+import { ShortcutsStore } from './omnibox/ShortcutsStore';
+import { registerOmniboxHandlers, unregisterOmniboxHandlers } from './omnibox/ipc';
 // Issue #36 — Downloads
 import { DownloadManager } from './downloads/DownloadManager';
 // Issue #26 — Chrome internal pages
@@ -91,6 +98,11 @@ import { registerNtpHandlers, unregisterNtpHandlers } from './ntp/ipc';
 import { DeviceStore } from './devices/DeviceStore';
 import { DeviceManager } from './devices/DeviceManager';
 import { registerDeviceHandlers, unregisterDeviceHandlers } from './devices/ipc';
+// Issue #100 — Picture-in-Picture
+import { registerPipHandlers, unregisterPipHandlers } from './pip/PictureInPictureManager';
+// Issue #5 — Tab groups
+import { TabGroupStore } from './tabs/TabGroupStore';
+import { registerTabGroupHandlers, unregisterTabGroupHandlers } from './tabs/tab-groups-ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -144,12 +156,31 @@ if (started) {
 }
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const INCOGNITO_PARTITION_PREFIX = 'incognito';
+
+// ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
 let shellWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+
+// Tracks all open incognito windows so we can clear the shared session when
+// the last one closes.
+const incognitoWindows = new Set<BrowserWindow>();
+// Shared incognito partition name — all incognito windows in a profile share
+// one session (matches Chrome behaviour). Cleared when the last window closes.
+let incognitoPartitionName: string | null = null;
+
+// Tracks all secondary guest windows opened via tab-detach so we can clear
+// the shared session only when the LAST one closes (the primary guest shell is
+// not included here — it manages its own cleanup in openGuestShell()).
+const secondaryGuestWindows = new Set<BrowserWindow>();
+
 let bookmarkStore: BookmarkStore | null = null;
+let searchEngineStore: SearchEngineStore | null = null;
 let passwordStore: PasswordStore | null = null;
 let autofillStore: AutofillStore | null = null;
 let profileStore: ProfileStore | null = null;
@@ -159,13 +190,19 @@ let permissionAutoRevoker: PermissionAutoRevoker | null = null;
 let contentCategoryStore: ContentCategoryStore | null = null;
 let extensionManager: ExtensionManager | null = null;
 let historyStore: HistoryStore | null = null;
+let shortcutsStore: ShortcutsStore | null = null;
 let downloadManager: DownloadManager | null = null;
 let deviceStore: DeviceStore | null = null;
 let deviceManager: DeviceManager | null = null;
 let activeProfileId = 'default';
 let isGuestSession = false;
 let guestPartitionName: string | null = null;
+// Issue #12 — Window naming: in-memory custom title; cleared on window close
+let windowCustomName: string | null = null;
+// Stores the default (pre-rename) title for each window, keyed by window.id.
+const windowDefaultTitles = new Map<number, string>();
 
+const tabGroupStore = new TabGroupStore();
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com' });
 const keychainStore = new KeychainStore();
@@ -181,6 +218,7 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   mainLogger.info('main.openShellAndWire.profile', { profileId: pid, dataDir: profileDataDir, partition: profilePartition });
   shellWindow = createShellWindow();
   tabManager = new TabManager(shellWindow, { dataDir: profileDataDir, partition: profilePartition });
+  tabManager.setTabGroupStore(tabGroupStore);
   downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
 
@@ -190,6 +228,11 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     tabManager.setUrlMatchFn((candidate: string) => {
       return store.isUrlBookmarked(candidate) ? candidate : null;
     });
+  }
+
+  // Wire the default search engine URL template into navigation.
+  if (searchEngineStore) {
+    tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
   }
   if (historyStore) {
     tabManager.setHistoryStore(historyStore);
@@ -231,11 +274,18 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     registerDeviceHandlers({ store: deviceStore, manager: deviceManager });
   }
 
+  // Issue #100 — Picture-in-Picture: register IPC handlers
+  registerPipHandlers(() => tabManager?.getActiveWebContents() ?? null);
+
   // History menu's "Recently Closed" submenu is dynamic — rebuild the whole
   // app menu whenever the closed-tabs stack mutates so the submenu reflects
   // the latest 10 entries. The menu template itself is cheap to build.
   tabManager.setOnClosedTabsChanged(() => {
     rebuildApplicationMenu();
+  });
+
+  tabManager.setOnMoveTabToNewWindow((url: string) => {
+    openNewWindow(url);
   });
 
   setTimeout(async () => {
@@ -282,6 +332,20 @@ function openShellAndWire(profileId?: string): BrowserWindow {
 
   shellWindow.on('resize', () => tabManager?.relayout());
 
+  // Issue #13 — Fullscreen: hide chrome, edge-peek reveal
+  shellWindow.on('enter-full-screen', () => {
+    tabManager?.setFullscreen(true);
+    shellWindow?.webContents.send('fullscreen-changed', { isFullscreen: true });
+  });
+  shellWindow.on('leave-full-screen', () => {
+    tabManager?.setFullscreen(false);
+    shellWindow?.webContents.send('fullscreen-changed', { isFullscreen: false });
+  });
+
+  // Capture before module-level tabManager can be reassigned by a profile switch.
+  const shellTm = tabManager;
+  shellWindow.on('closed', () => shellTm.destroy());
+
   // DEV/TEST: expose tabManager on the Node.js global object so E2E tests can
   // reach it via electronApp.evaluate() calls (which run in the same Node.js
   // process and share the global scope).  The BrowserWindow proxy returned by
@@ -295,6 +359,14 @@ function openShellAndWire(profileId?: string): BrowserWindow {
       msg: 'global.__tabManager__ set for E2E test access',
     });
   }
+
+  // Issue #12 — reset custom window name when shell window closes
+  const shellWinId = shellWindow.id;
+  shellWindow.on('closed', () => {
+    mainLogger.info('main.shellWindow.closed', { msg: 'Clearing custom window name' });
+    windowCustomName = null;
+    windowDefaultTitles.delete(shellWinId);
+  });
 
   return shellWindow;
 }
@@ -315,6 +387,10 @@ function openGuestShell(): BrowserWindow {
   });
   downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
+
+  if (searchEngineStore) {
+    tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
+  }
 
   tabManager.restoreSession();
 
@@ -358,19 +434,180 @@ function openGuestShell(): BrowserWindow {
 
   shellWindow.on('resize', () => tabManager?.relayout());
 
+  const guestTm = tabManager;
+  const primaryPartition = guestPartitionName;
   shellWindow.on('closed', () => {
     mainLogger.info('main.guestShell.closed', {
-      msg: 'Guest window closed — clearing ephemeral session data',
-      guestPartitionName,
+      msg: 'Guest shell closed',
+      guestPartitionName: primaryPartition,
+      secondaryGuestWindows: secondaryGuestWindows.size,
     });
-    if (guestPartitionName) {
-      void clearGuestSession(guestPartitionName);
-    }
+    guestTm.destroy();
     isGuestSession = false;
     guestPartitionName = null;
+    // Only clear the ephemeral session data when ALL windows sharing this
+    // partition have closed (secondary detached windows may still be open).
+    if (primaryPartition && secondaryGuestWindows.size === 0) {
+      mainLogger.info('main.guestShell.clearSession', { partition: primaryPartition });
+      void clearGuestSession(primaryPartition);
+    }
   });
 
   return shellWindow;
+}
+
+// ---------------------------------------------------------------------------
+// New window (Cmd+N) — fresh window sharing the active profile session
+// ---------------------------------------------------------------------------
+function openNewWindow(initialUrl?: string): BrowserWindow {
+  const pid = activeProfileId;
+  const profileDataDir = getProfileDataDir(pid);
+  const profilePartition = getProfilePartitionName(pid);
+  mainLogger.info('main.openNewWindow', { profileId: pid, partition: profilePartition });
+
+  const win = createShellWindow();
+  const tm = new TabManager(win, { dataDir: profileDataDir, partition: profilePartition });
+  // Secondary windows do not share the global tab-group store — each window
+  // manages its own tab set and restores its own session IDs, so mixing them
+  // into a shared store would silently mis-assign tab memberships.
+  if (searchEngineStore) tm.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
+
+  if (historyStore) tm.setHistoryStore(historyStore);
+  if (bookmarkStore) {
+    const store = bookmarkStore;
+    tm.setUrlMatchFn((candidate: string) => store.isUrlBookmarked(candidate) ? candidate : null);
+  }
+  if (initialUrl) {
+    tm.createTab(initialUrl);
+  } else {
+    tm.restoreSession();
+  }
+  tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
+  tm.setOnMoveTabToNewWindow((url: string) => {
+    openNewWindow(url);
+  });
+
+  win.webContents.once('did-finish-load', () => {
+    mainLogger.info('main.newWindow.ready', { windowId: win.id });
+    win.webContents.send('window-ready');
+  });
+
+  win.on('resize', () => tm.relayout());
+  const newWinId = win.id;
+  win.on('closed', () => {
+    windowDefaultTitles.delete(newWinId);
+    tm.destroy();
+  });
+
+  mainLogger.info('main.openNewWindow.done', { windowId: win.id });
+  return win;
+}
+
+// ---------------------------------------------------------------------------
+// Incognito window (Cmd+Shift+N) — isolated session, cleared on last close
+// ---------------------------------------------------------------------------
+function openIncognitoWindow(initialUrl?: string): BrowserWindow {
+  // All incognito windows in a profile share one session partition.
+  if (!incognitoPartitionName) {
+    incognitoPartitionName = `${INCOGNITO_PARTITION_PREFIX}-${activeProfileId}-${Date.now()}`;
+    mainLogger.info('main.openIncognitoWindow.newPartition', { incognitoPartitionName });
+  }
+  const partition = incognitoPartitionName;
+  mainLogger.info('main.openIncognitoWindow', { partition, initialUrl });
+
+  const win = createShellWindow({ titleSuffix: ' (Incognito)', incognito: true });
+  const tm = new TabManager(win, { guest: true, partition });
+  // Incognito windows do not share the persistent group store — privacy isolation.
+  if (searchEngineStore) tm.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
+  if (initialUrl) {
+    tm.createTab(initialUrl);
+  } else {
+    tm.restoreSession();
+  }
+  tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
+  tm.setOnMoveTabToNewWindow((url: string) => {
+    openIncognitoWindow(url);
+  });
+
+  win.webContents.once('did-finish-load', () => {
+    mainLogger.info('main.incognitoWindow.ready', { windowId: win.id });
+    win.webContents.send('window-ready');
+    win.webContents.send('incognito-mode', true);
+  });
+
+  win.on('resize', () => tm.relayout());
+
+  incognitoWindows.add(win);
+  mainLogger.info('main.openIncognitoWindow.tracked', { total: incognitoWindows.size });
+
+  const incogWinId = win.id;
+  win.on('closed', () => {
+    windowDefaultTitles.delete(incogWinId);
+    tm.destroy();
+    incognitoWindows.delete(win);
+    mainLogger.info('main.incognitoWindow.closed', {
+      remaining: incognitoWindows.size,
+      partition,
+    });
+    // Clean up this instance from the TabManager registry.
+    tm.destroy();
+    if (incognitoWindows.size === 0 && incognitoPartitionName) {
+      mainLogger.info('main.incognitoWindow.clearSession', { partition });
+      void clearGuestSession(incognitoPartitionName);
+      incognitoPartitionName = null;
+    }
+  });
+
+  return win;
+}
+
+// ---------------------------------------------------------------------------
+// Secondary guest window — opened when a tab is detached from a guest shell.
+// Reuses the SOURCE window's existing partition so cookies/session are shared.
+// ---------------------------------------------------------------------------
+function openGuestWindow(partition: string, initialUrl?: string): BrowserWindow {
+  mainLogger.info('main.openGuestWindow', { partition, initialUrl });
+
+  const win = createShellWindow({ titleSuffix: ' (Guest)' });
+  const tm = new TabManager(win, { guest: true, partition });
+
+  if (initialUrl) {
+    tm.createTab(initialUrl);
+  } else {
+    tm.restoreSession();
+  }
+  tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
+  tm.setOnMoveTabToNewWindow((url: string) => {
+    openGuestWindow(partition, url);
+  });
+
+  win.webContents.once('did-finish-load', () => {
+    mainLogger.info('main.guestWindow.ready', { windowId: win.id });
+    win.webContents.send('window-ready');
+    win.webContents.send('guest-mode', true);
+  });
+
+  win.on('resize', () => tm.relayout());
+
+  secondaryGuestWindows.add(win);
+  mainLogger.info('main.openGuestWindow.tracked', { total: secondaryGuestWindows.size });
+
+  win.on('closed', () => {
+    secondaryGuestWindows.delete(win);
+    mainLogger.info('main.guestWindow.closed', {
+      partition,
+      remaining: secondaryGuestWindows.size,
+    });
+    tm.destroy();
+    // Only clear the partition data when BOTH the primary guest shell AND all
+    // secondary guest windows using this partition are gone.
+    if (secondaryGuestWindows.size === 0 && !isGuestSession) {
+      mainLogger.info('main.guestWindow.clearSession', { partition });
+      void clearGuestSession(partition);
+    }
+  });
+
+  return win;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +615,18 @@ function openGuestShell(): BrowserWindow {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   mainLogger.info('main.appReady');
+
+  // Issue #21 — Search Engines: init store + register IPC before the shell loads.
+  searchEngineStore = new SearchEngineStore();
+  registerSearchEngineHandlers({
+    store: searchEngineStore,
+    onDefaultChanged: (searchUrl) => {
+      // Broadcast to ALL active TabManager instances (primary + extra windows + incognito).
+      for (const tm of TabManager.getAllInstances()) {
+        tm.setSearchUrlTemplate(searchUrl);
+      }
+    },
+  });
 
   // Wave1 P3 — Bookmarks: init store + register IPC before the shell loads.
   // NOTE: BookmarkStore/PasswordStore/HistoryStore currently key off
@@ -427,10 +676,21 @@ app.whenReady().then(async () => {
   historyStore = new HistoryStore();
   registerHistoryHandlers({ store: historyStore });
 
+  // Issue #17 — Omnibox autocomplete providers
+  shortcutsStore = new ShortcutsStore();
+  registerOmniboxHandlers({
+    shortcutsStore,
+    historyStore,
+    bookmarkStore: bookmarkStore!,
+    getOpenTabs: () => tabManager ? tabManager.getAllTabSummaries().map((s) => ({ title: s.name, url: s.url })) : [],
+  });
+
   // Issue #26 — Chrome internal pages
 
   // Issue #98 — Share menu
   registerShareHandlers(tabManager!, shellWindow!);
+  // Issue #5 — Tab groups
+  registerTabGroupHandlers(tabGroupStore, () => shellWindow);
   registerChromeHandlers(
     (page: string) => tabManager?.openInternalPage(page),
     () => openSettingsWindow(),
@@ -487,6 +747,12 @@ app.whenReady().then(async () => {
   // Wave1 P3 — Bookmarks: renderer reports total chrome height (base tab-row +
   // toolbar + bookmarks bar when visible). TabManager reuses this to position
   // the WebContentsView below the chrome.
+  ipcMain.handle("shell:set-content-visible", (_e, visible: unknown) => {
+    if (typeof visible !== "boolean") return;
+    mainLogger.debug("main.shell:set-content-visible", { visible });
+    tabManager?.setContentVisible(visible);
+  });
+
   ipcMain.handle('shell:set-chrome-height', (_e, height: unknown) => {
     if (typeof height !== 'number' || !Number.isFinite(height)) return;
     const BASE = 91;
@@ -525,8 +791,12 @@ app.whenReady().then(async () => {
 
   // pill:set-expanded — renderer asks the main process to grow/shrink the pill
   // window as palette/stream content toggles. Collapsed = 56, expanded = 320
-  ipcMain.handle('pill:set-expanded', (_event, expanded: boolean) => {
-    setPillHeight(expanded ? PILL_HEIGHT_EXPANDED : PILL_HEIGHT_COLLAPSED);
+  ipcMain.handle('pill:set-expanded', (_event, expandedOrHeight: boolean | number) => {
+    if (typeof expandedOrHeight === 'number') {
+      setPillHeight(Math.max(PILL_HEIGHT_COLLAPSED, Math.min(expandedOrHeight, PILL_HEIGHT_EXPANDED)));
+    } else {
+      setPillHeight(expandedOrHeight ? PILL_HEIGHT_EXPANDED : PILL_HEIGHT_COLLAPSED);
+    }
   });
 
   // Track 5 — Settings IPC handlers
@@ -638,10 +908,13 @@ app.whenReady().then(async () => {
       tabManager?.flushZoom();
       bookmarkStore?.flushSync();
       historyStore?.flushSync();
+      searchEngineStore?.flushSync();
+      shortcutsStore?.flushSync();
       permissionStore?.flushSync();
       deviceStore?.flushSync();
       contentCategoryStore?.flushSync();
       autofillStore?.flushSync();
+      tabGroupStore.flushSync();
     }
     await teardownHl();
   });
@@ -658,11 +931,16 @@ app.whenReady().then(async () => {
     unregisterShareHandlers();
     unregisterBookmarkHandlers();
     unregisterHistoryHandlers();
+    shortcutsStore?.flushSync();
+    unregisterSearchEngineHandlers();
+    unregisterOmniboxHandlers();
     unregisterChromeHandlers();
     unregisterProfileHandlers();
     unregisterContentCategoryHandlers();
     unregisterPermissionHandlers();
     unregisterDeviceHandlers();
+    unregisterPipHandlers();
+    unregisterTabGroupHandlers();
     unregisterExtensionsHandlers();
     unregisterAutofillHandlers();
     // ExtensionManager currently has no dispose()/destroy() hook; its
@@ -862,12 +1140,18 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         {
           label: 'New Window',
           accelerator: 'CommandOrControl+N',
-          enabled: false,
+          click: () => {
+            mainLogger.debug('shortcuts.newWindow');
+            openNewWindow();
+          },
         },
         {
           label: 'New Incognito Window',
           accelerator: 'CommandOrControl+Shift+N',
-          enabled: false,
+          click: () => {
+            mainLogger.debug('shortcuts.newIncognitoWindow');
+            openIncognitoWindow();
+          },
         },
         { type: 'separator' },
         {
@@ -978,6 +1262,20 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             const info = tabManager?.getActiveTabPrintInfo();
             if (info && shellWindow) {
               openPrintPreviewWindow(info.webContentsId, info.title, info.url, shellWindow);
+            }
+          },
+        },
+        {
+          label: 'Picture in Picture',
+          accelerator: 'CommandOrControl+Shift+P',
+          click: () => {
+            mainLogger.debug('shortcuts.pip');
+            const wc = tabManager?.getActiveWebContents();
+            if (wc && !wc.isDestroyed()) {
+              wc.executeJavaScript(
+                'document.pictureInPictureElement ? document.exitPictureInPicture() : (document.querySelector("video") ? document.querySelector("video").requestPictureInPicture() : Promise.resolve())',
+                true
+              ).catch(() => {});
             }
           },
         },
@@ -1304,7 +1602,10 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         {
           label: 'Bookmark All Tabs…',
           accelerator: 'CommandOrControl+Shift+D',
-          enabled: false,
+          click: () => {
+            mainLogger.debug('shortcuts.bookmarkAllTabs');
+            shellWindow?.webContents.send('open-bookmark-all-tabs-dialog');
+          },
         },
         { type: 'separator' },
         {
@@ -1326,10 +1627,48 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         { type: 'separator' },
         {
           label: 'Bookmark Manager',
-          accelerator: 'CommandOrControl+Alt+B',
+          accelerator: 'CommandOrControl+Shift+O',
           click: () => {
             mainLogger.debug('shortcuts.bookmarkManager');
             tabManager?.createTab('chrome://bookmarks');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Import Bookmarks…',
+          click: async () => {
+            mainLogger.debug('shortcuts.importBookmarks');
+            if (!shellWindow || !bookmarkStore) return;
+            const { canceled, filePaths } = await dialog.showOpenDialog(shellWindow, {
+              title: 'Import Bookmarks',
+              filters: [{ name: 'HTML Files', extensions: ['html', 'htm'] }],
+              properties: ['openFile'],
+            });
+            if (canceled || !filePaths[0]) return;
+            const html = fs.readFileSync(filePaths[0], 'utf-8');
+            const result = bookmarkStore.importNetscapeHtml(html);
+            shellWindow.webContents.send('bookmarks-updated', bookmarkStore.listTree());
+            mainLogger.info('shortcuts.importBookmarks', result);
+          },
+        },
+        {
+          label: 'Export Bookmarks…',
+          click: async () => {
+            mainLogger.debug('shortcuts.exportBookmarks');
+            if (!shellWindow || !bookmarkStore) return;
+            const defaultPath = path.join(
+              app.getPath('downloads'),
+              `bookmarks_${new Date().toISOString().slice(0, 10)}.html`,
+            );
+            const { canceled, filePath } = await dialog.showSaveDialog(shellWindow, {
+              title: 'Export Bookmarks',
+              defaultPath,
+              filters: [{ name: 'HTML Files', extensions: ['html', 'htm'] }],
+            });
+            if (canceled || !filePath) return;
+            const html = bookmarkStore.exportNetscapeHtml();
+            fs.writeFileSync(filePath, html, 'utf-8');
+            mainLogger.info('shortcuts.exportBookmarks', { filePath });
           },
         },
       ],
@@ -1397,6 +1736,14 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           click: () => {
             mainLogger.debug('shortcuts.reopenClosedTab');
             tabManager?.reopenLastClosed();
+          },
+        },
+        {
+          label: 'Search Tabs…',
+          accelerator: 'CommandOrControl+Shift+A',
+          click: () => {
+            mainLogger.debug('shortcuts.searchTabs');
+            shellWindow?.webContents.send('open-tab-search');
           },
         },
         { type: 'separator' },
@@ -1502,6 +1849,14 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           },
         },
         {
+          label: 'Name Window…',
+          click: () => {
+            mainLogger.debug('shortcuts.nameWindow');
+            const focusedWin = BrowserWindow.getFocusedWindow() ?? shellWindow;
+            focusedWin?.webContents.send('name-window-dialog');
+          },
+        },
+        {
           label: 'Task Manager',
           enabled: false,
         },
@@ -1556,6 +1911,77 @@ function switchTabRelative(delta: number): void {
 // ---------------------------------------------------------------------------
 ipcMain.handle('shell:get-platform', () => process.platform);
 
+// Issue #12 — Window naming: set a custom OS-level window title
+ipcMain.handle('window:set-name', (e, name: string) => {
+  windowCustomName = name && name.trim() ? name.trim() : null;
+  mainLogger.info('main.window:set-name', { name: windowCustomName });
+  const callerWin = BrowserWindow.fromWebContents(e.sender);
+  const targetWin = callerWin ?? shellWindow;
+  if (targetWin && !targetWin.isDestroyed()) {
+    const winId = targetWin.id;
+    if (windowCustomName) {
+      // Save default title before first rename so we can restore it later.
+      if (!windowDefaultTitles.has(winId)) {
+        windowDefaultTitles.set(winId, targetWin.getTitle());
+      }
+      targetWin.setTitle(windowCustomName);
+    } else {
+      // Restore the original title (preserves Guest/Incognito suffix).
+      // Only restore if the window was previously renamed; if no prior name
+      // was ever set, windowDefaultTitles has no entry and there is nothing
+      // to restore — the title is already correct.
+      if (windowDefaultTitles.has(winId)) {
+        const defaultTitle = windowDefaultTitles.get(winId)!;
+        windowDefaultTitles.delete(winId);
+        targetWin.setTitle(defaultTitle);
+      }
+    }
+  }
+});
+
+// Tab drag-to-detach / move to new window (issue #1)
+ipcMain.handle('tabs:move-to-new-window', (e, tabId: string) => {
+  const callerWin = BrowserWindow.fromWebContents(e.sender);
+  const tm = (callerWin ? TabManager.instances.get(callerWin.id) : null) ?? tabManager;
+  if (!tm) return false;
+  const { tabs } = tm.getState();
+  if (tabs.length <= 1) return false; // Can't detach the last tab
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return false;
+  // Force-close so pinned tabs are moved rather than duplicated.
+  tm.closeTab(tabId, true);
+  // Preserve the source window's session type so the detached tab stays in
+  // the same context (incognito → incognito, guest → guest, normal → normal).
+  if (callerWin && incognitoWindows.has(callerWin)) {
+    openIncognitoWindow(tab.url);
+  } else if (tm.isGuest) {
+    // Guest (non-incognito) — reuse the SOURCE window's existing partition so
+    // the detached tab shares the same cookies/session.  We must NOT call
+    // openGuestShell() here because that would (a) create a brand-new unique
+    // partition and (b) overwrite the global guestPartitionName, causing the
+    // wrong partition to be cleared when either guest window is closed.
+    const sourcePartition = tm.getGuestPartition();
+    if (sourcePartition) {
+      openGuestWindow(sourcePartition, tab.url);
+    } else {
+      // Fallback (should not happen for a properly constructed guest TabManager).
+      openGuestShell();
+      tabManager?.createTab(tab.url);
+    }
+  } else {
+    openNewWindow(tab.url);
+  }
+  return true;
+});
+
+// Issue #104 — Live Caption: toggle caption overlay in the shell window.
+ipcMain.handle('live-caption:toggle', (_e, enabled: boolean) => {
+  if (shellWindow && !shellWindow.isDestroyed()) {
+    shellWindow.webContents.send('live-caption:state-changed', { enabled });
+  }
+  return true;
+});
+
 // Issue #81 — Three-dot app menu for non-macOS platforms.
 ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) => {
   if (!shellWindow || !tabManager) {
@@ -1572,8 +1998,22 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
       accelerator: 'Ctrl+T',
       click: () => { tabManager?.createTab(); },
     },
-    { label: 'New Window', accelerator: 'Ctrl+N', enabled: false },
-    { label: 'New Incognito Window', accelerator: 'Ctrl+Shift+N', enabled: false },
+    {
+      label: 'New Window',
+      accelerator: 'Ctrl+N',
+      click: () => {
+        mainLogger.debug('shortcuts.newWindow.appMenu');
+        openNewWindow();
+      },
+    },
+    {
+      label: 'New Incognito Window',
+      accelerator: 'Ctrl+Shift+N',
+      click: () => {
+        mainLogger.debug('shortcuts.newIncognitoWindow.appMenu');
+        openIncognitoWindow();
+      },
+    },
     { type: 'separator' },
     {
       label: 'History',
@@ -1605,6 +2045,10 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
         {
           label: 'Bookmark This Tab…', accelerator: 'Ctrl+D',
           click: () => { shellWindow?.webContents.send('open-bookmark-dialog'); },
+        },
+        {
+          label: 'Bookmark All Tabs…', accelerator: 'Ctrl+Shift+D',
+          click: () => { shellWindow?.webContents.send('open-bookmark-all-tabs-dialog'); },
         },
         {
           label: 'Show Bookmarks Bar', accelerator: 'Ctrl+Shift+B',
@@ -1699,6 +2143,14 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
         { label: 'JavaScript Console', accelerator: 'Ctrl+Shift+J', click: () => { tabManager?.openDevToolsConsoleForActive(); } },
         { type: 'separator' },
         { label: 'Task Manager', enabled: false },
+        { type: 'separator' },
+        {
+          label: 'Name Window…',
+          click: () => {
+            mainLogger.debug('shortcuts.nameWindow.threedot');
+            shellWindow?.webContents.send('name-window-dialog');
+          },
+        },
       ],
     },
     { type: 'separator' },

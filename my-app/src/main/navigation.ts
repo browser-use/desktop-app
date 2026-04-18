@@ -27,6 +27,43 @@ const HAS_WHITESPACE_RE = /\s/;
 
 const GOOGLE_SEARCH_BASE = 'https://www.google.com/search?q=';
 
+const buildSearch = (query: string, searchUrl?: string): string => {
+  if (searchUrl && searchUrl.includes('%s')) {
+    return searchUrl.replace('%s', encodeURIComponent(query));
+  }
+  return GOOGLE_SEARCH_BASE + encodeURIComponent(query);
+};
+
+// ---------------------------------------------------------------------------
+// Keyword search engines (Tab-to-search / keyword mode).
+// Maps keyword → %s URL template. Populated from SearchEngineStore at runtime;
+// falls back to built-in defaults when the store is unavailable.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_KEYWORD_ENGINES: Map<string, string> = new Map([
+  ['g', 'https://www.google.com/search?q=%s'],
+  ['b', 'https://www.bing.com/search?q=%s'],
+  ['d', 'https://duckduckgo.com/?q=%s'],
+  ['y', 'https://search.yahoo.com/search?p=%s'],
+  ['e', 'https://www.ecosia.org/search?q=%s'],
+  ['br', 'https://search.brave.com/search?q=%s'],
+  // @-prefixed entries mirror SEARCH_ENGINES in omnibox/providers.ts so that
+  // keyword-mode inputs like "@bing cats" are resolved correctly.
+  ['@bing', 'https://www.bing.com/search?q=%s'],
+  ['@duckduckgo', 'https://duckduckgo.com/?q=%s'],
+  ['@yahoo', 'https://search.yahoo.com/search?p=%s'],
+]);
+
+let keywordEngines: Map<string, string> = new Map(DEFAULT_KEYWORD_ENGINES);
+
+export function setKeywordEngines(engines: Map<string, string>): void {
+  keywordEngines = engines;
+}
+
+export function getKeywordEngines(): Map<string, string> {
+  return keywordEngines;
+}
+
 // ---------------------------------------------------------------------------
 // Bookmark / history lookup callback
 // ---------------------------------------------------------------------------
@@ -37,15 +74,34 @@ export type UrlMatchFn = (url: string) => string | null;
 // Core heuristic
 // ---------------------------------------------------------------------------
 
-export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn): string {
+export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn, searchUrl?: string): string {
   const trimmed = input.trim();
-  if (!trimmed) return GOOGLE_SEARCH_BASE;
+  if (!trimmed) return searchUrl ? searchUrl.replace('%s', '') : GOOGLE_SEARCH_BASE;
 
   // 1. Explicit scheme → always navigate
   if (EXPLICIT_URL_RE.test(trimmed)) {
     mainLogger.info('navigation.parse.explicitScheme', { input: trimmed });
     return trimmed;
   }
+
+  // 1.5. Keyword search: "keyword query" pattern (e.g. "g react hooks" → Google search)
+  // Also handles "@keyword query" mode-enter inputs (e.g. "@bing cats" → Bing search).
+  const firstSpaceIdx = trimmed.indexOf(' ');
+  if (firstSpaceIdx > 0 && !HAS_WHITESPACE_RE.test(trimmed.slice(0, firstSpaceIdx))) {
+    const rawKeyword = trimmed.slice(0, firstSpaceIdx);
+    const query = trimmed.slice(firstSpaceIdx + 1);
+    // Try exact key first (handles both short keys like "g" and @-prefixed keys like "@bing").
+    const keyLower = rawKeyword.toLowerCase();
+    const template = keywordEngines.get(keyLower) ?? keywordEngines.get(keyLower.replace(/^@/, ''));
+    if (template && template.includes('%s') && query.trim()) {
+      const url = template.replace('%s', encodeURIComponent(query.trim()));
+      mainLogger.info('navigation.parse.keywordSearch', { keyword: keyLower, query, url });
+      return url;
+    }
+  }
+
+  // 1.6. @keyword prefix without a query (e.g. "@bing" alone) — treat as regular search/URL.
+  // Handled by fall-through to steps 3–8 below.
 
   // 2. Bookmark / history exact match — try common URL expansions of the raw input
   if (findMatchingUrl) {
@@ -59,7 +115,7 @@ export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn
   // 3. Whitespace anywhere → search (URLs never contain unencoded spaces)
   if (HAS_WHITESPACE_RE.test(trimmed)) {
     mainLogger.info('navigation.parse.searchWithSpaces', { input: trimmed });
-    return GOOGLE_SEARCH_BASE + encodeURIComponent(trimmed);
+    return buildSearch(trimmed, searchUrl);
   }
 
   // 4. localhost / IP / IPv6
@@ -94,7 +150,7 @@ export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn
 
   // 8. Single word, no dots → search
   mainLogger.info('navigation.parse.search', { input: trimmed });
-  return GOOGLE_SEARCH_BASE + encodeURIComponent(trimmed);
+  return buildSearch(trimmed, searchUrl);
 }
 
 // ---------------------------------------------------------------------------

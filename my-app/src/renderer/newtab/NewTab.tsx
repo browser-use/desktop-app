@@ -83,8 +83,6 @@ export function NewTab(): React.ReactElement {
   const [config, setConfig] = useState<NtpCustomization | null>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-
     console.log('[NewTab] Loading NTP customization and bookmarks');
 
     electronAPI.ntp.get().then((ntpConfig) => {
