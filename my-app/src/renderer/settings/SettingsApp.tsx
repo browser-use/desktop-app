@@ -2753,6 +2753,7 @@ function SettingsInner(): React.ReactElement {
 // ---------------------------------------------------------------------------
 
 function SyncTab(): React.ReactElement {
+  const toast = useToast();
   const [syncPrefs, setSyncPrefsState] = useState<SyncPrefs>(DEFAULT_SYNC_PREFS);
   const [saving, setSaving] = useState(false);
   const [showPassphraseForm, setShowPassphraseForm] = useState(false);
@@ -2766,6 +2767,7 @@ function SyncTab(): React.ReactElement {
   }, []);
 
   const toggle = useCallback(async (key: keyof SyncPrefs) => {
+    const previous = syncPrefs;
     const next = { ...syncPrefs, [key]: !syncPrefs[key] };
     // If toggling syncEverything ON, enable all data categories (but not encryption settings)
     const NON_CATEGORY_KEYS = new Set(['enabled', 'syncEverything', 'encryptionEnabled']);
@@ -2780,10 +2782,13 @@ function SyncTab(): React.ReactElement {
     setSaving(true);
     try {
       await window.settingsAPI.setSyncPrefs(next);
+    } catch (err) {
+      setSyncPrefsState(previous);
+      toast.show({ variant: 'error', title: 'Failed to update sync setting', message: (err as Error).message });
     } finally {
       setSaving(false);
     }
-  }, [syncPrefs]);
+  }, [syncPrefs, toast]);
 
   const categories: Array<{ key: keyof SyncPrefs; label: string; description: string }> = [
     { key: 'bookmarks',      label: 'Bookmarks',             description: 'Sync bookmarks across devices' },
@@ -2882,11 +2887,15 @@ function SyncTab(): React.ReactElement {
                 aria-checked={syncPrefs.encryptionEnabled}
                 onClick={() => {
                   if (syncPrefs.encryptionEnabled) {
-                    void window.settingsAPI.clearSyncPassphrase().then(() => {
-                      setSyncPrefsState({ ...syncPrefs, encryptionEnabled: false });
-                      setPassphraseSaved(false);
-                      setShowPassphraseForm(false);
-                    });
+                    void window.settingsAPI.clearSyncPassphrase()
+                      .then(() => {
+                        setSyncPrefsState({ ...syncPrefs, encryptionEnabled: false });
+                        setPassphraseSaved(false);
+                        setShowPassphraseForm(false);
+                      })
+                      .catch((err: Error) => {
+                        toast.show({ variant: 'error', title: 'Failed to clear passphrase', message: err.message });
+                      });
                   } else {
                     setShowPassphraseForm(true);
                   }
@@ -2927,17 +2936,21 @@ function SyncTab(): React.ReactElement {
                     onClick={() => {
                       if (newPassphrase.length < 8) { setPassphraseError('Passphrase must be at least 8 characters.'); return; }
                       if (newPassphrase !== confirmPassphrase) { setPassphraseError('Passphrases do not match.'); return; }
-                      void window.settingsAPI.setSyncPassphrase(newPassphrase).then((ok) => {
-                        if (ok) {
-                          setSyncPrefsState({ ...syncPrefs, encryptionEnabled: true });
-                          setShowPassphraseForm(false);
-                          setPassphraseSaved(true);
-                          setNewPassphrase('');
-                          setConfirmPassphrase('');
-                        } else {
-                          setPassphraseError('Failed to save passphrase. Try again.');
-                        }
-                      });
+                      void window.settingsAPI.setSyncPassphrase(newPassphrase)
+                        .then((ok) => {
+                          if (ok) {
+                            setSyncPrefsState({ ...syncPrefs, encryptionEnabled: true });
+                            setShowPassphraseForm(false);
+                            setPassphraseSaved(true);
+                            setNewPassphrase('');
+                            setConfirmPassphrase('');
+                          } else {
+                            setPassphraseError('Failed to save passphrase. Try again.');
+                          }
+                        })
+                        .catch((err: Error) => {
+                          setPassphraseError(`Error: ${err.message}`);
+                        });
                     }}
                   >Save passphrase</Button>
                   <Button size="sm" variant="secondary" onClick={() => { setShowPassphraseForm(false); setNewPassphrase(''); setConfirmPassphrase(''); setPassphraseError(''); }}>Cancel</Button>
