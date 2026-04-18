@@ -440,11 +440,11 @@ function handleGetOAuthScopes(): Array<{ scope: string; label: string; granted: 
 }
 
 function handleReConsentScope(_event: Electron.IpcMainInvokeEvent, scope: string): void {
-  // Stub: OAuth re-consent is a full flow; log intent and return OK.
-  mainLogger.info(CH_RE_CONSENT_SCOPE, {
+  mainLogger.warn(CH_RE_CONSENT_SCOPE, {
     scope,
-    msg: 'Re-consent requested — full OAuth flow not yet implemented; returning stub OK',
+    msg: 'Re-consent requested — full OAuth flow is not yet implemented',
   });
+  throw new Error('Re-consent OAuth flow is not yet implemented');
 }
 
 async function handleFactoryReset(): Promise<void> {

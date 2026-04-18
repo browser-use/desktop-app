@@ -704,15 +704,15 @@ function GoogleScopesTab(): React.ReactElement {
     try {
       await window.settingsAPI.reConsentScope(scope);
       toast.show({
-        variant: 'info',
-        title: 'Re-consent initiated',
+        variant: 'success',
+        title: 'Re-consent complete',
         message: `Scope: ${scope}`,
       });
     } catch (err) {
       toast.show({
-        variant: 'error',
-        title: 'Re-consent failed',
-        message: (err as Error).message,
+        variant: 'warning',
+        title: 'Re-consent not available',
+        message: 'Re-consent is not yet available. Please sign out and sign back in to update permissions.',
       });
     } finally {
       setReconsentId(null);
@@ -758,6 +758,7 @@ function GoogleScopesTab(): React.ReactElement {
                 size="sm"
                 onClick={() => void handleReconsent(s.scope)}
                 loading={reconsentId === s.scope}
+                title="Re-consent is not yet available"
               >
                 Re-consent
               </Button>
