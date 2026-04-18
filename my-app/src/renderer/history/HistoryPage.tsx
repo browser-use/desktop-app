@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { JourneysPage } from './JourneysPage';
 
 interface HistoryEntry {
   id: string;
@@ -20,6 +21,8 @@ declare const historyAPI: {
   clearAll: () => Promise<boolean>;
   navigateTo: (url: string) => Promise<void>;
 };
+
+type HistoryTab = 'list' | 'journeys';
 
 const PAGE_SIZE = 100;
 
@@ -76,7 +79,7 @@ function domainLabel(pageUrl: string): string {
   }
 }
 
-export function HistoryPage(): React.ReactElement {
+function HistoryList(): React.ReactElement {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [query, setQuery] = useState('');
@@ -173,22 +176,19 @@ export function HistoryPage(): React.ReactElement {
   const hasMore = entries.length < totalCount;
 
   return (
-    <div className="history">
-      <header className="history__header">
-        <h1 className="history__title">History</h1>
-        {selected.size > 0 && (
-          <div className="history__bulk-bar">
-            <span className="history__bulk-count">{selected.size} selected</span>
-            <button
-              type="button"
-              className="history__bulk-delete"
-              onClick={handleBulkDelete}
-            >
-              Delete
-            </button>
-          </div>
-        )}
-      </header>
+    <>
+      {selected.size > 0 && (
+        <div className="history__bulk-bar">
+          <span className="history__bulk-count">{selected.size} selected</span>
+          <button
+            type="button"
+            className="history__bulk-delete"
+            onClick={handleBulkDelete}
+          >
+            Delete
+          </button>
+        </div>
+      )}
 
       <div className="history__search-container">
         <svg className="history__search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -284,6 +284,41 @@ export function HistoryPage(): React.ReactElement {
           </>
         )}
       </div>
+    </>
+  );
+}
+
+export function HistoryPage(): React.ReactElement {
+  const [activeTab, setActiveTab] = useState<HistoryTab>('list');
+
+  return (
+    <div className="history">
+      <header className="history__header">
+        <h1 className="history__title">History</h1>
+      </header>
+
+      <nav className="history__tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          className={`history__tab ${activeTab === 'list' ? 'history__tab--active' : ''}`}
+          aria-selected={activeTab === 'list'}
+          onClick={() => setActiveTab('list')}
+        >
+          List
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={`history__tab ${activeTab === 'journeys' ? 'history__tab--active' : ''}`}
+          aria-selected={activeTab === 'journeys'}
+          onClick={() => setActiveTab('journeys')}
+        >
+          Journeys
+        </button>
+      </nav>
+
+      {activeTab === 'list' ? <HistoryList /> : <JourneysPage />}
     </div>
   );
 }

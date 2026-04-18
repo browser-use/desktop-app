@@ -1,11 +1,12 @@
 /**
  * ipc.ts — history IPC bindings.
  * Registers `history:*` handlers for querying, searching, and deleting
- * browsing history entries.
+ * browsing history entries, plus journey/cluster queries.
  */
 
 import { ipcMain } from 'electron';
 import { HistoryStore } from './HistoryStore';
+import { queryJourneys, removeClusterEntries } from './JourneyCluster';
 import { assertString } from '../ipc-validators';
 import { mainLogger } from '../logger';
 
@@ -14,6 +15,8 @@ const CHANNELS = [
   'history:remove',
   'history:remove-bulk',
   'history:clear-all',
+  'history:journeys',
+  'history:remove-cluster',
 ] as const;
 
 export interface HistoryIpcOptions {
@@ -49,6 +52,22 @@ export function registerHistoryHandlers(opts: HistoryIpcOptions): void {
     mainLogger.info('history:clear-all');
     store.clearAll();
     return true;
+  });
+
+  ipcMain.handle('history:journeys', (_e, payload?: { query?: string; limit?: number; offset?: number }) => {
+    const query = payload?.query ?? '';
+    const limit = typeof payload?.limit === 'number' ? Math.min(payload.limit, 200) : 50;
+    const offset = typeof payload?.offset === 'number' ? Math.max(payload.offset, 0) : 0;
+    mainLogger.debug('history:journeys', { query, limit, offset });
+    return queryJourneys(store.getAll(), { query, limit, offset });
+  });
+
+  ipcMain.handle('history:remove-cluster', (_e, clusterId: string) => {
+    assertString(clusterId, 'clusterId', 256);
+    mainLogger.debug('history:remove-cluster', { clusterId });
+    const ids = removeClusterEntries(store.getAll(), clusterId);
+    if (ids.length === 0) return 0;
+    return store.removeEntries(ids);
   });
 }
 

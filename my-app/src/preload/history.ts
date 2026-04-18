@@ -1,6 +1,7 @@
 /**
  * Preload script for the chrome://history internal page.
- * Exposes a safe contextBridge API for querying and managing browsing history.
+ * Exposes a safe contextBridge API for querying and managing browsing history
+ * and journey clusters.
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
@@ -15,6 +16,20 @@ export interface HistoryEntry {
 
 export interface HistoryQueryResult {
   entries: HistoryEntry[];
+  totalCount: number;
+}
+
+export interface JourneyCluster {
+  id: string;
+  label: string;
+  domain: string;
+  entries: HistoryEntry[];
+  startTime: number;
+  endTime: number;
+}
+
+export interface JourneyQueryResult {
+  clusters: JourneyCluster[];
   totalCount: number;
 }
 
@@ -33,4 +48,10 @@ contextBridge.exposeInMainWorld('historyAPI', {
 
   navigateTo: (url: string): Promise<void> =>
     ipcRenderer.invoke('tabs:navigate-active', url),
+
+  journeys: (opts?: { query?: string; limit?: number; offset?: number }): Promise<JourneyQueryResult> =>
+    ipcRenderer.invoke('history:journeys', opts),
+
+  removeCluster: (clusterId: string): Promise<number> =>
+    ipcRenderer.invoke('history:remove-cluster', clusterId),
 });
