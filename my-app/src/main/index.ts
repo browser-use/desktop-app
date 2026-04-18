@@ -69,6 +69,7 @@ import { PermissionStore } from './permissions/PermissionStore';
 import { PermissionManager } from './permissions/PermissionManager';
 import { registerPermissionHandlers, unregisterPermissionHandlers } from './permissions/ipc';
 import { PermissionAutoRevoker } from './permissions/PermissionAutoRevoker';
+import { ProtocolHandlerStore } from './permissions/ProtocolHandlerStore';
 // Issue #54 — Content category toggles
 import { ContentCategoryStore } from './content-categories/ContentCategoryStore';
 import { registerContentCategoryHandlers, unregisterContentCategoryHandlers } from './content-categories/ipc';
@@ -187,6 +188,7 @@ let profileStore: ProfileStore | null = null;
 let permissionStore: PermissionStore | null = null;
 let permissionManager: PermissionManager | null = null;
 let permissionAutoRevoker: PermissionAutoRevoker | null = null;
+let protocolHandlerStore: ProtocolHandlerStore | null = null;
 let contentCategoryStore: ContentCategoryStore | null = null;
 let extensionManager: ExtensionManager | null = null;
 let historyStore: HistoryStore | null = null;
@@ -258,6 +260,7 @@ function openShellAndWire(profileId?: string): BrowserWindow {
       manager: permissionManager,
       getShellWindow: () => shellWindow,
       autoRevoker: permissionAutoRevoker ?? undefined,
+      protocolHandlerStore: protocolHandlerStore ?? undefined,
     });
   }
 
@@ -636,6 +639,7 @@ app.whenReady().then(async () => {
   // only PermissionStore accepts a data dir today.
   bookmarkStore = new BookmarkStore();
   permissionStore = new PermissionStore(getProfileDataDir(activeProfileId));
+  protocolHandlerStore = new ProtocolHandlerStore(getProfileDataDir(activeProfileId));
   deviceStore = new DeviceStore(getProfileDataDir(activeProfileId));
   contentCategoryStore = new ContentCategoryStore();
   registerContentCategoryHandlers({ store: contentCategoryStore });
@@ -912,6 +916,7 @@ app.whenReady().then(async () => {
       searchEngineStore?.flushSync();
       shortcutsStore?.flushSync();
       permissionStore?.flushSync();
+      protocolHandlerStore?.flushSync();
       deviceStore?.flushSync();
       contentCategoryStore?.flushSync();
       autofillStore?.flushSync();
