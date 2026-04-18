@@ -41,7 +41,7 @@ function handleCopyLink(): boolean {
   return true;
 }
 
-function handleEmailPage(): boolean {
+async function handleEmailPage(): Promise<boolean> {
   const info = getActivePageInfo();
   if (!info) {
     mainLogger.warn('share.emailPage', { msg: 'no active page info' });
@@ -51,7 +51,7 @@ function handleEmailPage(): boolean {
   const body = encodeURIComponent(info.url);
   const mailto = `mailto:?subject=${subject}&body=${body}`;
   mainLogger.info('share.emailPage', { url: info.url });
-  shell.openExternal(mailto);
+  await shell.openExternal(mailto);
   return true;
 }
 

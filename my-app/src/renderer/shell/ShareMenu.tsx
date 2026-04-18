@@ -31,6 +31,7 @@ export function ShareMenu({ open, onClose, anchorRect }: ShareMenuProps): React.
 
   useEffect(() => {
     if (open) {
+      setPageInfo(null);
       console.log('[ShareMenu] Opened, fetching page info');
       electronAPI.share.getPageInfo().then((info) => {
         console.log('[ShareMenu] Page info received:', info);
@@ -58,12 +59,22 @@ export function ShareMenu({ open, onClose, anchorRect }: ShareMenuProps): React.
     };
   }, [open, onClose]);
 
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
   const handleCopyLink = useCallback(async () => {
     console.log('[ShareMenu] Copy link clicked');
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     const ok = await electronAPI.share.copyLink();
     if (ok) {
       setCopied(true);
-      setTimeout(() => {
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
         setCopied(false);
         onClose();
       }, 1200);

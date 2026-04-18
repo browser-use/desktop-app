@@ -885,7 +885,7 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
                 const wc = tabManager?.getActiveWebContents();
                 if (!wc || !shellWindow) return;
                 const pageUrl = wc.getURL();
-                const title = (wc.getTitle() || 'page').replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 100);
+                const title = (wc.getTitle() || 'page').replace(/[/\\?%*:|"<>]/g, '-').slice(0, 100);
                 const result = await dialog.showSaveDialog(shellWindow, {
                   defaultPath: title,
                   filters: [{ name: 'Webpage, Complete', extensions: ['html'] }],
@@ -1564,7 +1564,7 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
             const wc = tabManager?.getActiveWebContents();
             if (!wc || !shellWindow) return;
             const pageUrl = wc.getURL();
-            const title = (wc.getTitle() || 'page').replace(/[\/\\?%*:|"<>]/g, '-').slice(0, 100);
+            const title = (wc.getTitle() || 'page').replace(/[/\\?%*:|"<>]/g, '-').slice(0, 100);
             const result = await dialog.showSaveDialog(shellWindow, {
               defaultPath: title,
               filters: [{ name: 'Webpage, Complete', extensions: ['html'] }],

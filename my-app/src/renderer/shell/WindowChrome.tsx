@@ -458,14 +458,18 @@ export function WindowChrome(): React.ReactElement {
   // ---------------------------------------------------------------------------
   // Share menu actions
   // ---------------------------------------------------------------------------
+  const shareCloseTimeRef = useRef(0);
+
   const handleShareClick = useCallback((rect: DOMRect) => {
     console.log('[WindowChrome] Share button clicked');
+    if (Date.now() - shareCloseTimeRef.current < 100) return;
     setShareAnchorRect(rect);
     setShareMenuOpen((prev) => !prev);
   }, []);
 
   const handleShareClose = useCallback(() => {
     console.log('[WindowChrome] Share menu closed');
+    shareCloseTimeRef.current = Date.now();
     setShareMenuOpen(false);
   }, []);
 
