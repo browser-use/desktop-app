@@ -791,6 +791,7 @@ app.whenReady().then(async () => {
     unregisterShareHandlers();
     unregisterBookmarkHandlers();
     unregisterHistoryHandlers();
+    unregisterSearchEngineHandlers();
     unregisterOmniboxHandlers();
     unregisterChromeHandlers();
     unregisterProfileHandlers();
