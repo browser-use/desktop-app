@@ -114,29 +114,30 @@ const {
     unregisterAll: vi.fn(),
   };
 
+  // Auto-stubbing proxy for BrowserWindow mocks — any unknown method becomes vi.fn()
+  function makeWindowProxy(id: number): Record<string, unknown> {
+    const base: Record<string, unknown> = {
+      id,
+      webContents: new Proxy({} as Record<string, unknown>, {
+        get(t, p: string) {
+          if (!(p in t)) t[p] = vi.fn();
+          return t[p];
+        },
+      }),
+    };
+    return new Proxy(base, {
+      get(target, prop: string) {
+        if (!(prop in target) && typeof prop === 'string') {
+          target[prop] = vi.fn();
+        }
+        return target[prop];
+      },
+    });
+  }
+
   return {
-    mockCreateShellWindow: vi.fn(() => ({
-      id: 1,
-      webContents: {
-        once: vi.fn(),
-        on: vi.fn(),
-        send: vi.fn(),
-      },
-      on: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      close: vi.fn(),
-    })),
-    mockCreateOnboardingWindow: vi.fn(() => ({
-      id: 2,
-      webContents: {
-        once: vi.fn(),
-        on: vi.fn(),
-        send: vi.fn(),
-      },
-      on: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      close: vi.fn(),
-    })),
+    mockCreateShellWindow: vi.fn(() => makeWindowProxy(1)),
+    mockCreateOnboardingWindow: vi.fn(() => makeWindowProxy(2)),
     mockRegisterOnboardingHandlers: vi.fn(),
     mockUnregisterOnboardingHandlers: vi.fn(),
     mockInitOAuthHandler: vi.fn(),
