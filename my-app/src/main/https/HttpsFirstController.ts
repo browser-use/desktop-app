@@ -93,7 +93,7 @@ export function clearAllowedHttpOrigins(): void {
 function extractOrigin(url: string): string {
   try {
     const u = new URL(url);
-    return u.hostname;
+    return u.host;
   } catch {
     return url;
   }
@@ -222,7 +222,7 @@ export function buildInterstitialHtml(httpUrl: string, hostname: string): string
   </div>
   <script>
     function proceedToHttp() {
-      console.log('__HTTPS_FIRST_PROCEED__' + ${JSON.stringify(httpUrl)});
+      console.log('__HTTPS_FIRST_PROCEED__' + ${JSON.stringify(httpUrl).replace(/</g, '\\u003c')});
     }
   </script>
 </body>

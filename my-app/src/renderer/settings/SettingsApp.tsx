@@ -749,6 +749,8 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
   useEffect(() => {
     void window.settingsAPI.getHttpsFirst().then((val) => {
       setHttpsFirst(val);
+    }).catch(() => {
+    }).finally(() => {
       setHttpsFirstLoading(false);
     });
   }, []);

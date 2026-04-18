@@ -1333,12 +1333,14 @@ export class TabManager {
     // Listen for password form submissions via console-message prefix
     wc.on('console-message', (_e, _level, message) => {
       // HTTPS-First: intercept "proceed to HTTP" from interstitial page
-      if (message.startsWith(HTTPS_PROCEED_PREFIX)) {
+      // Only trust this message from our data: URL interstitial, not arbitrary pages
+      const currentUrl = wc.getURL();
+      if (message.startsWith(HTTPS_PROCEED_PREFIX) && currentUrl.startsWith('data:text/html')) {
         const httpUrl = message.slice(HTTPS_PROCEED_PREFIX.length);
         mainLogger.info('TabManager.tab.httpsProceed', { tabId, httpUrl });
         try {
-          const hostname = new URL(httpUrl).hostname;
-          allowHttpForOrigin(hostname);
+          const host = new URL(httpUrl).host;
+          allowHttpForOrigin(host);
         } catch { /* ignore parse errors */ }
         clearPendingUpgrade(tabId);
         wc.loadURL(httpUrl);
