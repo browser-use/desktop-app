@@ -16,7 +16,7 @@ import fs from 'node:fs';
 // dev-time fallback.
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
-import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, dialog, shell } from 'electron';
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, dialog, session, shell } from 'electron';
 import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 import { TabManager } from './tabs/TabManager';
@@ -81,8 +81,10 @@ import { registerPermissionHandlers, unregisterPermissionHandlers } from './perm
 import { PermissionAutoRevoker } from './permissions/PermissionAutoRevoker';
 import { ProtocolHandlerStore } from './permissions/ProtocolHandlerStore';
 // Issue #54 — Content category toggles
+// Issue #222 — Enforce persisted content category policies at runtime
 import { ContentCategoryStore } from './content-categories/ContentCategoryStore';
 import { registerContentCategoryHandlers, unregisterContentCategoryHandlers } from './content-categories/ipc';
+import { ContentPolicyEnforcer } from './content-categories/ContentPolicyEnforcer';
 // Issue #71 — Extensions
 import { ExtensionManager } from './extensions/ExtensionManager';
 import { registerExtensionsHandlers, unregisterExtensionsHandlers } from './extensions/ipc';
@@ -215,6 +217,7 @@ let permissionManager: PermissionManager | null = null;
 let permissionAutoRevoker: PermissionAutoRevoker | null = null;
 let protocolHandlerStore: ProtocolHandlerStore | null = null;
 let contentCategoryStore: ContentCategoryStore | null = null;
+let contentPolicyEnforcer: ContentPolicyEnforcer | null = null;
 let extensionManager: ExtensionManager | null = null;
 let historyStore: HistoryStore | null = null;
 let shortcutsStore: ShortcutsStore | null = null;
@@ -267,6 +270,11 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   }
   if (historyStore) {
     tabManager.setHistoryStore(historyStore);
+  }
+  // Issue #222 — hand the enforcer to TabManager so popup-blocking,
+  // JS-disable, and sound-policy checks have a source of truth.
+  if (contentPolicyEnforcer) {
+    tabManager.setContentPolicyEnforcer(contentPolicyEnforcer);
   }
   tabManager.restoreSession();
 
@@ -426,6 +434,12 @@ function openGuestShell(): BrowserWindow {
   if (searchEngineStore) {
     tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
   }
+  // Issue #222 — guest windows share the same default content-category
+  // policies (the store is global, not profile-scoped today). Wire the
+  // same enforcer so popups/JS block uniformly.
+  if (contentPolicyEnforcer) {
+    tabManager.setContentPolicyEnforcer(contentPolicyEnforcer);
+  }
 
   tabManager.restoreSession();
 
@@ -512,6 +526,10 @@ function openNewWindow(initialUrl?: string): BrowserWindow {
     const store = bookmarkStore;
     tm.setUrlMatchFn((candidate: string) => store.isUrlBookmarked(candidate) ? candidate : null);
   }
+  // Issue #222 — secondary profile windows still enforce content policies.
+  if (contentPolicyEnforcer) {
+    tm.setContentPolicyEnforcer(contentPolicyEnforcer);
+  }
   if (initialUrl) {
     tm.createTab(initialUrl);
   } else {
@@ -554,6 +572,8 @@ function openIncognitoWindow(initialUrl?: string): BrowserWindow {
   const tm = new TabManager(win, { guest: true, partition });
   // Incognito windows do not share the persistent group store — privacy isolation.
   if (searchEngineStore) tm.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
+  // Issue #222 — incognito sessions still honor content-category policies.
+  if (contentPolicyEnforcer) tm.setContentPolicyEnforcer(contentPolicyEnforcer);
   if (initialUrl) {
     tm.createTab(initialUrl);
   } else {
@@ -605,6 +625,8 @@ function openGuestWindow(partition: string, initialUrl?: string): BrowserWindow 
 
   const win = createShellWindow({ titleSuffix: ' (Guest)' });
   const tm = new TabManager(win, { guest: true, partition });
+  // Issue #222 — secondary guest windows enforce the same content policies.
+  if (contentPolicyEnforcer) tm.setContentPolicyEnforcer(contentPolicyEnforcer);
 
   if (initialUrl) {
     tm.createTab(initialUrl);
@@ -674,6 +696,17 @@ app.whenReady().then(async () => {
   deviceStore = new DeviceStore(getProfileDataDir(activeProfileId));
   contentCategoryStore = new ContentCategoryStore();
   registerContentCategoryHandlers({ store: contentCategoryStore });
+  // Issue #222 — actually enforce the persisted content-category policies.
+  // Install the image-blocking webRequest handler on the default session so
+  // `images: 'block'` cancels <img>/CSS background requests. Popup and
+  // JavaScript enforcement live in TabManager (which we hand a reference
+  // to the enforcer below once TabManager is constructed).
+  contentPolicyEnforcer = new ContentPolicyEnforcer({ store: contentCategoryStore });
+  try {
+    contentPolicyEnforcer.install(session.defaultSession);
+  } catch (err) {
+    mainLogger.error('main.contentPolicyEnforcer.installFailed', { error: (err as Error).message });
+  }
   registerBookmarkHandlers({
     store: bookmarkStore,
     getShellWindow: () => shellWindow,
