@@ -19,6 +19,7 @@ import type { DevicePickerRequest } from '../main/devices/DeviceManager';
 import type { GrantedDevice, DeviceApiType } from '../main/devices/DeviceStore';
 import type { OmniboxSuggestion } from '../main/omnibox/providers';
 import type { TabGroup } from '../main/tabs/TabGroupStore';
+import type { SearchEngine } from '../main/search/SearchEngineStore';
 
 // ---------------------------------------------------------------------------
 // Type re-exports for renderer consumption
@@ -42,6 +43,7 @@ export type {
   DeviceApiType,
   OmniboxSuggestion,
   TabGroup,
+  SearchEngine,
 };
 
 // ---------------------------------------------------------------------------
@@ -806,5 +808,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('tab-groups:updated', handler);
       return () => ipcRenderer.removeListener('tab-groups:updated', handler);
     },
+  },
+
+  // Search engines — issue #21
+  searchEngines: {
+    list: (): Promise<SearchEngine[]> =>
+      ipcRenderer.invoke('search-engines:list'),
+
+    getDefault: (): Promise<SearchEngine> =>
+      ipcRenderer.invoke('search-engines:get-default'),
+
+    setDefault: (id: string): Promise<void> =>
+      ipcRenderer.invoke('search-engines:set-default', id),
+
+    addCustom: (p: { name: string; keyword: string; searchUrl: string }): Promise<SearchEngine> =>
+      ipcRenderer.invoke('search-engines:add-custom', p),
+
+    updateCustom: (
+      id: string,
+      p: Partial<{ name: string; keyword: string; searchUrl: string }>,
+    ): Promise<boolean> =>
+      ipcRenderer.invoke('search-engines:update-custom', { id, ...p }),
+
+    removeCustom: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('search-engines:remove-custom', id),
   },
 });

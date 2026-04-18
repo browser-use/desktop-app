@@ -45,6 +45,9 @@ import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDial
 // Wave1 P3 — Bookmarks
 import { BookmarkStore } from './bookmarks/BookmarkStore';
 import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
+// Issue #21 — Search Engines
+import { SearchEngineStore } from './search/SearchEngineStore';
+import { registerSearchEngineHandlers, unregisterSearchEngineHandlers } from './search/ipc';
 // Password Manager
 import { PasswordStore } from './passwords/PasswordStore';
 import { registerPasswordHandlers, unregisterPasswordHandlers } from './passwords/ipc';
@@ -177,6 +180,7 @@ let incognitoPartitionName: string | null = null;
 const secondaryGuestWindows = new Set<BrowserWindow>();
 
 let bookmarkStore: BookmarkStore | null = null;
+let searchEngineStore: SearchEngineStore | null = null;
 let passwordStore: PasswordStore | null = null;
 let autofillStore: AutofillStore | null = null;
 let profileStore: ProfileStore | null = null;
@@ -224,6 +228,11 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     tabManager.setUrlMatchFn((candidate: string) => {
       return store.isUrlBookmarked(candidate) ? candidate : null;
     });
+  }
+
+  // Wire the default search engine URL template into navigation.
+  if (searchEngineStore) {
+    tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
   }
   if (historyStore) {
     tabManager.setHistoryStore(historyStore);
@@ -379,6 +388,10 @@ function openGuestShell(): BrowserWindow {
   downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
 
+  if (searchEngineStore) {
+    tabManager.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
+  }
+
   tabManager.restoreSession();
 
   tabManager.setOnClosedTabsChanged(() => {
@@ -457,6 +470,7 @@ function openNewWindow(initialUrl?: string): BrowserWindow {
   // Secondary windows do not share the global tab-group store — each window
   // manages its own tab set and restores its own session IDs, so mixing them
   // into a shared store would silently mis-assign tab memberships.
+  if (searchEngineStore) tm.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
 
   if (historyStore) tm.setHistoryStore(historyStore);
   if (bookmarkStore) {
@@ -504,6 +518,7 @@ function openIncognitoWindow(initialUrl?: string): BrowserWindow {
   const win = createShellWindow({ titleSuffix: ' (Incognito)', incognito: true });
   const tm = new TabManager(win, { guest: true, partition });
   // Incognito windows do not share the persistent group store — privacy isolation.
+  if (searchEngineStore) tm.setSearchUrlTemplate(searchEngineStore.getDefault().searchUrl);
   if (initialUrl) {
     tm.createTab(initialUrl);
   } else {
@@ -528,6 +543,7 @@ function openIncognitoWindow(initialUrl?: string): BrowserWindow {
   const incogWinId = win.id;
   win.on('closed', () => {
     windowDefaultTitles.delete(incogWinId);
+    tm.destroy();
     incognitoWindows.delete(win);
     mainLogger.info('main.incognitoWindow.closed', {
       remaining: incognitoWindows.size,
@@ -599,6 +615,18 @@ function openGuestWindow(partition: string, initialUrl?: string): BrowserWindow 
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   mainLogger.info('main.appReady');
+
+  // Issue #21 — Search Engines: init store + register IPC before the shell loads.
+  searchEngineStore = new SearchEngineStore();
+  registerSearchEngineHandlers({
+    store: searchEngineStore,
+    onDefaultChanged: (searchUrl) => {
+      // Broadcast to ALL active TabManager instances (primary + extra windows + incognito).
+      for (const tm of TabManager.getAllInstances()) {
+        tm.setSearchUrlTemplate(searchUrl);
+      }
+    },
+  });
 
   // Wave1 P3 — Bookmarks: init store + register IPC before the shell loads.
   // NOTE: BookmarkStore/PasswordStore/HistoryStore currently key off
@@ -880,6 +908,7 @@ app.whenReady().then(async () => {
       tabManager?.flushZoom();
       bookmarkStore?.flushSync();
       historyStore?.flushSync();
+      searchEngineStore?.flushSync();
       shortcutsStore?.flushSync();
       permissionStore?.flushSync();
       deviceStore?.flushSync();
@@ -903,6 +932,7 @@ app.whenReady().then(async () => {
     unregisterBookmarkHandlers();
     unregisterHistoryHandlers();
     shortcutsStore?.flushSync();
+    unregisterSearchEngineHandlers();
     unregisterOmniboxHandlers();
     unregisterChromeHandlers();
     unregisterProfileHandlers();

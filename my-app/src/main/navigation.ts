@@ -27,6 +27,13 @@ const HAS_WHITESPACE_RE = /\s/;
 
 const GOOGLE_SEARCH_BASE = 'https://www.google.com/search?q=';
 
+const buildSearch = (query: string, searchUrl?: string): string => {
+  if (searchUrl && searchUrl.includes('%s')) {
+    return searchUrl.replace('%s', encodeURIComponent(query));
+  }
+  return GOOGLE_SEARCH_BASE + encodeURIComponent(query);
+};
+
 // ---------------------------------------------------------------------------
 // Keyword search engines (Tab-to-search / keyword mode).
 // Maps keyword → %s URL template. Populated from SearchEngineStore at runtime;
@@ -67,9 +74,9 @@ export type UrlMatchFn = (url: string) => string | null;
 // Core heuristic
 // ---------------------------------------------------------------------------
 
-export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn): string {
+export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn, searchUrl?: string): string {
   const trimmed = input.trim();
-  if (!trimmed) return GOOGLE_SEARCH_BASE;
+  if (!trimmed) return searchUrl ? searchUrl.replace('%s', '') : GOOGLE_SEARCH_BASE;
 
   // 1. Explicit scheme → always navigate
   if (EXPLICIT_URL_RE.test(trimmed)) {
@@ -108,7 +115,7 @@ export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn
   // 3. Whitespace anywhere → search (URLs never contain unencoded spaces)
   if (HAS_WHITESPACE_RE.test(trimmed)) {
     mainLogger.info('navigation.parse.searchWithSpaces', { input: trimmed });
-    return GOOGLE_SEARCH_BASE + encodeURIComponent(trimmed);
+    return buildSearch(trimmed, searchUrl);
   }
 
   // 4. localhost / IP / IPv6
@@ -143,7 +150,7 @@ export function parseNavigationInput(input: string, findMatchingUrl?: UrlMatchFn
 
   // 8. Single word, no dots → search
   mainLogger.info('navigation.parse.search', { input: trimmed });
-  return GOOGLE_SEARCH_BASE + encodeURIComponent(trimmed);
+  return buildSearch(trimmed, searchUrl);
 }
 
 // ---------------------------------------------------------------------------
