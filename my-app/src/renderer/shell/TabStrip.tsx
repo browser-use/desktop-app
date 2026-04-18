@@ -493,7 +493,6 @@ export function TabStrip({
         onActivate(targetTab.id);
         const el = tabRefs.current.get(targetIndex);
         el?.focus();
-        console.log('[TabStrip] Arrow key navigation to index:', targetIndex, 'tab:', targetTab.title);
       }
     },
     [tabs, groups, onActivate, onClose],
