@@ -26,7 +26,10 @@ vi.mock('electron', () => {
     webContents: {
       send: vi.fn(),
       once: vi.fn(),
+      on: vi.fn(),
       openDevTools: vi.fn(),
+      setZoomFactor: vi.fn(),
+      setVisualZoomLevelLimits: vi.fn(),
     },
     on: vi.fn(),
     once: vi.fn(),
@@ -125,7 +128,7 @@ describe('PillWindowManager', () => {
     expect(BrowserWindow).toHaveBeenCalledWith(
       expect.objectContaining({
         width: 480,
-        height: 56,
+        height: 62,
         transparent: false,
         frame: false,
         alwaysOnTop: true,
