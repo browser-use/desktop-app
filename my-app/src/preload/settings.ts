@@ -232,6 +232,12 @@ export interface SettingsAPI {
   /** Set whether Global Privacy Control header is enabled */
   setGpcEnabled: (enabled: boolean) => Promise<void>;
 
+  /** Get sync preferences */
+  getSyncPrefs: () => Promise<object>;
+
+  /** Set (patch) sync preferences */
+  setSyncPrefs: (patch: object) => Promise<boolean>;
+
   /** Get all global content category defaults */
   getContentCategoryDefaults: () => Promise<Record<ContentCategory, CategoryState>>;
 
@@ -571,6 +577,16 @@ const api: SettingsAPI = {
   deleteAllAutofill: async (): Promise<void> => {
     console.debug('[settings-preload] deleteAllAutofill');
     await ipcRenderer.invoke('autofill:delete-all');
+  },
+
+  getSyncPrefs: (): Promise<object> => {
+    console.debug('[settings-preload] getSyncPrefs');
+    return ipcRenderer.invoke('settings:get-sync-prefs') as Promise<object>;
+  },
+
+  setSyncPrefs: (patch: object): Promise<boolean> => {
+    console.debug('[settings-preload] setSyncPrefs');
+    return ipcRenderer.invoke('settings:set-sync-prefs', patch) as Promise<boolean>;
   },
 
 };

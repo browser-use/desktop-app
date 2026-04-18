@@ -93,6 +93,8 @@ const CH_GET_DNT_ENABLED     = 'settings:get-dnt-enabled';
 const CH_SET_DNT_ENABLED     = 'settings:set-dnt-enabled';
 const CH_GET_GPC_ENABLED     = 'settings:get-gpc-enabled';
 const CH_SET_GPC_ENABLED     = 'settings:set-gpc-enabled';
+const CH_GET_SYNC_PREFS      = 'settings:get-sync-prefs';
+const CH_SET_SYNC_PREFS      = 'settings:set-sync-prefs';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -133,6 +135,19 @@ interface Preferences {
   theme?: string;
   fontSize?: number;
   defaultPageZoom?: number;
+  syncPrefs?: {
+    enabled: boolean;
+    syncEverything: boolean;
+    bookmarks: boolean;
+    readingList: boolean;
+    passwords: boolean;
+    addresses: boolean;
+    payments: boolean;
+    historyAndTabs: boolean;
+    savedTabGroups: boolean;
+    extensions: boolean;
+    settings: boolean;
+  };
   [key: string]: unknown;
 }
 
@@ -671,6 +686,31 @@ export function refreshPrivacyHeaders(): void {
   mainLogger.info('privacy.refreshHeaders.installed');
 }
 
+function handleGetSyncPrefs() {
+  const prefs = readPrefs();
+  return prefs.syncPrefs ?? {
+    enabled: false,
+    syncEverything: true,
+    bookmarks: true,
+    readingList: true,
+    passwords: true,
+    addresses: true,
+    payments: true,
+    historyAndTabs: true,
+    savedTabGroups: true,
+    extensions: true,
+    settings: true,
+  };
+}
+
+function handleSetSyncPrefs(_e: Electron.IpcMainInvokeEvent, patch: unknown): boolean {
+  if (typeof patch !== 'object' || patch === null) return false;
+  const prefs = readPrefs();
+  const current = prefs.syncPrefs ?? {};
+  mergePrefs({ syncPrefs: { ...current, ...(patch as object) } } as Partial<Preferences>);
+  return true;
+}
+
 function handleCloseWindow(): void {
   mainLogger.info(CH_CLOSE_WINDOW);
   const win = getSettingsWindow();
@@ -719,6 +759,8 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_SET_DNT_ENABLED,    handleSetDntEnabled);
   ipcMain.handle(CH_GET_GPC_ENABLED,    handleGetGpcEnabled);
   ipcMain.handle(CH_SET_GPC_ENABLED,    handleSetGpcEnabled);
+  ipcMain.handle(CH_GET_SYNC_PREFS,     handleGetSyncPrefs);
+  ipcMain.handle(CH_SET_SYNC_PREFS,     handleSetSyncPrefs);
 
   refreshPrivacyHeaders();
 
@@ -753,6 +795,8 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_SET_DNT_ENABLED);
   ipcMain.removeHandler(CH_GET_GPC_ENABLED);
   ipcMain.removeHandler(CH_SET_GPC_ENABLED);
+  ipcMain.removeHandler(CH_GET_SYNC_PREFS);
+  ipcMain.removeHandler(CH_SET_SYNC_PREFS);
 
   _accountStore  = null;
   _keychainStore = null;

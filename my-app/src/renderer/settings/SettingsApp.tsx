@@ -30,6 +30,7 @@ const TAB_APPEARANCE   = 'appearance'       as const;
 const TAB_SCOPES       = 'scopes'           as const;
 const TAB_DANGER       = 'danger'           as const;
 const TAB_PROFILES     = 'profiles'         as const;
+const TAB_SYNC         = 'sync'             as const;
 const TAB_PRIVACY      = 'privacy'          as const;
 const TAB_PASSWORDS    = 'passwords'        as const;
 const TAB_ZOOM         = 'site-zoom'        as const;
@@ -45,6 +46,7 @@ type TabId =
   | typeof TAB_SCOPES
   | typeof TAB_PASSWORDS
   | typeof TAB_PROFILES
+  | typeof TAB_SYNC
   | typeof TAB_PRIVACY
   | typeof TAB_ZOOM
   | typeof TAB_CONTENT
@@ -60,6 +62,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: TAB_SCOPES,     label: 'Google Scopes' },
   { id: TAB_PASSWORDS,  label: 'Passwords' },
   { id: TAB_PROFILES,   label: 'Profiles' },
+  { id: TAB_SYNC,       label: 'Sync' },
   { id: TAB_PRIVACY,    label: 'Privacy and security' },
   { id: TAB_ZOOM,       label: 'Site Zoom' },
   { id: TAB_CONTENT,    label: 'Content' },
@@ -194,9 +197,35 @@ declare global {
       }>;
       applyAutoRevokePermissions: (revocations: Array<{ origin: string; permissionType: string }>) => Promise<number>;
       optOutAutoRevoke: (origin: string, permissionType: string) => Promise<void>;
+      getSyncPrefs: () => Promise<SyncPrefs>;
+      setSyncPrefs: (patch: object) => Promise<boolean>;
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sync types and defaults
+// ---------------------------------------------------------------------------
+
+interface SyncPrefs {
+  enabled: boolean;
+  syncEverything: boolean;
+  bookmarks: boolean;
+  readingList: boolean;
+  passwords: boolean;
+  addresses: boolean;
+  payments: boolean;
+  historyAndTabs: boolean;
+  savedTabGroups: boolean;
+  extensions: boolean;
+  settings: boolean;
+}
+
+const DEFAULT_SYNC_PREFS: SyncPrefs = {
+  enabled: false, syncEverything: true, bookmarks: true, readingList: true,
+  passwords: true, addresses: true, payments: true, historyAndTabs: true,
+  savedTabGroups: true, extensions: true, settings: true,
+};
 
 // ---------------------------------------------------------------------------
 // Eye icon (show/hide password)
@@ -2639,6 +2668,7 @@ function SettingsInner(): React.ReactElement {
     [TAB_SCOPES]:     <GoogleScopesTab />,
     [TAB_PASSWORDS]:  <PasswordsTab />,
     [TAB_PROFILES]:   <ProfilesTab />,
+    [TAB_SYNC]:       <SyncTab />,
     [TAB_PRIVACY]:    <PrivacyTab openDialog={clearDataOpen} onDialogChange={setClearDataOpen} />,
     [TAB_ZOOM]:       <SiteZoomTab />,
     [TAB_PERMISSIONS]: <PermissionsTab />,
@@ -2710,6 +2740,119 @@ function SettingsInner(): React.ReactElement {
           {content[activeTab]}
         </main>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sync tab
+// ---------------------------------------------------------------------------
+
+function SyncTab(): React.ReactElement {
+  const [syncPrefs, setSyncPrefsState] = useState<SyncPrefs>(DEFAULT_SYNC_PREFS);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void window.settingsAPI.getSyncPrefs().then((p: SyncPrefs) => setSyncPrefsState(p));
+  }, []);
+
+  const toggle = useCallback(async (key: keyof SyncPrefs) => {
+    const next = { ...syncPrefs, [key]: !syncPrefs[key] };
+    // If toggling syncEverything ON, also enable all categories
+    if (key === 'syncEverything' && next.syncEverything) {
+      Object.keys(DEFAULT_SYNC_PREFS).forEach((k) => {
+        if (k !== 'enabled' && k !== 'syncEverything') {
+          (next as Record<string, boolean>)[k] = true;
+        }
+      });
+    }
+    setSyncPrefsState(next);
+    setSaving(true);
+    await window.settingsAPI.setSyncPrefs(next);
+    setSaving(false);
+  }, [syncPrefs]);
+
+  const categories: Array<{ key: keyof SyncPrefs; label: string; description: string }> = [
+    { key: 'bookmarks',      label: 'Bookmarks',             description: 'Sync bookmarks across devices' },
+    { key: 'readingList',    label: 'Reading list',          description: 'Sync reading list items' },
+    { key: 'passwords',      label: 'Passwords and passkeys', description: 'Sync saved passwords' },
+    { key: 'addresses',      label: 'Addresses and more',    description: 'Sync autofill data' },
+    { key: 'payments',       label: 'Payment methods',       description: 'Sync payment methods' },
+    { key: 'historyAndTabs', label: 'History and tabs',      description: 'Sync browsing history and open tabs' },
+    { key: 'savedTabGroups', label: 'Saved tab groups',      description: 'Sync saved tab groups' },
+    { key: 'extensions',     label: 'Extensions and apps',   description: 'Sync installed extensions' },
+    { key: 'settings',       label: 'Settings and theme',    description: 'Sync browser preferences' },
+  ];
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Sync</h2>
+      <p className="settings-section-desc">
+        Keep your data up-to-date across all your devices.
+        {saving && <span style={{ marginLeft: 8, color: 'var(--color-text-secondary, #666)', fontSize: 12 }}>Saving…</span>}
+      </p>
+
+      {/* Master enable toggle */}
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+          <div>
+            <div style={{ fontWeight: 500 }}>Sync is {syncPrefs.enabled ? 'on' : 'off'}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>
+              {syncPrefs.enabled ? 'Your data is being synced.' : 'Turn on sync to keep your data up-to-date.'}
+            </div>
+          </div>
+          <button
+            className={`settings-sync-toggle ${syncPrefs.enabled ? 'settings-sync-toggle--on' : ''}`}
+            role="switch"
+            aria-checked={syncPrefs.enabled}
+            onClick={() => void toggle('enabled')}
+          />
+        </div>
+      </Card>
+
+      {syncPrefs.enabled && (
+        <>
+          {/* Sync everything toggle */}
+          <Card style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+              <div>
+                <div style={{ fontWeight: 500 }}>Sync everything</div>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>
+                  Automatically sync all data types
+                </div>
+              </div>
+              <button
+                className={`settings-sync-toggle ${syncPrefs.syncEverything ? 'settings-sync-toggle--on' : ''}`}
+                role="switch"
+                aria-checked={syncPrefs.syncEverything}
+                onClick={() => void toggle('syncEverything')}
+              />
+            </div>
+          </Card>
+
+          {/* Individual category toggles */}
+          {!syncPrefs.syncEverything && (
+            <Card style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {categories.map(({ key, label, description }) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary, #666)', marginTop: 2 }}>{description}</div>
+                    </div>
+                    <button
+                      className={`settings-sync-toggle ${syncPrefs[key] ? 'settings-sync-toggle--on' : ''}`}
+                      role="switch"
+                      aria-checked={Boolean(syncPrefs[key])}
+                      onClick={() => void toggle(key)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }
