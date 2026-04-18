@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "preserve",
+    "module": "commonjs",
     "jsx": "react-jsx",
     "allowJs": true,
     "skipLibCheck": true,
@@ -10,7 +10,7 @@
     "sourceMap": true,
     "baseUrl": ".",
     "outDir": "dist",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "resolveJsonModule": true,
     "types": ["node"]
   },
