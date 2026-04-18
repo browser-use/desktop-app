@@ -106,22 +106,22 @@ export function LighthousePanel({ cdpSend, onCdpEvent: _onCdpEvent, isAttached }
     );
     await new Promise((r) => setTimeout(r, 150));
     const lcpJson = (await evalExpr(
-      \`JSON.stringify(
+      `JSON.stringify(
         (() => {
           try {
             return window.__lcp_entry__ ? { startTime: window.__lcp_entry__.startTime } : null;
           } catch(e) { return null; }
         })()
-      )\`,
+      )`,
     )) as string;
     const clsJson = (await evalExpr(
-      \`JSON.stringify(
+      `JSON.stringify(
         (() => {
           try {
             return typeof window.__cls_value__ === 'number' ? { value: window.__cls_value__ } : null;
           } catch(e) { return null; }
         })()
-      )\`,
+      )`,
     )) as string;
     const resourceCountJson = (await evalExpr(
       'performance.getEntriesByType("resource").length',
