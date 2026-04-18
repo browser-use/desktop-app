@@ -18,6 +18,10 @@ import { mainLogger } from '../logger';
 import type { AccountStore } from './AccountStore';
 import { getSyncEnabled } from './AccountStore';
 import type { KeychainStore } from './KeychainStore';
+import type { BookmarkStore } from '../bookmarks/BookmarkStore';
+import type { HistoryStore } from '../history/HistoryStore';
+import type { PasswordStore } from '../passwords/PasswordStore';
+import type { AutofillStore } from '../autofill/AutofillStore';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -53,19 +57,12 @@ export interface SignOutResult {
   errors: string[];
 }
 
-/**
- * App-local stores that hold copies of data the user might consider "synced".
- * When the user picks "Clear data" at sign-out we wipe these in addition to
- * the Electron session storage / cache / auth caches — otherwise the user's
- * bookmarks, history, passwords and autofill entries stay on disk and the
- * dialog copy ("Remove local copies of synced data") lies to them.
- * Tracked as #216.
- */
-export interface AppLocalStores {
-  bookmarkStore?: { deleteAll(): void };
-  historyStore?: { clearAll(): void };
-  passwordStore?: { deleteAllPasswords(): void };
-  autofillStore?: { deleteAll(): void };
+/** On-disk local stores that hold sensitive user data to be wiped on 'clear' sign-out. */
+export interface LocalDataStores {
+  bookmarkStore?: BookmarkStore | null;
+  historyStore?: HistoryStore | null;
+  passwordStore?: PasswordStore | null;
+  autofillStore?: AutofillStore | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,11 +73,11 @@ export async function performSignOut(
   mode: SignOutMode,
   accountStore: AccountStore,
   keychainStore: KeychainStore,
-  stores?: AppLocalStores,
+  localStores?: LocalDataStores,
 ): Promise<SignOutResult> {
   mainLogger.info('SignOutController.performSignOut.start', {
     mode,
-    hasStores: !!stores,
+    hasStores: !!localStores,
   });
 
   const result: SignOutResult = {
@@ -106,9 +103,7 @@ export async function performSignOut(
   //    Each app-local wipe is independent: one failure must not prevent the
   //    others from running, and must not block the sign-out itself. See #216.
   if (mode === 'clear') {
-    const sessionCleared = await clearSyncedData();
-    const localCleared = clearLocalStores(stores, result.errors);
-    result.dataCleared = sessionCleared && localCleared;
+    result.dataCleared = await clearSyncedData(localStores);
   } else {
     mainLogger.info('SignOutController.performSignOut.keepLocalData', {
       msg: 'Retaining local copies of synced data per user choice',
@@ -245,54 +240,7 @@ async function revokeTokens(
   return revoked;
 }
 
-/**
- * Wipe app-local copies of synced data (bookmarks, history, saved
- * passwords, autofill). Returns true iff every provided store was cleared
- * without throwing. Missing stores are silently skipped so the controller
- * stays usable from backward-compatible call sites and unit tests.
- *
- * Implementation fixes Issue #216: before this, signing out with
- * "Clear data" only wiped Electron session caches, leaving bookmarks.json /
- * history.json / passwords.json / autofill.json on disk.
- */
-function clearLocalStores(stores: AppLocalStores | undefined, errors: string[]): boolean {
-  if (!stores) {
-    mainLogger.info('SignOutController.clearLocalStores.skipped', {
-      msg: 'No app-local stores provided',
-    });
-    return true;
-  }
-
-  let allOk = true;
-
-  const attempts: Array<[keyof AppLocalStores, string, () => void]> = [
-    ['bookmarkStore',  'bookmarks',  () => stores.bookmarkStore?.deleteAll()],
-    ['historyStore',   'history',    () => stores.historyStore?.clearAll()],
-    ['passwordStore',  'passwords',  () => stores.passwordStore?.deleteAllPasswords()],
-    ['autofillStore',  'autofill',   () => stores.autofillStore?.deleteAll()],
-  ];
-
-  for (const [key, label, fn] of attempts) {
-    if (!stores[key]) continue;
-    try {
-      fn();
-      mainLogger.info('SignOutController.clearLocalStores.ok', { store: label });
-    } catch (err) {
-      allOk = false;
-      const msg = `${label}: ${(err as Error).message}`;
-      errors.push(msg);
-      mainLogger.error('SignOutController.clearLocalStores.failed', {
-        store: label,
-        error: (err as Error).message,
-      });
-    }
-  }
-
-  mainLogger.info('SignOutController.clearLocalStores.complete', { allOk });
-  return allOk;
-}
-
-async function clearSyncedData(): Promise<boolean> {
+async function clearSyncedData(localStores?: LocalDataStores): Promise<boolean> {
   mainLogger.info('SignOutController.clearSyncedData.start');
 
   try {
@@ -315,6 +263,62 @@ async function clearSyncedData(): Promise<boolean> {
     // Clear auth cache (saved HTTP auth credentials)
     await session.defaultSession.clearAuthCache();
     mainLogger.info('SignOutController.clearSyncedData.authCacheCleared');
+
+    // Clear app-local on-disk stores (bookmarks, history, passwords, autofill)
+    if (localStores?.bookmarkStore) {
+      try {
+        const bs = localStores.bookmarkStore;
+        // Reset to empty state by clearing each root's children
+        const tree = bs.listTree();
+        for (const root of tree.roots) {
+          for (const child of root.children ?? []) {
+            bs.removeBookmark(child.id);
+          }
+        }
+        bs.flushSync();
+        mainLogger.info('SignOutController.clearSyncedData.bookmarksCleared');
+      } catch (err) {
+        mainLogger.warn('SignOutController.clearSyncedData.bookmarksClearFailed', {
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    if (localStores?.historyStore) {
+      try {
+        localStores.historyStore.clearAll();
+        localStores.historyStore.flushSync();
+        mainLogger.info('SignOutController.clearSyncedData.appHistoryCleared');
+      } catch (err) {
+        mainLogger.warn('SignOutController.clearSyncedData.appHistoryClearFailed', {
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    if (localStores?.passwordStore) {
+      try {
+        localStores.passwordStore.deleteAllPasswords();
+        localStores.passwordStore.flushSync();
+        mainLogger.info('SignOutController.clearSyncedData.passwordsCleared');
+      } catch (err) {
+        mainLogger.warn('SignOutController.clearSyncedData.passwordsClearFailed', {
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    if (localStores?.autofillStore) {
+      try {
+        localStores.autofillStore.deleteAll();
+        localStores.autofillStore.flushSync();
+        mainLogger.info('SignOutController.clearSyncedData.autofillCleared');
+      } catch (err) {
+        mainLogger.warn('SignOutController.clearSyncedData.autofillClearFailed', {
+          error: (err as Error).message,
+        });
+      }
+    }
 
     mainLogger.info('SignOutController.clearSyncedData.complete');
     return true;

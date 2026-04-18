@@ -33,7 +33,7 @@ import { registerProtocol, initOAuthHandler } from './oauth';
 import { createOnboardingWindow } from './identity/onboardingWindow';
 import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './identity/onboardingHandlers';
 import { performSignOut, turnOffSync } from './identity/SignOutController';
-import type { SignOutMode } from './identity/SignOutController';
+import type { SignOutMode, LocalDataStores } from './identity/SignOutController';
 import { mainLogger } from './logger';
 import {
   resolveUserDataDir,
@@ -2242,15 +2242,13 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
 
 ipcMain.handle('identity:sign-out', async (_event, mode: SignOutMode) => {
   mainLogger.info('main.identity:sign-out', { mode });
-  // Issue #216 — pass app-local stores so "Clear data" actually wipes
-  // bookmarks.json / history.json / passwords.json / autofill.json instead
-  // of only the Electron session caches.
-  return performSignOut(mode, accountStore, keychainStore, {
-    bookmarkStore: bookmarkStore ?? undefined,
-    historyStore:  historyStore  ?? undefined,
-    passwordStore: passwordStore ?? undefined,
-    autofillStore: autofillStore ?? undefined,
-  });
+  const stores: LocalDataStores = {
+    bookmarkStore,
+    historyStore,
+    passwordStore,
+    autofillStore,
+  };
+  return performSignOut(mode, accountStore, keychainStore, stores);
 });
 
 ipcMain.handle('identity:turn-off-sync', async () => {
