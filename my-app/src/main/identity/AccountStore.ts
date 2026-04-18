@@ -33,6 +33,13 @@ export interface AccountData {
   created_at?: string;
   /** ISO 8601 — set when the user completes onboarding */
   onboarding_completed_at?: string;
+  /**
+   * Full Google OAuth scope URIs the user has granted
+   * (e.g. "https://www.googleapis.com/auth/gmail.readonly"). Empty if the
+   * user has never completed a Google OAuth flow. Persisted so the Settings
+   * → Google Scopes UI can accurately reflect grant state across restarts.
+   */
+  oauth_scopes?: string[];
 }
 
 // ---------------------------------------------------------------------------

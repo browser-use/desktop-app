@@ -56,15 +56,27 @@ const ALLOWED_PAGE_ZOOM_PERCENTS = [
   75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500,
 ] as const;
 
+/**
+ * Google services shown in Settings → Google Scopes.
+ *
+ * `scope` is the full OAuth scope URI — the same string emitted by the
+ * onboarding GoogleScopesModal and persisted to AccountStore.oauth_scopes.
+ * `email` and `profile` are always requested as base scopes by OAuthClient
+ * (see BASE_SCOPES), so they are surfaced here with their canonical URIs too.
+ *
+ * Issue #221: previously used short ids ("gmail", "calendar", ...) which did
+ * not match what onboarding stored, so granted services always rendered as
+ * "Not granted".
+ */
 const GOOGLE_SCOPE_LIST = [
-  { scope: 'email',    label: 'Email address' },
-  { scope: 'profile',  label: 'Public profile' },
-  { scope: 'calendar', label: 'Google Calendar' },
-  { scope: 'drive',    label: 'Google Drive' },
-  { scope: 'gmail',    label: 'Gmail' },
+  { scope: 'email',                                              label: 'Email address' },
+  { scope: 'profile',                                            label: 'Public profile' },
+  { scope: 'https://www.googleapis.com/auth/calendar',           label: 'Google Calendar' },
+  { scope: 'https://www.googleapis.com/auth/drive',              label: 'Google Drive' },
+  { scope: 'https://www.googleapis.com/auth/gmail.readonly',     label: 'Gmail' },
+  { scope: 'https://www.googleapis.com/auth/spreadsheets',       label: 'Google Sheets' },
+  { scope: 'https://www.googleapis.com/auth/documents',          label: 'Google Docs' },
 ] as const;
-
-type ScopeName = typeof GOOGLE_SCOPE_LIST[number]['scope'];
 
 // IPC channels
 const CH_SAVE_API_KEY      = 'settings:save-api-key';
@@ -424,7 +436,9 @@ function handleSetDefaultPageZoom(_event: Electron.IpcMainInvokeEvent, percent: 
 function handleGetOAuthScopes(): Array<{ scope: string; label: string; granted: boolean }> {
   mainLogger.info(CH_GET_OAUTH_SCOPES);
   const account = _accountStore?.load();
-  const grantedScopes: string[] = (account as unknown as { oauth_scopes?: string[] })?.oauth_scopes ?? [];
+  // AccountData.oauth_scopes contains the full OAuth scope URIs persisted at
+  // onboarding completion (issue #221). Treat a missing list as "none granted".
+  const grantedScopes: string[] = account?.oauth_scopes ?? [];
 
   const result = GOOGLE_SCOPE_LIST.map(({ scope, label }) => ({
     scope,
@@ -439,12 +453,25 @@ function handleGetOAuthScopes(): Array<{ scope: string; label: string; granted: 
   return result;
 }
 
-function handleReConsentScope(_event: Electron.IpcMainInvokeEvent, scope: string): void {
-  // Stub: OAuth re-consent is a full flow; log intent and return OK.
-  mainLogger.info(CH_RE_CONSENT_SCOPE, {
+/**
+ * Settings → Google Scopes re-consent.
+ *
+ * Issue #201: this handler used to log "full OAuth flow not yet implemented"
+ * and silently return OK, so the renderer happily showed a success toast
+ * despite nothing actually running. Until re-consent from Settings is wired
+ * to a real OAuth flow (which requires routing the protocol callback back to
+ * the settings window and merging new scopes into the existing grant set),
+ * the honest behaviour is to throw so the renderer shows an error instead
+ * of a false-success toast.
+ */
+function handleReConsentScope(_event: Electron.IpcMainInvokeEvent, scope: string): Promise<never> {
+  mainLogger.warn(`${CH_RE_CONSENT_SCOPE}.notImplemented`, {
     scope,
-    msg: 'Re-consent requested — full OAuth flow not yet implemented; returning stub OK',
+    msg: 'Re-consent from Settings is not yet wired to an OAuth flow',
   });
+  return Promise.reject(
+    new Error('Re-consent from Settings is not yet available. Sign out and sign back in to change Google scopes.'),
+  );
 }
 
 async function handleFactoryReset(): Promise<void> {

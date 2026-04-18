@@ -61,6 +61,7 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       email: existing?.email ?? '',
       created_at: existing?.created_at,
       onboarding_completed_at: existing?.onboarding_completed_at,
+      oauth_scopes: existing?.oauth_scopes,
     });
 
     mainLogger.debug('onboardingHandlers.setAgentName.ok', {
@@ -113,18 +114,22 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       scopeCount: payload.oauth_scopes.length,
     });
 
-    // Persist completed state with timestamp
+    // Persist completed state with timestamp. Store the full OAuth scope URIs
+    // (issue #221) so Settings → Google Scopes can reflect grants accurately
+    // across restarts.
     const existing = accountStore.load();
     accountStore.save({
       agent_name: payload.agent_name,
       email: payload.account.email,
       created_at: existing?.created_at,
       onboarding_completed_at: new Date().toISOString(),
+      oauth_scopes: payload.oauth_scopes,
     });
 
     mainLogger.info('onboardingHandlers.complete.accountSaved', {
       agentName: payload.agent_name,
       email: payload.account.email,
+      scopeCount: payload.oauth_scopes.length,
     });
 
     // Small delay to let the completion animation play

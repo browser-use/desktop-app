@@ -23,6 +23,12 @@ import type { GoogleOAuthScope, AccountInfo } from '../shared/types';
 export interface OAuthCallbackPayload {
   success: boolean;
   account?: AccountInfo;
+  /**
+   * Full Google OAuth scope URIs that Google confirmed during token exchange.
+   * Present when success is true; absent on error. Forwarded so the renderer
+   * can persist the exact scopes granted (issue #221).
+   */
+  scopes?: GoogleOAuthScope[];
   error?: string;
 }
 

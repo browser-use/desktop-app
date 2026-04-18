@@ -20,6 +20,7 @@ import { mainLogger } from './logger';
 import { OAuthClient, PROTOCOL_SCHEME } from './identity/OAuthClient';
 import { KeychainStore } from './identity/KeychainStore';
 import { AccountStore } from './identity/AccountStore';
+import type { GoogleOAuthScope } from '../shared/types';
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -193,6 +194,7 @@ async function handleCallbackUrl(url: string): Promise<void> {
         email: tokens.email,
         display_name: tokens.display_name,
       },
+      scopes: tokens.scopes,
     });
   } catch (err) {
     const message = (err as Error).message;
@@ -211,6 +213,7 @@ async function handleCallbackUrl(url: string): Promise<void> {
 function sendCallbackResult(result: {
   success: boolean;
   account?: { email: string; display_name?: string };
+  scopes?: GoogleOAuthScope[];
   error?: string;
 }): void {
   if (!onboardingWindow || onboardingWindow.isDestroyed()) {

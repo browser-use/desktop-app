@@ -684,11 +684,9 @@ function AppearanceTab(): React.ReactElement {
 // Google Scopes tab
 // ---------------------------------------------------------------------------
 
-function GoogleScopesTab(): React.ReactElement {
-  const toast = useToast();
-  const [scopes, setScopes]         = useState<OAuthScopeStatus[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [reconsentId, setReconsentId] = useState<string | null>(null);
+export function GoogleScopesTab(): React.ReactElement {
+  const [scopes, setScopes]   = useState<OAuthScopeStatus[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     void window.settingsAPI.getOAuthScopes().then((s) => {
@@ -696,26 +694,6 @@ function GoogleScopesTab(): React.ReactElement {
       setLoading(false);
     });
   }, []);
-
-  async function handleReconsent(scope: string): Promise<void> {
-    setReconsentId(scope);
-    try {
-      await window.settingsAPI.reConsentScope(scope);
-      toast.show({
-        variant: 'info',
-        title: 'Re-consent initiated',
-        message: `Scope: ${scope}`,
-      });
-    } catch (err) {
-      toast.show({
-        variant: 'error',
-        title: 'Re-consent failed',
-        message: (err as Error).message,
-      });
-    } finally {
-      setReconsentId(null);
-    }
-  }
 
   if (loading) {
     return (
@@ -728,11 +706,16 @@ function GoogleScopesTab(): React.ReactElement {
     );
   }
 
+  // Re-consent from Settings is not yet wired to a real OAuth flow
+  // (issue #201). Disable the control rather than pretending it worked.
+  const reconsentDisabledReason = 'Re-consent from Settings is not yet available. Sign out and sign back in to change Google scopes.';
+
   return (
     <div className="settings-section">
       <h2 className="settings-section-title">Google Scopes</h2>
       <p className="settings-section-desc">
-        Manage which Google services your agent has access to.
+        View which Google services your agent has access to. To change scopes,
+        sign out and sign back in; in-place re-consent is coming soon.
       </p>
 
       <Card variant="default" padding="none" className="settings-card">
@@ -754,8 +737,9 @@ function GoogleScopesTab(): React.ReactElement {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => void handleReconsent(s.scope)}
-                loading={reconsentId === s.scope}
+                disabled
+                title={reconsentDisabledReason}
+                aria-label={`Re-consent ${s.label} (not yet available)`}
               >
                 Re-consent
               </Button>

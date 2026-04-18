@@ -60,7 +60,14 @@ declare global {
       setAgentName: (name: string) => Promise<void>;
       getAgentName: () => Promise<string | null>;
       startOAuth: (scopes: GoogleOAuthScope[]) => Promise<void>;
-      onOAuthCallback: (cb: (payload: { success: boolean; account?: AccountInfo; error?: string }) => void) => () => void;
+      onOAuthCallback: (
+        cb: (payload: {
+          success: boolean;
+          account?: AccountInfo;
+          scopes?: GoogleOAuthScope[];
+          error?: string;
+        }) => void,
+      ) => () => void;
       completeOnboarding: (payload: {
         agent_name: string;
         account: AccountInfo;
@@ -119,20 +126,26 @@ function OnboardingApp(): React.ReactElement {
       console.debug('[onboarding] oauth-callback received', {
         success: payload.success,
         hasAccount: !!payload.account,
+        scopeCount: payload.scopes?.length ?? 0,
         error: payload.error,
       });
 
       if (payload.success && payload.account) {
+        // Prefer scopes echoed back by the OAuth callback (issue #221 — this
+        // reflects what the server actually granted). Fall back to the scopes
+        // the user picked in the modal if the callback omits them.
+        const grantedScopes = payload.scopes ?? state.oauthScopes;
         setState((prev) => ({
           ...prev,
           account: payload.account!,
+          oauthScopes: grantedScopes,
           oauthError: null,
           step: 'complete',
         }));
         void completeOnboarding(
           state.agentName ?? 'Companion',
           payload.account,
-          state.oauthScopes,
+          grantedScopes,
         );
       } else {
         setState((prev) => ({
@@ -184,17 +197,10 @@ function OnboardingApp(): React.ReactElement {
     setState((prev) => ({ ...prev, step: 'account' }));
   }
 
-  async function handleAccountComplete(
-    account: AccountInfo,
-    scopes: GoogleOAuthScope[],
-  ): Promise<void> {
-    setState((prev) => ({
-      ...prev,
-      account,
-      oauthScopes: scopes,
-      step: 'complete',
-    }));
-    await completeOnboarding(state.agentName ?? 'Companion', account, scopes);
+  function handleOAuthStart(scopes: GoogleOAuthScope[]): void {
+    // Remember what the user asked for so the oauth-callback effect can
+    // persist them (issue #221). Also clear any stale error.
+    setState((prev) => ({ ...prev, oauthScopes: scopes, oauthError: null }));
   }
 
   // -------------------------------------------------------------------------
@@ -211,7 +217,7 @@ function OnboardingApp(): React.ReactElement {
     return (
       <AccountCreation
         onBack={() => setState((prev) => ({ ...prev, step: 'naming', oauthError: null }))}
-        onComplete={(account, scopes) => void handleAccountComplete(account, scopes)}
+        onOAuthStart={handleOAuthStart}
         oauthError={oauthError}
       />
     );

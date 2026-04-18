@@ -35,6 +35,15 @@ export default defineConfig({
       'tests/unit/zoom/**/*.spec.ts',
       'tests/unit/shell/**/*.spec.tsx',
       'tests/unit/share/**/*.spec.ts',
+      // Onboarding + identity + settings regressions for issues #218, #221,
+      // #201. Scoped to the new files rather than a broad glob so we do not
+      // accidentally pick up older jsdom specs that rely on a different
+      // setup file (tests/fixtures/onboarding-setup.ts) and would otherwise
+      // fail without @testing-library cleanup between tests.
+      'tests/unit/onboarding/AccountCreation.spec.tsx',
+      'tests/unit/onboarding/onboardingHandlers.spec.ts',
+      'tests/unit/identity/AccountStore.oauthScopes.spec.ts',
+      'tests/unit/settings/**/*.spec.{ts,tsx}',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file
