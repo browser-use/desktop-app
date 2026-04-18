@@ -13,6 +13,7 @@ import type {
 } from '../main/bookmarks/BookmarkStore';
 import type { PermissionRecord, PermissionType, PermissionState } from '../main/permissions/PermissionStore';
 import type { PermissionPromptRequest } from '../main/permissions/PermissionManager';
+import type { ProtocolHandlerRecord } from '../main/permissions/ProtocolHandlerStore';
 import type { DownloadItemDTO } from '../main/downloads/DownloadManager';
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ export type {
   PermissionType,
   PermissionState,
   PermissionPromptRequest,
+  ProtocolHandlerRecord,
   DownloadItemDTO,
 };
 
@@ -228,6 +230,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     resetAll: (): Promise<void> =>
       ipcRenderer.invoke('permissions:reset-all'),
+  },
+
+  // Protocol handlers — chrome://settings/handlers parity
+  protocolHandlers: {
+    getAll: (): Promise<ProtocolHandlerRecord[]> =>
+      ipcRenderer.invoke('protocol-handlers:get-all'),
+
+    getForProtocol: (protocol: string): Promise<ProtocolHandlerRecord[]> =>
+      ipcRenderer.invoke('protocol-handlers:get-for-protocol', protocol),
+
+    getForOrigin: (origin: string): Promise<ProtocolHandlerRecord[]> =>
+      ipcRenderer.invoke('protocol-handlers:get-for-origin', origin),
+
+    register: (protocol: string, origin: string, url: string): Promise<void> =>
+      ipcRenderer.invoke('protocol-handlers:register', protocol, origin, url),
+
+    unregister: (protocol: string, origin: string): Promise<boolean> =>
+      ipcRenderer.invoke('protocol-handlers:unregister', protocol, origin),
+
+    clearAll: (): Promise<void> =>
+      ipcRenderer.invoke('protocol-handlers:clear-all'),
   },
 
   // Shell-level signals (renderer → main)
