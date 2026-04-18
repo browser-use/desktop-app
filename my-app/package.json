@@ -72,7 +72,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@types/ws": "^8.18.1",
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.4.2",
     "electron-squirrel-startup": "^1.0.1",
     "keytar": "^7.9.0",
     "qrcode": "^1.5.4",
