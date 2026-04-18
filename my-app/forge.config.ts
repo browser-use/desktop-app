@@ -211,10 +211,8 @@ const config: ForgeConfig = {
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
-        // Issue #105: new tab page preload — disabled in CI until
+        // Issue #105: new tab page preload — disabled until
         // src/preload/newtab.ts lands alongside the newtab renderer.
-        // Without this guard electron-forge fails the production build.
-        // Restore once the file exists.
         // {
         //   entry: 'src/preload/newtab.ts',
         //   config: 'vite.preload.config.ts',
@@ -281,9 +279,8 @@ const config: ForgeConfig = {
           name: 'print_preview',
           config: 'vite.printPreview.config.ts',
         },
-        // Issue #105: new tab page renderer — disabled in CI until
-        // vite.newtab.config.ts lands. Without this guard electron-forge
-        // fails the production build. Restore once the file exists.
+        // Issue #105: new tab page renderer — disabled until
+        // vite.newtab.config.ts lands.
         // {
         //   name: 'newtab',
         //   config: 'vite.newtab.config.ts',

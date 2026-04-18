@@ -12,6 +12,7 @@ import {
   app,
   Menu,
   MenuItem,
+  dialog,
 } from 'electron';
 // eslint-disable-next-line import/no-unresolved
 import { v4 as uuidv4 } from 'uuid';
@@ -999,6 +1000,114 @@ export class TabManager {
   }
 
   // Zoom (Chrome-parity Cmd+=, Cmd+-, Cmd+0 on active tab)
+  // ---------------------------------------------------------------------------
+  // Save Page As (Cmd+S — Chrome parity, issue #88)
+  // ---------------------------------------------------------------------------
+
+  async savePageActive(): Promise<void> {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    const wc = view.webContents;
+    const pageUrl = wc.getURL();
+    const pageTitle = wc.getTitle() || 'page';
+    mainLogger.info('TabManager.savePageActive', { tabId: this.activeTabId, url: pageUrl });
+
+    const result = await dialog.showSaveDialog(this.win, {
+      defaultPath: pageTitle.replace(/[/\\?%*:|"<>]/g, '_') + '.html',
+      filters: [
+        { name: 'Web Page, Complete', extensions: ['html'] },
+        { name: 'Web Page, HTML Only', extensions: ['htm'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      mainLogger.debug('TabManager.savePageActive.canceled');
+      return;
+    }
+    const ext = path.extname(result.filePath).toLowerCase();
+    const saveType = ext === '.htm' ? 'HTMLOnly' : 'HTMLComplete';
+    try {
+      await wc.savePage(result.filePath, saveType as any);
+      mainLogger.info('TabManager.savePageActive.ok', { filePath: result.filePath, saveType });
+    } catch (err) {
+      mainLogger.error('TabManager.savePageActive.failed', {
+        filePath: result.filePath,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Use Selection for Find (Cmd+E — Chrome/Safari parity, issue #88)
+  // ---------------------------------------------------------------------------
+
+  async useSelectionForFind(): Promise<void> {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) return;
+    const wc = view.webContents;
+    try {
+      const selection = await wc.executeJavaScript('window.getSelection()?.toString() || ""', true);
+      if (typeof selection === 'string' && selection.length > 0) {
+        mainLogger.info('TabManager.useSelectionForFind', { tabId: this.activeTabId, selectionLen: selection.length });
+        this.lastFindQuery.set(this.activeTabId, selection);
+        this.safeSend('find-open', { lastQuery: selection });
+      } else {
+        mainLogger.debug('TabManager.useSelectionForFind.noSelection', { tabId: this.activeTabId });
+      }
+    } catch (err) {
+      mainLogger.warn('TabManager.useSelectionForFind.failed', {
+        tabId: this.activeTabId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Caret Browsing (F7 — Chrome parity, issue #88)
+  // ---------------------------------------------------------------------------
+
+  private caretBrowsingEnabled = false;
+
+  toggleCaretBrowsing(): void {
+    this.caretBrowsingEnabled = !this.caretBrowsingEnabled;
+    mainLogger.info('TabManager.toggleCaretBrowsing', { enabled: this.caretBrowsingEnabled });
+    const wc = this.getActiveWebContents();
+    if (!wc) return;
+    const js = this.caretBrowsingEnabled
+      ? 'document.designMode="off";document.body.contentEditable="false";' +
+        'window.getSelection().modify("move","forward","character");'
+      : 'window.getSelection().removeAllRanges();';
+    wc.executeJavaScript(js, true).catch((err) => {
+      mainLogger.warn('TabManager.toggleCaretBrowsing.execFailed', {
+        error: (err as Error).message,
+      });
+    });
+    this.safeSend('caret-browsing-changed', { enabled: this.caretBrowsingEnabled });
+  }
+
+  isCaretBrowsingEnabled(): boolean {
+    return this.caretBrowsingEnabled;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scroll to top/bottom (Cmd+Up/Down — Chrome parity, issue #88)
+  // ---------------------------------------------------------------------------
+
+  scrollToTopActive(): void {
+    const wc = this.getActiveWebContents();
+    if (!wc) return;
+    mainLogger.debug('TabManager.scrollToTopActive');
+    wc.executeJavaScript('window.scrollTo(0, 0)', true).catch(() => {});
+  }
+
+  scrollToBottomActive(): void {
+    const wc = this.getActiveWebContents();
+    if (!wc) return;
+    mainLogger.debug('TabManager.scrollToBottomActive');
+    wc.executeJavaScript('window.scrollTo(0, document.body.scrollHeight)', true).catch(() => {});
+  }
+
   // ---------------------------------------------------------------------------
   // Electron zoom-level steps of 0.5 correspond roughly to Chrome's 10% stops
   // (factor = 1.2^level). Clamp to [-3, 5] to match Chrome's 25%–500% range.

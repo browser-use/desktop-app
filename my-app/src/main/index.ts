@@ -61,13 +61,10 @@ import {
 import { PermissionStore } from './permissions/PermissionStore';
 import { PermissionManager } from './permissions/PermissionManager';
 import { registerPermissionHandlers, unregisterPermissionHandlers } from './permissions/ipc';
-import { ProtocolHandlerStore } from './permissions/ProtocolHandlerStore';
 // Issue #71 — Extensions
 import { ExtensionManager } from './extensions/ExtensionManager';
 import { registerExtensionsHandlers, unregisterExtensionsHandlers } from './extensions/ipc';
 import { openExtensionsWindow } from './extensions/ExtensionsWindow';
-// Issue #72 — Manifest V3 runtime
-import { registerMV3Handlers, unregisterMV3Handlers } from './extensions/mv3/ipc';
 // Issue #40 — History
 import { HistoryStore } from './history/HistoryStore';
 import { registerHistoryHandlers, unregisterHistoryHandlers } from './history/ipc';
@@ -78,9 +75,6 @@ import { registerChromeHandlers, unregisterChromeHandlers } from './chrome/ipc';
 // Downloads
 // Issue #97 — Print Preview
 import { openPrintPreviewWindow } from './print/PrintPreviewWindow';
-// Issue #77 — DevTools panels
-import { openDevToolsWindow } from './devtools/DevToolsWindow';
-import { registerDevToolsHandlers, unregisterDevToolsHandlers } from './devtools/ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -147,7 +141,6 @@ let permissionManager: PermissionManager | null = null;
 let extensionManager: ExtensionManager | null = null;
 let historyStore: HistoryStore | null = null;
 let downloadManager: DownloadManager | null = null;
-let protocolHandlerStore: ProtocolHandlerStore | null = null;
 let activeProfileId = 'default';
 let isGuestSession = false;
 let guestPartitionName: string | null = null;
@@ -197,7 +190,6 @@ function openShellAndWire(profileId?: string): BrowserWindow {
       store: permissionStore,
       manager: permissionManager,
       getShellWindow: () => shellWindow,
-      protocolHandlerStore: protocolHandlerStore ?? undefined,
     });
   }
 
@@ -227,32 +219,11 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   // fires, so the before-input-event listener in TabManager is the
   // primary path; the Menu accelerator is a fallback for no-tab states.
   tabManager.setPillToggle(() => togglePill());
-  tabManager.setCaretBrowsingToggle(() => handleCaretBrowsingToggle());
 
   // Attach the same before-input-event handler to the shell window's own
   // webContents so Cmd+K works when the omnibox/URL bar has focus.
-  // Also handles F6 (region cycling) and F7 (caret browsing toggle).
   shellWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
-
-    // F6 — cycle chrome regions
-    if (input.key === 'F6') {
-      event.preventDefault();
-      const forward = !input.shift;
-      mainLogger.debug('main.shellBeforeInput.F6', { forward });
-      shellWindow?.webContents.send('region-cycle', { forward });
-      return;
-    }
-
-    // F7 — toggle caret browsing
-    if (input.key === 'F7') {
-      event.preventDefault();
-      mainLogger.debug('main.shellBeforeInput.F7');
-      handleCaretBrowsingToggle();
-      return;
-    }
-
-    // Cmd+K — pill toggle
     if (input.key !== 'k' && input.key !== 'K') return;
     const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
     if (!cmdOrCtrl) return;
@@ -326,28 +297,9 @@ function openGuestShell(): BrowserWindow {
     mainLogger.warn('main.hotkey.guest', { msg: 'Cmd+K hotkey registration failed' });
   }
   tabManager.setPillToggle(() => togglePill());
-  tabManager.setCaretBrowsingToggle(() => handleCaretBrowsingToggle());
 
   shellWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
-
-    // F6 — cycle chrome regions
-    if (input.key === 'F6') {
-      event.preventDefault();
-      const forward = !input.shift;
-      mainLogger.debug('main.guestShellBeforeInput.F6', { forward });
-      shellWindow?.webContents.send('region-cycle', { forward });
-      return;
-    }
-
-    // F7 — toggle caret browsing
-    if (input.key === 'F7') {
-      event.preventDefault();
-      mainLogger.debug('main.guestShellBeforeInput.F7');
-      handleCaretBrowsingToggle();
-      return;
-    }
-
     if (input.key !== 'k' && input.key !== 'K') return;
     const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
     if (!cmdOrCtrl) return;
@@ -396,7 +348,6 @@ app.whenReady().then(async () => {
   // only PermissionStore accepts a data dir today.
   bookmarkStore = new BookmarkStore();
   permissionStore = new PermissionStore(getProfileDataDir(activeProfileId));
-  protocolHandlerStore = new ProtocolHandlerStore(getProfileDataDir(activeProfileId));
   registerBookmarkHandlers({
     store: bookmarkStore,
     getShellWindow: () => shellWindow,
@@ -436,13 +387,6 @@ app.whenReady().then(async () => {
     () => openSettingsWindow(),
     () => openExtensionsWindow(),
   );
-
-  // Issue #77 — DevTools panels
-  if (tabManager) {
-    registerDevToolsHandlers(tabManager);
-  } else {
-    mainLogger.warn('main.openShellAndWire — tabManager null, skipping DevTools IPC registration');
-  }
 
   // pill:submit — spawns a Docker container with the agent loop.
   ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {
@@ -542,7 +486,6 @@ app.whenReady().then(async () => {
   // Issue #71 — Extensions: init manager + register IPC
   extensionManager = new ExtensionManager();
   registerExtensionsHandlers(extensionManager);
-  registerMV3Handlers(extensionManager);
   void extensionManager.loadAllEnabled();
 
   // Issue #95 — Settings zoom override IPC (needs tabManager access)
@@ -628,7 +571,6 @@ app.whenReady().then(async () => {
       bookmarkStore?.flushSync();
       historyStore?.flushSync();
       permissionStore?.flushSync();
-      protocolHandlerStore?.flushSync();
     }
     await teardownHl();
   });
@@ -646,10 +588,10 @@ app.whenReady().then(async () => {
     unregisterChromeHandlers();
     unregisterProfileHandlers();
     unregisterPermissionHandlers();
-    unregisterDevToolsHandlers();
     unregisterExtensionsHandlers();
-    unregisterMV3Handlers();
-    extensionManager?.dispose();
+    // ExtensionManager currently has no dispose()/destroy() hook; its
+    // internal MV3 runtime tears itself down via its own lifecycle. If a
+    // top-level cleanup is ever added, wire it in here.
     downloadManager?.destroy();
     downloadManager = null;
   });
@@ -674,45 +616,6 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-
-// ---------------------------------------------------------------------------
-// Issue #102 — Caret browsing state
-// ---------------------------------------------------------------------------
-let caretBrowsingEnabled = false;
-let caretBrowsingConfirmed = false;
-
-async function handleCaretBrowsingToggle(): Promise<boolean> {
-  mainLogger.info('main.caretBrowsing.toggle', { current: caretBrowsingEnabled, confirmed: caretBrowsingConfirmed });
-
-  if (!caretBrowsingConfirmed) {
-    const result = await dialog.showMessageBox({
-      type: 'question',
-      buttons: ['Turn on', 'Cancel'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Caret Browsing',
-      message: 'Turn on caret browsing?',
-      detail: 'Press F7 to move the cursor through web pages. This lets you select text with the keyboard using Shift + arrow keys.',
-    });
-
-    if (result.response === 1) {
-      mainLogger.debug('main.caretBrowsing.cancelled');
-      return caretBrowsingEnabled;
-    }
-    caretBrowsingConfirmed = true;
-  }
-
-  caretBrowsingEnabled = !caretBrowsingEnabled;
-  mainLogger.info('main.caretBrowsing.toggled', { enabled: caretBrowsingEnabled });
-
-  // Notify the shell renderer for the status indicator
-  shellWindow?.webContents.send('caret-browsing-toggled', { enabled: caretBrowsingEnabled });
-
-  // Forward F7 to the active tab's webContents to toggle Chromium's native caret browsing
-  tabManager?.sendF7ToActiveTab(caretBrowsingEnabled);
-
-  return caretBrowsingEnabled;
-}
 
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts + application menu
@@ -783,6 +686,15 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
       tabManager?.goBackActive();
     },
   };
+  const backShadowBracket: MenuItemConstructorOptions = {
+    label: 'Back (Bracket)',
+    accelerator: 'CommandOrControl+[',
+    visible: false,
+    click: () => {
+      mainLogger.debug('shortcuts.goBack.bracketShadow');
+      tabManager?.goBackActive();
+    },
+  };
   const forwardItem: MenuItemConstructorOptions = {
     label: 'Forward',
     accelerator: 'CommandOrControl+Right',
@@ -797,6 +709,15 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
     visible: false,
     click: () => {
       mainLogger.debug('shortcuts.goForward.altShadow');
+      tabManager?.goForwardActive();
+    },
+  };
+  const forwardShadowBracket: MenuItemConstructorOptions = {
+    label: 'Forward (Bracket)',
+    accelerator: 'CommandOrControl+]',
+    visible: false,
+    click: () => {
+      mainLogger.debug('shortcuts.goForward.bracketShadow');
       tabManager?.goForwardActive();
     },
   };
@@ -867,6 +788,11 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           accelerator: 'CommandOrControl+N',
           enabled: false,
         },
+        {
+          label: 'New Incognito Window',
+          accelerator: 'CommandOrControl+Shift+N',
+          enabled: false,
+        },
         { type: 'separator' },
         {
           label: 'Open Location…',
@@ -888,6 +814,15 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
               const fileUrl = 'file://' + result.filePaths[0];
               tabManager?.createTab(fileUrl);
             }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Save Page As…',
+          accelerator: 'CommandOrControl+S',
+          click: () => {
+            mainLogger.debug('shortcuts.savePageAs');
+            tabManager?.savePageActive();
           },
         },
         { type: 'separator' },
@@ -972,6 +907,14 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
               click: () => {
                 mainLogger.debug('shortcuts.findPrev');
                 tabManager?.findPreviousInActiveTab();
+              },
+            },
+            {
+              label: 'Use Selection for Find',
+              accelerator: 'CommandOrControl+E',
+              click: () => {
+                mainLogger.debug('shortcuts.useSelectionForFind');
+                tabManager?.useSelectionForFind();
               },
             },
           ],
@@ -1105,11 +1048,12 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
               },
             },
             {
-              label: 'DevTools Panel',
-              accelerator: 'CommandOrControl+Alt+D',
+              label: 'Developer Tools (Alt)',
+              accelerator: 'CommandOrControl+Shift+I',
+              visible: false,
               click: () => {
-                mainLogger.debug('shortcuts.devToolsPanel');
-                openDevToolsWindow();
+                mainLogger.debug('shortcuts.devTools.shiftI');
+                tabManager?.toggleDevToolsForActive();
               },
             },
             { type: 'separator' },
@@ -1160,6 +1104,34 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             },
           ],
         },
+        { type: 'separator' },
+        {
+          label: 'Toggle Caret Browsing',
+          accelerator: 'F7',
+          click: () => {
+            mainLogger.debug('shortcuts.toggleCaretBrowsing');
+            tabManager?.toggleCaretBrowsing();
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Scroll to Top',
+          accelerator: 'CommandOrControl+Up',
+          visible: false,
+          click: () => {
+            mainLogger.debug('shortcuts.scrollToTop');
+            tabManager?.scrollToTopActive();
+          },
+        },
+        {
+          label: 'Scroll to Bottom',
+          accelerator: 'CommandOrControl+Down',
+          visible: false,
+          click: () => {
+            mainLogger.debug('shortcuts.scrollToBottom');
+            tabManager?.scrollToBottomActive();
+          },
+        },
       ],
     },
     // -----------------------------------------------------------------------
@@ -1196,6 +1168,15 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           click: () => {
             mainLogger.debug('shortcuts.focusBookmarksBar');
             shellWindow?.webContents.send('focus-bookmarks-bar');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Bookmark Manager',
+          accelerator: 'CommandOrControl+Alt+B',
+          click: () => {
+            mainLogger.debug('shortcuts.bookmarkManager');
+            tabManager?.createTab('chrome://bookmarks');
           },
         },
       ],
@@ -1277,8 +1258,10 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
       submenu: [
         backItem,
         backShadowOpt,
+        backShadowBracket,
         forwardItem,
         forwardShadowOpt,
+        forwardShadowBracket,
         { type: 'separator' },
         {
           label: 'Show Full History',
@@ -1358,6 +1341,14 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           },
         },
         {
+          label: 'Switch Profile…',
+          accelerator: 'CommandOrControl+Shift+M',
+          click: () => {
+            mainLogger.debug('shortcuts.switchProfile');
+            createProfilePickerWindow();
+          },
+        },
+        {
           label: 'Task Manager',
           enabled: false,
         },
@@ -1411,18 +1402,6 @@ function switchTabRelative(delta: number): void {
 // IPC: window-level handlers
 // ---------------------------------------------------------------------------
 ipcMain.handle('shell:get-platform', () => process.platform);
-
-// Issue #102 — Focus content: shell renderer requests focus on the active tab's webContents
-ipcMain.handle('shell:focus-content', () => {
-  mainLogger.debug('main.shell:focus-content');
-  tabManager?.focusActiveTab();
-});
-
-// Issue #102 — Caret browsing toggle
-ipcMain.handle('shell:toggle-caret-browsing', () => {
-  mainLogger.debug('main.shell:toggle-caret-browsing');
-  return handleCaretBrowsingToggle();
-});
 
 // Issue #81 — Three-dot app menu for non-macOS platforms.
 ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) => {
