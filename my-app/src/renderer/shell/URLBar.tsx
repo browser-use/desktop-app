@@ -12,21 +12,6 @@ import React, {
 import { OmniboxDropdown } from './OmniboxDropdown';
 import type { OmniboxSuggestion } from '../../main/omnibox/providers';
 
-// ---------------------------------------------------------------------------
-// Omnibox types (mirrored from main/omnibox/providers.ts)
-// ---------------------------------------------------------------------------
-interface OmniboxSuggestion {
-  id: string;
-  type: 'history' | 'bookmark' | 'tab' | 'shortcut' | 'search';
-  title: string;
-  url: string;
-  description?: string;
-  favicon?: string;
-  relevance: number;
-}
-
-
-
 const GOOGLE_FAVICON_API = 'https://www.google.com/s2/favicons?sz=32&domain_url=';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +96,21 @@ function displayUrl(url: string): string {
   // Build final display string.
   // https scheme is elided entirely; http scheme remains implicit via chip.
   return host + path + parsed.search + parsed.hash;
+}
+
+interface PermissionEntry {
+  permissionType: string;
+  state: 'allow' | 'deny' | 'ask';
+}
+
+interface PageInfo {
+  url: string;
+  isHSTS: boolean;
+  hstsMaxAge: number | null;
+  hstsIncludeSubdomains: boolean;
+  isSecure: boolean;
+  permissions: PermissionEntry[];
+  cookieCount: number;
 }
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -238,11 +238,6 @@ export function URLBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState(() => displayUrl(url));
   const [isEditing, setIsEditing] = useState(false);
-  const [suggestions, setSuggestions] = useState<OmniboxSuggestion[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const suggestGenRef = useRef(0);
   // Track the input text used when the user started editing (for recordSelection)
   const editInputRef = useRef('');
 
@@ -406,6 +401,47 @@ export function URLBar({
   // Hide the star on blank/new-tab URLs — nothing meaningful to bookmark.
   const starVisible = !!url && !BLANK_RE.test(url) && !NEWTAB_RE.test(url);
 
+  const [pageInfoOpen, setPageInfoOpen] = useState(false);
+  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const securityRef = useRef<HTMLButtonElement>(null);
+
+  const handleSecurityClick = useCallback(async () => {
+    if (!pageInfoOpen) {
+      try {
+        const [base, cookieCount] = await Promise.all([
+          electronAPI.security.getPageInfo(),
+          electronAPI.security.getCookieCount(),
+        ]);
+        let permissions: PermissionEntry[] = [];
+        try {
+          const origin = new URL(base.url).origin;
+          permissions = await electronAPI.permissions.getSite(origin);
+        } catch { /* non-URL pages have no permissions */ }
+        setPageInfo({ ...base, permissions, cookieCount });
+      } catch {
+        setPageInfo(null);
+      }
+    }
+    setPageInfoOpen((v) => !v);
+  }, [pageInfoOpen]);
+
+  // Close popover on navigation (URL change)
+  useEffect(() => {
+    setPageInfoOpen(false);
+  }, [url]);
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    if (!pageInfoOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (securityRef.current && !securityRef.current.closest('.url-bar__security-wrap')?.contains(e.target as Node)) {
+        setPageInfoOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pageInfoOpen]);
+
   return (
     <div className={`url-bar url-bar--${security}`}>
       {/* Security icon */}
@@ -523,5 +559,16 @@ declare const electronAPI: {
     suggest: (payload: { input: string; remoteSearch?: boolean }) => Promise<OmniboxSuggestion[]>;
     recordSelection: (payload: { inputText: string; url: string; title: string }) => Promise<boolean>;
     removeHistory: (id: string) => Promise<boolean>;
+  };
+  security: {
+    getPageInfo: () => Promise<Omit<PageInfo, 'permissions' | 'cookieCount'>>;
+    getCookieCount: () => Promise<number>;
+  };
+  permissions: {
+    getSite: (origin: string) => Promise<PermissionEntry[]>;
+    setSite: (origin: string, permissionType: string, state: string) => Promise<void>;
+  };
+  tabs: {
+    navigateActive: (input: string) => Promise<void>;
   };
 };
