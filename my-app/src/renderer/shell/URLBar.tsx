@@ -330,7 +330,7 @@ export function URLBar({
     onNavigate(suggestion.url);
     // Record selection for ShortcutsProvider learning
     electronAPI.omnibox.recordSelection({
-      inputText: editInputRef.current,
+      inputText: inputValue,
       url: suggestion.url,
       title: suggestion.title,
     }).catch((err: unknown) => {
@@ -338,7 +338,7 @@ export function URLBar({
     });
     closeDropdown();
     inputRef.current?.blur();
-  }, [onNavigate, closeDropdown]);
+  }, [onNavigate, closeDropdown, inputValue]);
 
   const handleSecurityClick = useCallback(async (): Promise<void> => {
     if (!pageInfoOpen) {

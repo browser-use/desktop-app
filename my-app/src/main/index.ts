@@ -422,7 +422,9 @@ function openNewWindow(): BrowserWindow {
 
   const win = createShellWindow();
   const tm = new TabManager(win, { dataDir: profileDataDir, partition: profilePartition });
-  tm.setTabGroupStore(tabGroupStore);
+  // Secondary windows do not share the global tab-group store — each window
+  // manages its own tab set and restores its own session IDs, so mixing them
+  // into a shared store would silently mis-assign tab memberships.
 
   if (historyStore) tm.setHistoryStore(historyStore);
   if (bookmarkStore) {
@@ -457,7 +459,7 @@ function openIncognitoWindow(): BrowserWindow {
 
   const win = createShellWindow({ titleSuffix: ' (Incognito)', incognito: true });
   const tm = new TabManager(win, { guest: true, partition });
-  tm.setTabGroupStore(tabGroupStore);
+  // Incognito windows do not share the persistent group store — privacy isolation.
   tm.restoreSession();
   tm.setOnClosedTabsChanged(() => rebuildApplicationMenu());
 
