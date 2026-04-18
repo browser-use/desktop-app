@@ -207,8 +207,12 @@ export function WindowChrome(): React.ReactElement {
     electronAPI.downloads.getAll().then((dls) => {
       console.log('[WindowChrome] Downloads loaded:', dls.length, 'items');
       setDownloads(dls);
+    }).catch(() => {
+      console.warn('[WindowChrome] downloads:get-all handler not ready yet');
     });
-    electronAPI.downloads.getShowOnComplete().then((v) => setShowOnComplete(v));
+    electronAPI.downloads.getShowOnComplete().then((v) => setShowOnComplete(v)).catch(() => {
+      console.warn('[WindowChrome] downloads:get-show-on-complete handler not ready yet');
+    });
   }, []);
 
   // Push total chrome height to main whenever bar visibility changes so the

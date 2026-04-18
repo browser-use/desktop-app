@@ -143,6 +143,7 @@ function openShellAndWire(): BrowserWindow {
   mainLogger.info('main.openShellAndWire', { msg: 'Creating shell window' });
   shellWindow = createShellWindow();
   tabManager = new TabManager(shellWindow);
+  downloadManager?.destroy();
   downloadManager = new DownloadManager(shellWindow);
 
   // Wire bookmark-aware URL matching into the navigation heuristic.
