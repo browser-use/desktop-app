@@ -34,6 +34,7 @@ export default defineConfig({
       'tests/unit/extensions/**/*.spec.tsx',
       'tests/unit/zoom/**/*.spec.ts',
       'tests/unit/shell/**/*.spec.tsx',
+      'tests/unit/share/**/*.spec.ts',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file

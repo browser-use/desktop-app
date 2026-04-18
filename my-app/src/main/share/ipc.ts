@@ -2,6 +2,12 @@
  * Share IPC handlers — main-process side of the share surface.
  *
  * Handles: copy link, email page, save page as, QR code data generation.
+ *
+ * The handlers resolve their dependencies (tab manager, shell window) lazily
+ * through getter functions supplied at registration time. This lets the caller
+ * wire the handlers up during `app.whenReady()` — before the shell window
+ * and tab manager actually exist — without leaving the handlers bound to
+ * stale `null` references. See issue #205 for background.
  */
 
 import { ipcMain, clipboard, shell, dialog, type BrowserWindow } from 'electron';
@@ -9,19 +15,23 @@ import { mainLogger } from '../logger';
 import type { TabManager } from '../tabs/TabManager';
 
 // ---------------------------------------------------------------------------
-// State refs set by register/unregister
+// Dependency getters — populated at registration time
 // ---------------------------------------------------------------------------
-let tabManagerRef: TabManager | null = null;
-let shellWindowRef: BrowserWindow | null = null;
+type TabManagerGetter = () => TabManager | null;
+type ShellWindowGetter = () => BrowserWindow | null;
+
+let getTabManager: TabManagerGetter = () => null;
+let getShellWindow: ShellWindowGetter = () => null;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function getActivePageInfo(): { url: string; title: string } | null {
-  if (!tabManagerRef) return null;
-  const url = tabManagerRef.getActiveTabUrl();
+  const tabManager = getTabManager();
+  if (!tabManager) return null;
+  const url = tabManager.getActiveTabUrl();
   if (!url) return null;
-  const wc = tabManagerRef.getActiveWebContents();
+  const wc = tabManager.getActiveWebContents();
   const title = wc?.getTitle() ?? '';
   return { url, title };
 }
@@ -57,8 +67,10 @@ async function handleEmailPage(): Promise<boolean> {
 
 async function handleSavePageAs(): Promise<boolean> {
   const info = getActivePageInfo();
-  const wc = tabManagerRef?.getActiveWebContents();
-  if (!info || !wc || !shellWindowRef) {
+  const tabManager = getTabManager();
+  const shellWindow = getShellWindow();
+  const wc = tabManager?.getActiveWebContents();
+  if (!info || !wc || !shellWindow) {
     mainLogger.warn('share.savePageAs', { msg: 'missing page info, webContents, or shellWindow' });
     return false;
   }
@@ -66,7 +78,7 @@ async function handleSavePageAs(): Promise<boolean> {
   const sanitizedTitle = (info.title || 'page').replace(/[/\\?%*:|"<>]/g, '-').slice(0, 100);
   mainLogger.info('share.savePageAs', { url: info.url, title: sanitizedTitle });
 
-  const result = await dialog.showSaveDialog(shellWindowRef, {
+  const result = await dialog.showSaveDialog(shellWindow, {
     defaultPath: sanitizedTitle,
     filters: [
       { name: 'Webpage, Complete', extensions: ['html'] },
@@ -101,9 +113,14 @@ function handleGetPageInfo(): { url: string; title: string } | null {
 // Registration
 // ---------------------------------------------------------------------------
 
-export function registerShareHandlers(tabManager: TabManager, shellWindow: BrowserWindow): void {
-  tabManagerRef = tabManager;
-  shellWindowRef = shellWindow;
+export interface ShareHandlerDeps {
+  getTabManager: TabManagerGetter;
+  getShellWindow: ShellWindowGetter;
+}
+
+export function registerShareHandlers(deps: ShareHandlerDeps): void {
+  getTabManager = deps.getTabManager;
+  getShellWindow = deps.getShellWindow;
   mainLogger.info('share.register', { msg: 'Registering share IPC handlers' });
 
   ipcMain.handle('share:copy-link', () => handleCopyLink());
@@ -114,8 +131,8 @@ export function registerShareHandlers(tabManager: TabManager, shellWindow: Brows
 
 export function unregisterShareHandlers(): void {
   mainLogger.info('share.unregister', { msg: 'Unregistering share IPC handlers' });
-  tabManagerRef = null;
-  shellWindowRef = null;
+  getTabManager = () => null;
+  getShellWindow = () => null;
 
   ipcMain.removeHandler('share:copy-link');
   ipcMain.removeHandler('share:email-page');

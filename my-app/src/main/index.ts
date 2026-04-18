@@ -689,7 +689,13 @@ app.whenReady().then(async () => {
   // Issue #26 — Chrome internal pages
 
   // Issue #98 — Share menu
-  registerShareHandlers(tabManager!, shellWindow!);
+  // Use lazy getters so the handlers resolve the live shell/tab refs at call
+  // time. The refs don't exist yet — openShellAndWire() is what creates them.
+  // See issue #205 for background on the previous null-binding bug.
+  registerShareHandlers({
+    getTabManager: () => tabManager,
+    getShellWindow: () => shellWindow,
+  });
   // Issue #5 — Tab groups
   registerTabGroupHandlers(tabGroupStore, () => shellWindow);
   registerChromeHandlers(
