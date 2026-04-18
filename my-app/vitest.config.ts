@@ -43,6 +43,8 @@ export default defineConfig({
       'tests/unit/updater/**/*.spec.ts',
       // Factory-reset controller wiping (Issues #217 / #225)
       'tests/unit/settings/**/*.spec.ts',
+      // Issue #222 — content-category policies actually enforced at runtime
+      'tests/unit/content-categories/**/*.spec.ts',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file

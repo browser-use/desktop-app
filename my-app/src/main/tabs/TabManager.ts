@@ -19,6 +19,7 @@ import { NavigationController } from './NavigationController';
 import { SessionStore, PersistedSession, PersistedTab } from './SessionStore';
 import { ZoomStore, extractOrigin, zoomLevelToPercent, type ZoomEntry } from './ZoomStore';
 import { MutedSitesStore } from './MutedSitesStore';
+import type { ContentPolicyEnforcer } from '../content-categories/ContentPolicyEnforcer';
 import { parseNavigationInput, UrlMatchFn } from '../navigation';
 import path from 'node:path';
 import { mainLogger } from '../logger';
@@ -198,6 +199,10 @@ export class TabManager {
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
   private tabGroupStore: TabGroupStore | null = null;
+  // Issue #222 — consulted before window-open / at tab creation to enforce
+  // the Settings > Content policies (popups, JS, sound) that were persisted
+  // but previously unread.
+  private contentPolicyEnforcer: ContentPolicyEnforcer | null = null;
   readonly isGuest: boolean;
   private readonly partition: string | null;
 
@@ -259,6 +264,16 @@ export class TabManager {
   setPasswordStore(store: PasswordStore): void {
     this.passwordStore = store;
     mainLogger.info('TabManager.setPasswordStore', { msg: 'Password store wired for context menu' });
+  }
+
+  /**
+   * Inject the ContentPolicyEnforcer (Issue #222). When null, tab-creation
+   * falls back to the old unchecked behavior (popups allowed, JS enabled,
+   * content-category sound policy not applied).
+   */
+  setContentPolicyEnforcer(enforcer: ContentPolicyEnforcer | null): void {
+    this.contentPolicyEnforcer = enforcer;
+    mainLogger.info('TabManager.setContentPolicyEnforcer', { attached: !!enforcer });
   }
 
   /**
@@ -505,6 +520,19 @@ export class TabManager {
     if (this.partition) {
       webPrefs.partition = this.partition;
     }
+    // Issue #222 — apply "JavaScript: block" from content settings at tab
+    // creation time. WebPreferences are immutable after WebContentsView
+    // construction, so this is the only point where the flag takes effect.
+    // New tabs without a URL (chrome://newtab) are not checked; the newtab
+    // page needs JS to function and has no origin.
+    if (
+      !isUserInitiated &&
+      this.contentPolicyEnforcer &&
+      !this.contentPolicyEnforcer.isJavaScriptAllowed(targetUrl)
+    ) {
+      webPrefs.javascript = false;
+      mainLogger.info('TabManager.createTab.jsDisabled', { tabId, url: targetUrl });
+    }
     const view = new WebContentsView({ webPreferences: webPrefs });
 
     this.win.contentView.addChildView(view);
@@ -558,6 +586,14 @@ export class TabManager {
       sandbox: true,
     };
     if (this.partition) webPrefs.partition = this.partition;
+    // Issue #222 — honor JavaScript block policy for background-opened tabs too.
+    if (
+      this.contentPolicyEnforcer &&
+      !this.contentPolicyEnforcer.isJavaScriptAllowed(url)
+    ) {
+      webPrefs.javascript = false;
+      mainLogger.info('TabManager.createBackgroundTab.jsDisabled', { tabId, url });
+    }
     const view = new WebContentsView({ webPreferences: webPrefs });
     this.win.contentView.addChildView(view);
     this.tabs.set(tabId, view);
@@ -1863,6 +1899,22 @@ export class TabManager {
     });
 
     wc.setWindowOpenHandler(({ url, disposition }) => {
+      // Issue #222 — enforce the persisted "popups" content category policy.
+      // The initiator URL is the current page; we check against its origin.
+      // Only "true popups" (no explicit user gesture — disposition is
+      // 'new-window' or 'foreground-tab' coming from window.open without a
+      // click) are blocked. target="_blank" on a user click still arrives
+      // here as 'foreground-tab' so we treat any block as final: the
+      // content-settings UI describes this as "Pop-ups AND redirects".
+      if (this.contentPolicyEnforcer?.shouldBlockPopup(wc.getURL())) {
+        mainLogger.info('TabManager.popup.blocked', {
+          tabId,
+          initiator: wc.getURL(),
+          targetUrl: url,
+          disposition,
+        });
+        return { action: 'deny' };
+      }
       if (url && !BLOCKED_SCHEMES.test(url)) {
         const background =
           disposition === 'background-tab' ||
@@ -2385,9 +2437,17 @@ export class TabManager {
 
   private applyPersistedMute(wc: Electron.WebContents): void {
     const url = wc.getURL();
-    if (this.mutedSitesStore.isMutedUrl(url)) {
+    // Issue #222 — OR together: any mute source wins. If the user set
+    // "Sound: Block" either globally or per-site in content settings, or the
+    // per-site mute store has this origin, the tab is muted.
+    const muteByContentPolicy = !!this.contentPolicyEnforcer?.shouldMuteForSoundPolicy(url);
+    const muteByPerSite = this.mutedSitesStore.isMutedUrl(url);
+    if (muteByContentPolicy || muteByPerSite) {
       wc.setAudioMuted(true);
-      mainLogger.debug('TabManager.applyPersistedMute', { url });
+      mainLogger.debug('TabManager.applyPersistedMute', {
+        url,
+        source: muteByContentPolicy ? 'content-policy' : 'muted-sites',
+      });
     }
   }
 
