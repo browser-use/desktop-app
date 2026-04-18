@@ -28,6 +28,14 @@ const DEFAULT_PORTS: Record<string, number> = {
   'https:': 443,
 };
 
+interface PageInfo {
+  url: string;
+  isHSTS: boolean;
+  hstsMaxAge: number | null;
+  hstsIncludeSubdomains: boolean;
+  isSecure: boolean;
+}
+
 interface URLBarProps {
   url: string;
   isLoading: boolean;
@@ -161,34 +169,89 @@ export function URLBar({
   // Hide the star on blank/new-tab URLs — nothing meaningful to bookmark.
   const starVisible = !!url && !BLANK_RE.test(url);
 
+  const [pageInfoOpen, setPageInfoOpen] = useState(false);
+  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const securityRef = useRef<HTMLButtonElement>(null);
+
+  const handleSecurityClick = useCallback(async () => {
+    if (!pageInfoOpen) {
+      try {
+        const info = await (window as any).electronAPI?.security?.getPageInfo?.();
+        setPageInfo(info ?? null);
+      } catch {
+        setPageInfo(null);
+      }
+    }
+    setPageInfoOpen((v) => !v);
+  }, [pageInfoOpen]);
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    if (!pageInfoOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (securityRef.current && !securityRef.current.closest('.url-bar__security-wrap')?.contains(e.target as Node)) {
+        setPageInfoOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pageInfoOpen]);
+
   return (
     <div className={`url-bar url-bar--${security}`}>
       {/* Security icon */}
-      <span className="url-bar__security" aria-label={security}>
-        {security === 'secure' && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.6" />
-            <path
-              d="M4 5V3.5a2 2 0 0 1 4 0V5"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              fill="none"
-            />
-          </svg>
+      <div className="url-bar__security-wrap">
+        <button
+          ref={securityRef}
+          type="button"
+          className="url-bar__security"
+          aria-label={security === 'secure' ? 'Connection is secure' : security === 'insecure' ? 'Connection is not secure' : 'Page info'}
+          onClick={handleSecurityClick}
+          tabIndex={-1}
+        >
+          {security === 'secure' && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.6" />
+              <path
+                d="M4 5V3.5a2 2 0 0 1 4 0V5"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                fill="none"
+              />
+            </svg>
+          )}
+          {security === 'insecure' && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path
+                d="M6 2L10.5 10H1.5L6 2Z"
+                stroke="#e5534b"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <line x1="6" y1="5.5" x2="6" y2="7.5" stroke="#e5534b" strokeWidth="1.2" />
+              <circle cx="6" cy="9" r="0.5" fill="#e5534b" />
+            </svg>
+          )}
+        </button>
+        {pageInfoOpen && (
+          <div className="url-bar__page-info-popover" role="dialog" aria-label="Page info">
+            <div className="url-bar__page-info-row">
+              <span className={`url-bar__page-info-status url-bar__page-info-status--${security}`}>
+                {security === 'secure' ? 'Connection is secure' : security === 'insecure' ? 'Connection is not secure' : 'No connection info'}
+              </span>
+            </div>
+            {pageInfo?.isHSTS && (
+              <div className="url-bar__page-info-row url-bar__page-info-hsts">
+                <span className="url-bar__page-info-badge">HSTS</span>
+                <span className="url-bar__page-info-hsts-detail">
+                  {pageInfo.hstsIncludeSubdomains ? 'Includes subdomains' : 'This domain only'}
+                  {pageInfo.hstsMaxAge != null ? ` · ${Math.round(pageInfo.hstsMaxAge / 86400)}d` : ''}
+                </span>
+              </div>
+            )}
+          </div>
         )}
-        {security === 'insecure' && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path
-              d="M6 2L10.5 10H1.5L6 2Z"
-              stroke="#e5534b"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <line x1="6" y1="5.5" x2="6" y2="7.5" stroke="#e5534b" strokeWidth="1.2" />
-            <circle cx="6" cy="9" r="0.5" fill="#e5534b" />
-          </svg>
-        )}
-      </span>
+      </div>
 
       {/* URL input */}
       <input

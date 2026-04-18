@@ -11,6 +11,7 @@ import { URLBar } from './URLBar';
 import { BookmarksBar } from './BookmarksBar';
 import { BookmarkDialog } from './BookmarkDialog';
 import { FindBar } from './FindBar';
+import { TabSearchDropdown } from './TabSearchDropdown';
 import { StatusBar } from './StatusBar';
 import { PasswordPromptBar } from './PasswordPromptBar';
 import { PermissionBar } from './PermissionBar';
@@ -65,6 +66,7 @@ declare const electronAPI: {
     showContextMenu: (tabId: string) => Promise<void>;
     showBackHistory: (tabId: string) => Promise<void>;
     showForwardHistory: (tabId: string) => Promise<void>;
+    muteTab: (tabId: string) => Promise<void>;
   };
   cdp: {
     getActiveTabCdpUrl: () => Promise<string | null>;
@@ -110,6 +112,11 @@ declare const electronAPI: {
     savePageAs: () => Promise<boolean>;
     getPageInfo: () => Promise<{ url: string; title: string } | null>;
   };
+  pip: {
+    enter: () => Promise<{ ok: boolean; action?: string; error?: string }>;
+    exit: () => Promise<{ ok: boolean; error?: string }>;
+    getStatus: () => Promise<{ supported: boolean; active: boolean; hasVideo: boolean } | null>;
+  };
   menu: {
     showAppMenu: (bounds: { x: number; y: number }) => Promise<void>;
   };
@@ -123,6 +130,7 @@ declare const electronAPI: {
     closedTabsUpdated: (cb: (records: ClosedTabRecord[]) => void) => () => void;
     windowReady: (cb: () => void) => () => void;
     focusUrlBar: (cb: () => void) => () => void;
+    openTabSearch: (cb: () => void) => () => void;
     targetLost: (cb: (payload: { tabId: string }) => void) => () => void;
     bookmarksUpdated: (cb: (tree: PersistedBookmarks) => void) => () => void;
     openBookmarkDialog: (cb: () => void) => () => void;
@@ -163,6 +171,7 @@ export function WindowChrome(): React.ReactElement {
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [urlBarFocused, setUrlBarFocused] = useState(false);
+  const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState('');
   const [zoomPercent, setZoomPercent] = useState(100);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -177,6 +186,9 @@ export function WindowChrome(): React.ReactElement {
   const [bubbleOpen, setBubbleOpen] = useState(false);
   const [showOnComplete, setShowOnComplete] = useState(true);
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // PiP state
+  const [pipActive, setPipActive] = useState(false);
 
   // Side panel state
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -286,6 +298,11 @@ export function WindowChrome(): React.ReactElement {
       setUrlBarFocused(true);
     });
 
+    const unsubTabSearch = electronAPI.on.openTabSearch(() => {
+      console.log('[WindowChrome] Tab search opened');
+      setTabSearchOpen(true);
+    });
+
     const unsubLinkHover = electronAPI.on.linkHover(({ url }) => {
       setHoveredUrl(url);
     });
@@ -322,6 +339,7 @@ export function WindowChrome(): React.ReactElement {
       unsubTabActivated();
       unsubFaviconUpdated();
       unsubFocusUrl();
+      unsubTabSearch();
       unsubLinkHover();
       unsubZoomChanged();
       unsubTargetLost();
@@ -399,6 +417,16 @@ export function WindowChrome(): React.ReactElement {
   const handleNewTab = useCallback(() => {
     electronAPI.tabs.create();
   }, []);
+
+  const handleMuteToggle = useCallback(
+    (tabId: string) => {
+      console.log('[WindowChrome] muteTab', tabId);
+      electronAPI.tabs.muteTab(tabId).catch((err: Error) =>
+        console.error('[WindowChrome] muteTab failed', err),
+      );
+    },
+    [],
+  );
 
   const handleMove = useCallback((tabId: string, toIndex: number) => {
     electronAPI.tabs.move(tabId, toIndex);
@@ -483,6 +511,22 @@ export function WindowChrome(): React.ReactElement {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Picture-in-Picture actions
+  // ---------------------------------------------------------------------------
+  const handlePipClick = useCallback(async () => {
+    console.log('[WindowChrome] PiP button clicked, active:', pipActive);
+    try {
+      const result = await electronAPI.pip.enter();
+      console.log('[WindowChrome] PiP result:', result);
+      if (result.ok) {
+        setPipActive(result.action === 'enter');
+      }
+    } catch (err) {
+      console.warn('[WindowChrome] PiP failed:', err);
+    }
+  }, [pipActive]);
+
+  // ---------------------------------------------------------------------------
   // Side panel actions
   // ---------------------------------------------------------------------------
   const handleSidePanelToggle = useCallback(() => {
@@ -523,6 +567,7 @@ export function WindowChrome(): React.ReactElement {
           onClose={handleClose}
           onNewTab={handleNewTab}
           onMove={handleMove}
+          onMuteToggle={handleMuteToggle}
         />
       </div>
 
@@ -582,6 +627,20 @@ export function WindowChrome(): React.ReactElement {
           )}
         </div>
 
+        {pipActive && (
+          <button
+            type="button"
+            className="toolbar-btn toolbar-btn--pip toolbar-btn--pip-active"
+            onClick={handlePipClick}
+            aria-label="Exit Picture in Picture"
+            title="Exit Picture in Picture (Cmd+Shift+P)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+              <rect x="7" y="7" width="6" height="4" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+        )}
         <ShareButton onClick={handleShareClick} />
         <ShareMenu
           open={shareMenuOpen}
@@ -623,6 +682,13 @@ export function WindowChrome(): React.ReactElement {
       <PermissionBar activeTabId={activeTabId} />
       <DevicePickerBar />
       <PasswordPromptBar activeTabId={activeTabId} />
+      {tabSearchOpen && (
+        <TabSearchDropdown
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onClose={() => setTabSearchOpen(false)}
+        />
+      )}
       <FindBar activeTabId={activeTabId} />
       <StatusBar url={hoveredUrl} />
     </div>

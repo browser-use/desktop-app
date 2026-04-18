@@ -21,6 +21,7 @@ import './downloads.css';
 import './sidepanel.css';
 import './share.css';
 import './customize-panel.css';
+import './pip.css';
 
 window.addEventListener('error', (e) => {
   console.error('renderer.error', { message: e.message, file: e.filename, line: e.lineno });

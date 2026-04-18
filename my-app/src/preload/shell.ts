@@ -18,6 +18,7 @@ import type { DownloadItemDTO } from '../main/downloads/DownloadManager';
 import type { DevicePickerRequest } from '../main/devices/DeviceManager';
 import type { GrantedDevice, DeviceApiType } from '../main/devices/DeviceStore';
 import type { SearchEngine } from '../main/search/SearchEngineStore';
+import type { OmniboxSuggestion } from '../main/omnibox/providers';
 
 // ---------------------------------------------------------------------------
 // Type re-exports for renderer consumption
@@ -40,6 +41,7 @@ export type {
   GrantedDevice,
   DeviceApiType,
   SearchEngine,
+  OmniboxSuggestion,
 };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +101,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     unpin: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:unpin', tabId),
+
+    muteTab: (tabId: string): Promise<void> =>
+      ipcRenderer.invoke('tabs:mute-tab', tabId),
 
     showBackHistory: (tabId: string): Promise<void> =>
       ipcRenderer.invoke('tabs:show-back-history', tabId),
@@ -325,6 +330,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPageInfo: (): Promise<{ url: string; title: string } | null> =>
       ipcRenderer.invoke('share:get-page-info'),
   },
+  // Issue #100 — Picture-in-Picture
+  pip: {
+    enter: (): Promise<{ ok: boolean; action?: string; error?: string }> =>
+      ipcRenderer.invoke('pip:enter'),
+
+    exit: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('pip:exit'),
+
+    getStatus: (): Promise<{ supported: boolean; active: boolean; hasVideo: boolean } | null> =>
+      ipcRenderer.invoke('pip:get-status'),
+  },
+
+  // Security — HSTS and cert error page info
+  security: {
+    getPageInfo: (): Promise<{
+      url: string;
+      isHSTS: boolean;
+      hstsMaxAge: number | null;
+      hstsIncludeSubdomains: boolean;
+      isSecure: boolean;
+    }> => ipcRenderer.invoke('security:get-page-info'),
+  },
+
   // Issue #81 — Three-dot app menu (non-macOS)
   menu: {
     showAppMenu: (bounds: { x: number; y: number }): Promise<void> =>
@@ -618,6 +646,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('link-hover', handler);
       return () => ipcRenderer.removeListener('link-hover', handler);
     },
+
+    // Issue #6 — Tab search (Cmd+Shift+A)
+    openTabSearch: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('open-tab-search', handler);
+      return () => ipcRenderer.removeListener('open-tab-search', handler);
+    },
   },
 
   // Profiles — current profile info + switch
@@ -654,6 +689,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     getAccountInfo: (): Promise<{ email: string; agentName: string } | null> =>
       ipcRenderer.invoke('identity:get-account-info'),
+  },
+
+  // Issue #17 — Omnibox autocomplete providers
+  omnibox: {
+    suggest: (payload: { input: string; remoteSearch?: boolean }): Promise<OmniboxSuggestion[]> =>
+      ipcRenderer.invoke('omnibox:suggest', payload),
+
+    recordSelection: (payload: { inputText: string; url: string; title: string }): Promise<boolean> =>
+      ipcRenderer.invoke('omnibox:record-selection', payload),
+
+    removeHistory: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('omnibox:remove-history', id),
   },
 
   // Passwords
