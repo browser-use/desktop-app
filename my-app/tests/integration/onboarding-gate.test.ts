@@ -100,6 +100,7 @@ const {
     isPackaged: false,
     getPath: vi.fn((name: string) => (name === 'userData' ? '/tmp/agentic-test' : '/tmp')),
     getAppPath: vi.fn(() => '/test/app'),
+    dock: { setBadge: vi.fn(), bounce: vi.fn(), cancelBounce: vi.fn() },
   };
 
   const mockIpcMain = {
@@ -361,19 +362,6 @@ describe('onboarding gate (main/index.ts)', () => {
   it('fresh user: openShellWindow factory creates shell + pill when invoked', async () => {
     isOnboardingCompleteFlag.value = false;
     mockAccountStoreInstance.isOnboardingComplete.mockReturnValue(false);
-
-    // Provide a fresh shell window mock for the factory invocation
-    mockCreateShellWindow.mockReturnValueOnce({
-      id: 10,
-      webContents: {
-        once: vi.fn(),
-        on: vi.fn(),
-        send: vi.fn(),
-      },
-      on: vi.fn(),
-      isDestroyed: vi.fn(() => false),
-      close: vi.fn(),
-    });
 
     await triggerWhenReady();
 
