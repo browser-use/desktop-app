@@ -14,7 +14,7 @@ Fast, parallel jobs that gate merges:
 | Job | Runner | ~Time | Gates merge? | What it runs |
 |---|---|---|---|---|
 | `lint` | ubuntu | ~1m | **yes** | `npm run lint` — eslint on `src/`, `tests/`, config files |
-| `typecheck` | ubuntu | ~1m | no (soft-fail) | `npm run typecheck` — `tsc --noEmit` |
+| `typecheck` | ubuntu | ~1m | **yes** | `npm run typecheck` — `tsc --noEmit` |
 | `unit` | ubuntu | ~2m | **yes** | `npm run test:coverage` — vitest unit + integration + coverage artifact |
 | `python` | ubuntu | ~2m | **yes** | ruff check, ruff format --check, mypy, `pytest --cov` |
 
@@ -107,7 +107,7 @@ All commands run from `my-app/`:
 # TS side
 npm ci
 npm run lint
-npm run typecheck          # soft-fail in CI; ~55 known errors
+npm run typecheck          # must be clean (hard-fail in CI)
 npm run test               # vitest
 npm run test:coverage      # same + coverage/ report under tests/results/
 
@@ -126,19 +126,18 @@ npx playwright test --config=tests/setup/playwright.config.ts tests/regression/
 
 The `qa` script bundles lint + typecheck + test: `npm run qa`.
 
-## Soft-fail rollout (tsc)
+## Soft-fail rollout — cleaned up
 
-`typecheck` (TS) currently runs as informational — it reports errors but
-doesn't block merges. This is a deliberate Phase 1 choice because the
-baseline is already red:
+Both `tsc --noEmit` and `mypy` used to run soft-fail against pre-existing
+baselines. Both have been cleaned up and now hard-fail on any new error:
 
-- **TS (`tsc --noEmit`): ~55 errors.** Surfaced after upgrading `typescript`
-  4.5.5 → 5.4 to unblock `@types/node`. Categories: missing `.svg` module
-  declarations, settings preload-bridge type drift (passwords handlers),
-  missing `electron-updater` dep, stale test mock types, Vite config drift.
-
-Python `mypy` was previously soft-fail but has been cleaned up (5 → 0)
-and now hard-fails on any new error.
+- **TS (`tsc --noEmit`)** — ~104 errors cleaned up (missing `.svg` module
+  declarations, stale test mock types, Vite/forge config drift, React 19
+  typings, settings preload-bridge drift, API drift across electron-forge
+  and PrintPreview).
+- **Python (`mypy`)** — 5 errors cleaned up (`schemas.py` TypedDict
+  `version` literal mismatches, `llm.py` None-vs-Anthropic assignment,
+  `loop.py` `Any` returns).
 
 The same soft-fail treatment applies to the Playwright jobs in `e2e.yml`:
 
@@ -158,10 +157,11 @@ The comments in each workflow mark the exact lines.
 
 ### Preventing regression while soft
 
-Each PR should not **increase** the error count. Reviewers check the
-Actions log — the soft-fail jobs still run, still print diffs, and still
-produce a red check next to the green merge status. A PR that adds
-a new tsc error in a file that was previously clean should be
+Each PR should not **increase** the error count for the remaining
+soft-fail jobs (Playwright e2e suites). Reviewers check the Actions
+log — soft-fail jobs still run, still print diffs, and still produce
+a red check next to the green merge status. A PR that adds a new
+error in a file that was previously clean should be
 sent back.
 
 ## Coverage

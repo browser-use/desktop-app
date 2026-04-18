@@ -38,14 +38,11 @@ jobs:
         run: npm run lint
 
   typecheck:
-    name: Typecheck (TS) [soft-fail]
+    name: Typecheck (TS)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Baseline is red — the codebase has ~55 pre-existing tsc errors being
-    # tracked for cleanup (see docs/CI.md "Typecheck rollout"). Runs on every
-    # PR so regressions stay visible, but does not gate merges yet. Flip
-    # continue-on-error to false once the baseline is clean.
-    continue-on-error: true
+    # Hard-fail: tsc --noEmit must be clean. The pre-existing baseline was
+    # cleaned up in the chore(types) PR; any new errors here gate merges.
     steps:
       - uses: actions/checkout@v4
 
