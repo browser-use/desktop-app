@@ -437,7 +437,7 @@ export function TabStrip({
 
   const handleTabClick = useCallback(
     (e: React.MouseEvent, tab: TabState, index: number) => {
-      if (process.platform === 'darwin' ? e.metaKey : e.ctrlKey) {
+      if (navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey) {
         // Toggle this tab in the selection without changing active tab
         e.stopPropagation();
         setSelectedTabIds((prev) => {
