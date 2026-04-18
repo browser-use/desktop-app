@@ -39,6 +39,7 @@ const NEW_TAB_URL =
 // TabManager.setChromeOffset(offset); positionView() uses BASE + offset.
 const CHROME_HEIGHT = 76;
 const BLOCKED_SCHEMES = /^(javascript|file|data|vbscript):/i;
+const MAX_HISTORY_MENU_ITEMS = 15;
 
 export interface TabState {
   id: string;
@@ -562,6 +563,101 @@ export class TabManager {
     this.createTab(viewSourceUrl);
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Back/Forward history menu (Issue #19)
+  // ---------------------------------------------------------------------------
+
+  showBackHistoryMenu(tabId: string): void {
+    const nav = this.navControllers.get(tabId);
+    if (!nav) {
+      mainLogger.warn('TabManager.showBackHistoryMenu.noController', { tabId });
+      return;
+    }
+
+    const entries = nav.getAllEntries();
+    const activeIndex = nav.getActiveIndex();
+    mainLogger.info('TabManager.showBackHistoryMenu', {
+      tabId,
+      activeIndex,
+      totalEntries: entries.length,
+    });
+
+    if (activeIndex <= 0) {
+      mainLogger.debug('TabManager.showBackHistoryMenu.noBackHistory', { tabId });
+      return;
+    }
+
+    const menu = new Menu();
+    const start = Math.max(0, activeIndex - MAX_HISTORY_MENU_ITEMS);
+    for (let i = activeIndex - 1; i >= start; i--) {
+      const entry = entries[i];
+      const label = entry.title || entry.url || 'Untitled';
+      const targetIndex = i;
+      menu.append(new MenuItem({
+        label: label.length > 60 ? label.slice(0, 57) + '...' : label,
+        click: () => {
+          mainLogger.info('TabManager.showBackHistoryMenu.selected', {
+            tabId,
+            targetIndex,
+            url: entry.url,
+          });
+          nav.goToIndex(targetIndex);
+          this.sendTabUpdate(tabId);
+        },
+      }));
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup({ window: this.win });
+    }
+  }
+
+  showForwardHistoryMenu(tabId: string): void {
+    const nav = this.navControllers.get(tabId);
+    if (!nav) {
+      mainLogger.warn('TabManager.showForwardHistoryMenu.noController', { tabId });
+      return;
+    }
+
+    const entries = nav.getAllEntries();
+    const activeIndex = nav.getActiveIndex();
+    mainLogger.info('TabManager.showForwardHistoryMenu', {
+      tabId,
+      activeIndex,
+      totalEntries: entries.length,
+    });
+
+    if (activeIndex >= entries.length - 1) {
+      mainLogger.debug('TabManager.showForwardHistoryMenu.noForwardHistory', { tabId });
+      return;
+    }
+
+    const menu = new Menu();
+    const end = Math.min(entries.length, activeIndex + 1 + MAX_HISTORY_MENU_ITEMS);
+    for (let i = activeIndex + 1; i < end; i++) {
+      const entry = entries[i];
+      const label = entry.title || entry.url || 'Untitled';
+      const targetIndex = i;
+      menu.append(new MenuItem({
+        label: label.length > 60 ? label.slice(0, 57) + '...' : label,
+        click: () => {
+          mainLogger.info('TabManager.showForwardHistoryMenu.selected', {
+            tabId,
+            targetIndex,
+            url: entry.url,
+          });
+          nav.goToIndex(targetIndex);
+          this.sendTabUpdate(tabId);
+        },
+      }));
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup({ window: this.win });
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // DevTools (Issue #75 — Cmd+Opt+I / Cmd+Opt+J / Inspect Element)
   // ---------------------------------------------------------------------------
@@ -1082,6 +1178,7 @@ export class TabManager {
       isLoading: view.webContents.isLoading(),
       canGoBack: nav?.canGoBack() ?? false,
       canGoForward: nav?.canGoForward() ?? false,
+      zoomLevel: view.webContents.getZoomLevel(),
     };
     this.safeSend('tab-updated', state);
   }
@@ -1301,6 +1398,16 @@ export class TabManager {
       this.showTabContextMenu(tabId);
     });
 
+
+    // Issue #19 — back/forward long-press history menu
+    ipcMain.handle('tabs:show-back-history', (_e, tabId: string) => {
+      this.showBackHistoryMenu(tabId);
+    });
+
+    ipcMain.handle('tabs:show-forward-history', (_e, tabId: string) => {
+      this.showForwardHistoryMenu(tabId);
+    });
+
     // Zoom IPC
     ipcMain.handle('zoom:get-percent', () => {
       return this.getActiveZoomPercent();
@@ -1372,6 +1479,8 @@ export class TabManager {
     ipcMain.removeHandler('tabs:reopen-closed-at');
     ipcMain.removeHandler('tabs:get-closed-tabs');
     ipcMain.removeHandler('tabs:show-context-menu');
+    ipcMain.removeHandler('tabs:show-back-history');
+    ipcMain.removeHandler('tabs:show-forward-history');
     ipcMain.removeHandler('zoom:get-percent');
     ipcMain.removeHandler('zoom:in');
     ipcMain.removeHandler('zoom:out');

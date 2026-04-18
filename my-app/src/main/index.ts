@@ -44,6 +44,9 @@ import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDial
 // Wave1 P3 — Bookmarks
 import { BookmarkStore } from './bookmarks/BookmarkStore';
 import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
+// Password Manager
+import { PasswordStore } from './passwords/PasswordStore';
+import { registerPasswordHandlers, unregisterPasswordHandlers } from './passwords/ipc';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -103,6 +106,7 @@ let shellWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let bookmarkStore: BookmarkStore | null = null;
+let passwordStore: PasswordStore | null = null;
 
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? 'PLACEHOLDER_CLIENT_ID' });
@@ -207,6 +211,10 @@ app.whenReady().then(async () => {
     getAllTabs: () =>
       tabManager ? tabManager.getAllTabSummaries() : [],
   });
+
+  // Password Manager: init store + register IPC
+  passwordStore = new PasswordStore();
+  registerPasswordHandlers({ store: passwordStore });
 
   // pill:submit — spawns a Docker container with the agent loop.
   ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {
@@ -325,6 +333,7 @@ app.whenReady().then(async () => {
   app.on('before-quit', async () => {
     mainLogger.info('main.beforeQuit', { msg: 'Flushing session + hl teardown' });
     tabManager?.flushSession();
+    tabManager?.flushZoom();
     bookmarkStore?.flushSync();
     await teardownHl();
   });
@@ -400,6 +409,7 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
     tabSwitchItems.push({
       label: `Switch to Tab ${i}`,
       accelerator: `CommandOrControl+${i}`,
+      visible: false,
       click: () => {
         mainLogger.debug('shortcuts.switchTab', { idx });
         const tabId = tabManager?.getTabAtIndex(idx);
@@ -409,10 +419,6 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
   }
 
   // Issue #88 — Opt+Left/Right mirror Cmd+Left/Right (back/forward in Chrome).
-  // Electron menu items only accept one `accelerator`, so we register hidden
-  // "shadow" items whose sole purpose is to bind an extra key combo to the
-  // same action. `visible: false` keeps them out of the menu UI but the OS
-  // still routes the key combo through them.
   const backItem: MenuItemConstructorOptions = {
     label: 'Back',
     accelerator: 'CommandOrControl+Left',
@@ -469,6 +475,9 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
   };
 
   return [
+    // -----------------------------------------------------------------------
+    // App Menu (Chrome)
+    // -----------------------------------------------------------------------
     {
       role: 'appMenu',
       submenu: [
@@ -492,6 +501,9 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         { role: 'quit' },
       ],
     },
+    // -----------------------------------------------------------------------
+    // File
+    // -----------------------------------------------------------------------
     {
       label: 'File',
       submenu: [
@@ -503,20 +515,35 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             tabManager?.createTab();
           },
         },
-        // Issue #88 — Cmd+Shift+T placeholder. Pane 5 owns the closed-tab
-        // stack (reopenLastClosed); we call it optional-chained so this menu
-        // item is a safe no-op until that worker lands. Leave this wiring in
-        // place so the accelerator exists on first ship.
         {
-          label: 'Reopen Closed Tab',
-          accelerator: 'CommandOrControl+Shift+T',
+          label: 'New Window',
+          accelerator: 'CommandOrControl+N',
+          enabled: false,
+        },
+        { type: 'separator' },
+        {
+          label: 'Open Location…',
+          accelerator: 'CommandOrControl+L',
           click: () => {
-            mainLogger.debug('shortcuts.reopenClosedTab');
-            // TODO(wave1/closed-tabs): pane 5 implements
-            // TabManager.reopenLastClosed(); optional-chain so merges safely.
-            (tabManager as any)?.reopenLastClosed?.();
+            mainLogger.debug('shortcuts.openLocation');
+            shellWindow?.webContents.send('focus-url-bar');
           },
         },
+        {
+          label: 'Open File…',
+          accelerator: 'CommandOrControl+O',
+          click: async () => {
+            mainLogger.debug('shortcuts.openFile');
+            const result = await dialog.showOpenDialog({
+              properties: ['openFile'],
+            });
+            if (!result.canceled && result.filePaths[0]) {
+              const fileUrl = 'file://' + result.filePaths[0];
+              tabManager?.createTab(fileUrl);
+            }
+          },
+        },
+        { type: 'separator' },
         {
           label: 'Close Tab',
           accelerator: 'CommandOrControl+W',
@@ -526,32 +553,269 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             if (activeId) tabManager?.closeTab(activeId);
           },
         },
-      ],
-    },
-    {
-      label: 'Agent',
-      submenu: [
         {
-          label: 'Toggle Agent Pill',
-          accelerator: 'CommandOrControl+K',
+          label: 'Close Window',
+          accelerator: 'CommandOrControl+Shift+W',
           click: () => {
-            mainLogger.debug('shortcuts.togglePill');
-            togglePill();
+            mainLogger.debug('shortcuts.closeWindow');
+            shellWindow?.close();
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Print…',
+          accelerator: 'CommandOrControl+P',
+          click: () => {
+            mainLogger.debug('shortcuts.print');
+            tabManager?.printActive();
           },
         },
       ],
     },
+    // -----------------------------------------------------------------------
+    // Edit
+    // -----------------------------------------------------------------------
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'delete' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Find',
+          submenu: [
+            {
+              label: 'Find…',
+              accelerator: 'CommandOrControl+F',
+              click: () => {
+                mainLogger.debug('shortcuts.find');
+                const lastQuery = tabManager?.getActiveTabLastFindQuery() ?? '';
+                shellWindow?.webContents.send('find-open', { lastQuery });
+              },
+            },
+            {
+              label: 'Find Next',
+              accelerator: 'CommandOrControl+G',
+              click: () => {
+                mainLogger.debug('shortcuts.findNext');
+                tabManager?.findNextInActiveTab();
+              },
+            },
+            {
+              label: 'Find Previous',
+              accelerator: 'CommandOrControl+Shift+G',
+              click: () => {
+                mainLogger.debug('shortcuts.findPrev');
+                tabManager?.findPreviousInActiveTab();
+              },
+            },
+          ],
+        },
+        { type: 'separator' },
+        {
+          label: 'Spelling and Grammar',
+          submenu: [
+            { label: 'Show Spelling and Grammar', role: 'showSubstitutions' as any },
+            { label: 'Check Document Now', enabled: false },
+          ],
+        },
+        {
+          label: 'Substitutions',
+          submenu: [
+            { label: 'Show Substitutions', role: 'showSubstitutions' as any },
+            { type: 'separator' },
+            { label: 'Smart Quotes', role: 'toggleSmartQuotes' as any },
+            { label: 'Smart Dashes', role: 'toggleSmartDashes' as any },
+            { label: 'Text Replacement', role: 'toggleTextReplacement' as any },
+          ],
+        },
+        {
+          label: 'Speech',
+          submenu: [
+            { role: 'startSpeaking' },
+            { role: 'stopSpeaking' },
+          ],
+        },
+        { type: 'separator' },
+        {
+          label: 'Emoji & Symbols',
+          accelerator: 'CommandOrControl+Ctrl+Space',
+          click: () => {
+            mainLogger.debug('shortcuts.emojiSymbols');
+            app.showEmojiPanel();
+          },
+        },
+      ],
+    },
+    // -----------------------------------------------------------------------
+    // View
+    // -----------------------------------------------------------------------
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Stop',
+          accelerator: 'Escape',
+          click: () => {
+            mainLogger.debug('shortcuts.stop');
+            tabManager?.stopActive();
+          },
+        },
+        {
+          label: 'Reload This Page',
+          accelerator: 'CommandOrControl+R',
+          click: () => {
+            mainLogger.debug('shortcuts.reload');
+            tabManager?.reloadActive();
+          },
+        },
+        {
+          label: 'Force Reload This Page',
+          accelerator: 'CommandOrControl+Shift+R',
+          click: () => {
+            mainLogger.debug('shortcuts.reloadHard');
+            tabManager?.reloadActiveIgnoringCache();
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Enter Full Screen',
+          accelerator: process.platform === 'darwin' ? 'Ctrl+CommandOrControl+F' : 'F11',
+          click: () => {
+            mainLogger.debug('shortcuts.toggleFullScreen');
+            shellWindow?.setFullScreen(!shellWindow?.isFullScreen());
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Actual Size',
+          accelerator: 'CommandOrControl+0',
+          click: () => {
+            mainLogger.debug('shortcuts.zoomReset');
+            tabManager?.zoomResetActive();
+          },
+        },
+        {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+=',
+          click: () => {
+            mainLogger.debug('shortcuts.zoomIn');
+            tabManager?.zoomInActive();
+          },
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: () => {
+            mainLogger.debug('shortcuts.zoomOut');
+            tabManager?.zoomOutActive();
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Developer',
+          submenu: [
+            {
+              label: 'View Source',
+              accelerator: 'CommandOrControl+Alt+U',
+              click: () => {
+                mainLogger.debug('shortcuts.viewSource');
+                tabManager?.openViewSourceForActive();
+              },
+            },
+            {
+              label: 'Developer Tools',
+              accelerator: 'CommandOrControl+Alt+I',
+              click: () => {
+                mainLogger.debug('shortcuts.devTools');
+                tabManager?.toggleDevToolsForActive();
+              },
+            },
+            {
+              label: 'JavaScript Console',
+              accelerator: 'CommandOrControl+Alt+J',
+              click: () => {
+                mainLogger.debug('shortcuts.jsConsole');
+                tabManager?.openDevToolsConsoleForActive();
+              },
+            },
+            { type: 'separator' },
+            {
+              label: 'DevTools Dock Mode',
+              submenu: [
+                {
+                  label: 'Dock to Right',
+                  type: 'radio',
+                  checked: tabManager?.getDevToolsDockMode() === 'right',
+                  click: () => {
+                    mainLogger.debug('shortcuts.devToolsDock', { mode: 'right' });
+                    tabManager?.setDevToolsDockMode('right');
+                    rebuildApplicationMenu();
+                  },
+                },
+                {
+                  label: 'Dock to Bottom',
+                  type: 'radio',
+                  checked: tabManager?.getDevToolsDockMode() === 'bottom',
+                  click: () => {
+                    mainLogger.debug('shortcuts.devToolsDock', { mode: 'bottom' });
+                    tabManager?.setDevToolsDockMode('bottom');
+                    rebuildApplicationMenu();
+                  },
+                },
+                {
+                  label: 'Dock to Left',
+                  type: 'radio',
+                  checked: tabManager?.getDevToolsDockMode() === 'detach',
+                  click: () => {
+                    mainLogger.debug('shortcuts.devToolsDock', { mode: 'detach' });
+                    tabManager?.setDevToolsDockMode('detach');
+                    rebuildApplicationMenu();
+                  },
+                },
+                {
+                  label: 'Undocked',
+                  type: 'radio',
+                  checked: tabManager?.getDevToolsDockMode() === 'undocked',
+                  click: () => {
+                    mainLogger.debug('shortcuts.devToolsDock', { mode: 'undocked' });
+                    tabManager?.setDevToolsDockMode('undocked');
+                    rebuildApplicationMenu();
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    // -----------------------------------------------------------------------
+    // Bookmarks
+    // -----------------------------------------------------------------------
     {
       label: 'Bookmarks',
       submenu: [
         {
-          label: 'Bookmark This Page…',
+          label: 'Bookmark This Tab…',
           accelerator: 'CommandOrControl+D',
           click: () => {
             mainLogger.debug('shortcuts.bookmarkPage');
             shellWindow?.webContents.send('open-bookmark-dialog');
           },
         },
+        {
+          label: 'Bookmark All Tabs…',
+          accelerator: 'CommandOrControl+Shift+D',
+          enabled: false,
+        },
+        { type: 'separator' },
         {
           label: 'Show Bookmarks Bar',
           accelerator: 'CommandOrControl+Shift+B',
@@ -570,98 +834,37 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         },
       ],
     },
+    // -----------------------------------------------------------------------
+    // Agent (custom — not in Chrome, unique to this app)
+    // -----------------------------------------------------------------------
     {
-      label: 'View',
+      label: 'Agent',
       submenu: [
         {
-          label: 'Focus URL Bar',
-          accelerator: 'CommandOrControl+L',
+          label: 'Toggle Agent Pill',
+          accelerator: 'CommandOrControl+K',
           click: () => {
-            mainLogger.debug('shortcuts.focusUrlBar');
-            shellWindow?.webContents.send('focus-url-bar');
+            mainLogger.debug('shortcuts.togglePill');
+            togglePill();
           },
         },
+      ],
+    },
+    // -----------------------------------------------------------------------
+    // Tab
+    // -----------------------------------------------------------------------
+    {
+      label: 'Tab',
+      submenu: [
         {
-          label: 'Reload',
-          accelerator: 'CommandOrControl+R',
+          label: 'New Tab',
+          accelerator: 'CommandOrControl+T',
+          visible: false,
           click: () => {
-            mainLogger.debug('shortcuts.reload');
-            tabManager?.reloadActive();
+            mainLogger.debug('shortcuts.newTab.tabMenu');
+            tabManager?.createTab();
           },
         },
-        // Issue #25 — Hard reload (Cmd+Shift+R) bypasses the HTTP cache.
-        {
-          label: 'Force Reload',
-          accelerator: 'CommandOrControl+Shift+R',
-          click: () => {
-            mainLogger.debug('shortcuts.reloadHard');
-            tabManager?.reloadActiveIgnoringCache();
-          },
-        },
-        // Issue #76 — View page source opens a new tab at view-source:<url>.
-        {
-          label: 'View Source',
-          accelerator: 'CommandOrControl+Alt+U',
-          click: () => {
-            mainLogger.debug('shortcuts.viewSource');
-            tabManager?.openViewSourceForActive();
-          },
-        },
-        { type: 'separator' },
-        {
-          // Opens the FindBar for the active tab. The renderer owns the UI;
-          // main just sends 'find-open' with the remembered per-tab query so
-          // re-opening Cmd+F restores the previous search (Chrome parity).
-          label: 'Find…',
-          accelerator: 'CommandOrControl+F',
-          click: () => {
-            mainLogger.debug('shortcuts.find');
-            const lastQuery = tabManager?.getActiveTabLastFindQuery() ?? '';
-            shellWindow?.webContents.send('find-open', { lastQuery });
-          },
-        },
-        {
-          label: 'Find Next',
-          accelerator: 'CommandOrControl+G',
-          click: () => {
-            mainLogger.debug('shortcuts.findNext');
-            tabManager?.findNextInActiveTab();
-          },
-        },
-        {
-          label: 'Find Previous',
-          accelerator: 'CommandOrControl+Shift+G',
-          click: () => {
-            mainLogger.debug('shortcuts.findPrev');
-            tabManager?.findPreviousInActiveTab();
-          },
-        },
-        { type: 'separator' },
-        {
-          label: 'Zoom In',
-          accelerator: 'CommandOrControl+=',
-          click: () => {
-            mainLogger.debug('shortcuts.zoomIn');
-            tabManager?.zoomInActive();
-          },
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CommandOrControl+-',
-          click: () => {
-            mainLogger.debug('shortcuts.zoomOut');
-            tabManager?.zoomOutActive();
-          },
-        },
-        {
-          label: 'Actual Size',
-          accelerator: 'CommandOrControl+0',
-          click: () => {
-            mainLogger.debug('shortcuts.zoomReset');
-            tabManager?.zoomResetActive();
-          },
-        },
-        { type: 'separator' },
         {
           label: 'Next Tab',
           accelerator: 'CommandOrControl+Shift+]',
@@ -678,14 +881,31 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             switchTabRelative(-1);
           },
         },
-        // Shadow items: add Cmd+Opt+Left/Right as alternate prev/next-tab
-        // accelerators without cluttering the menu.
         prevTabShadow,
         nextTabShadow,
+        { type: 'separator' },
+        {
+          label: 'Duplicate Tab',
+          click: () => {
+            mainLogger.debug('shortcuts.duplicateTab');
+            tabManager?.duplicateActiveTab();
+          },
+        },
+        {
+          label: 'Reopen Closed Tab',
+          accelerator: 'CommandOrControl+Shift+T',
+          click: () => {
+            mainLogger.debug('shortcuts.reopenClosedTab');
+            tabManager?.reopenLastClosed();
+          },
+        },
         { type: 'separator' },
         ...tabSwitchItems,
       ],
     },
+    // -----------------------------------------------------------------------
+    // History
+    // -----------------------------------------------------------------------
     {
       label: 'History',
       submenu: [
@@ -693,6 +913,15 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         backShadowOpt,
         forwardItem,
         forwardShadowOpt,
+        { type: 'separator' },
+        {
+          label: 'Home',
+          accelerator: 'CommandOrControl+Shift+H',
+          click: () => {
+            mainLogger.debug('shortcuts.home');
+            tabManager?.navigateActive('https://www.google.com');
+          },
+        },
         { type: 'separator' },
         {
           label: 'Reopen Closed Tab',
@@ -717,21 +946,62 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
         },
       ],
     },
-    { role: 'editMenu' },
+    // -----------------------------------------------------------------------
+    // Window
+    // -----------------------------------------------------------------------
     {
-      // Issue #88 — Window menu. `close` role gives Cmd+Shift+W; `minimize`
-      // gives Cmd+M. Both are the macOS-standard roles Chrome uses too.
       role: 'windowMenu',
       submenu: [
         { role: 'minimize' },
         { role: 'zoom' },
+        { type: 'separator' },
+        {
+          label: 'Close Tab',
+          accelerator: 'CommandOrControl+W',
+          visible: false,
+          click: () => {
+            mainLogger.debug('shortcuts.closeTab.windowMenu');
+            const activeId = tabManager?.getActiveTabId();
+            if (activeId) tabManager?.closeTab(activeId);
+          },
+        },
         { role: 'close', accelerator: 'CommandOrControl+Shift+W' },
+        { type: 'separator' },
+        {
+          label: 'Downloads',
+          accelerator: 'CommandOrControl+Shift+J',
+          enabled: false,
+        },
+        {
+          label: 'Extensions',
+          enabled: false,
+        },
+        {
+          label: 'Task Manager',
+          enabled: false,
+        },
         { type: 'separator' },
         { role: 'front' },
       ],
     },
+    // -----------------------------------------------------------------------
+    // Help
+    // -----------------------------------------------------------------------
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Report an Issue…',
+          click: () => {
+            mainLogger.debug('shortcuts.reportIssue');
+            shell.openExternal('https://github.com/anthropics/desktop-app/issues');
+          },
+        },
+      ],
+    },
   ];
 }
+
 
 function rebuildApplicationMenu(): void {
   if (!shellWindow || !tabManager) return;

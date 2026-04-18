@@ -32,9 +32,9 @@ function buildMenu(params: ContextMenuParams, wc: WebContents, deps: ContextMenu
   const pageUrl = wc.getURL();
 
   if (hasLink) {
-    buildLinkMenu(menu, params, deps);
+    buildLinkMenu(menu, params, wc, deps);
   } else if (hasImage) {
-    buildImageMenu(menu, params, deps);
+    buildImageMenu(menu, params, wc, deps);
   } else if (hasSelection) {
     buildSelectionMenu(menu, params, wc, deps);
   } else if (isEditable) {
@@ -80,11 +80,14 @@ function buildPageMenu(
   }));
   menu.append(new MenuItem({
     label: 'Inspect',
-    click: () => wc.openDevTools({ mode: 'detach' }),
+    click: () => {
+      mainLogger.debug('contextMenu.inspect', { x: params.x, y: params.y });
+      wc.inspectElement(params.x, params.y);
+    },
   }));
 }
 
-function buildLinkMenu(menu: Menu, params: ContextMenuParams, deps: ContextMenuDeps): void {
+function buildLinkMenu(menu: Menu, params: ContextMenuParams, wc: WebContents, deps: ContextMenuDeps): void {
   menu.append(new MenuItem({
     label: 'Open Link in New Tab',
     click: () => deps.createTab(params.linkURL),
@@ -101,11 +104,14 @@ function buildLinkMenu(menu: Menu, params: ContextMenuParams, deps: ContextMenuD
   menu.append(new MenuItem({ type: 'separator' }));
   menu.append(new MenuItem({
     label: 'Inspect',
-    click: () => deps.win.webContents.openDevTools({ mode: 'detach' }),
+    click: () => {
+      mainLogger.debug('contextMenu.inspect', { x: params.x, y: params.y });
+      wc.inspectElement(params.x, params.y);
+    },
   }));
 }
 
-function buildImageMenu(menu: Menu, params: ContextMenuParams, deps: ContextMenuDeps): void {
+function buildImageMenu(menu: Menu, params: ContextMenuParams, wc: WebContents, deps: ContextMenuDeps): void {
   menu.append(new MenuItem({
     label: 'Open Image in New Tab',
     click: () => deps.createTab(params.srcURL),
@@ -114,8 +120,6 @@ function buildImageMenu(menu: Menu, params: ContextMenuParams, deps: ContextMenu
   menu.append(new MenuItem({
     label: 'Copy Image',
     click: () => {
-      // Electron doesn't have a direct "copy image to clipboard" from params.
-      // Use the webContents to execute JS that copies the image.
       deps.win.webContents.copyImageAt(params.x, params.y);
     },
   }));
@@ -130,7 +134,10 @@ function buildImageMenu(menu: Menu, params: ContextMenuParams, deps: ContextMenu
   menu.append(new MenuItem({ type: 'separator' }));
   menu.append(new MenuItem({
     label: 'Inspect',
-    click: () => deps.win.webContents.openDevTools({ mode: 'detach' }),
+    click: () => {
+      mainLogger.debug('contextMenu.inspect', { x: params.x, y: params.y });
+      wc.inspectElement(params.x, params.y);
+    },
   }));
 }
 
@@ -152,7 +159,10 @@ function buildSelectionMenu(
   menu.append(new MenuItem({ type: 'separator' }));
   menu.append(new MenuItem({
     label: 'Inspect',
-    click: () => wc.openDevTools({ mode: 'detach' }),
+    click: () => {
+      mainLogger.debug('contextMenu.inspect', { x: params.x, y: params.y });
+      wc.inspectElement(params.x, params.y);
+    },
   }));
 }
 
