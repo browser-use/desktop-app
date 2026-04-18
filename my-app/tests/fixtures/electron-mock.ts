@@ -64,6 +64,33 @@ export const shell = {
   openExternal: (_url: string): Promise<void> => Promise.resolve(),
 };
 
+// safeStorage stub — used by PasswordStore (passwords) and KeychainStore
+// fallback path. The mock implements a deterministic XOR-style "encryption"
+// purely for round-trip testing; the encrypted payload is NOT the same bytes
+// as the plaintext so tests can assert non-equality.
+const SAFE_STORAGE_PREFIX = 'sstmock:';
+
+export const safeStorage = {
+  isEncryptionAvailable: (): boolean => true,
+  encryptString: (plain: string): Buffer => Buffer.from(`${SAFE_STORAGE_PREFIX}${plain}`, 'utf-8'),
+  decryptString: (buf: Buffer): string => {
+    const s = buf.toString('utf-8');
+    if (s.startsWith(SAFE_STORAGE_PREFIX)) {
+      return s.slice(SAFE_STORAGE_PREFIX.length);
+    }
+    return s;
+  },
+};
+
+// systemPreferences stub — used by BiometricAuth and PermissionManager.
+// macOS-specific APIs return values consistent with "permission already granted"
+// so unit tests don't trigger denial code paths unless they override these.
+export const systemPreferences = {
+  canPromptTouchID: (): boolean => true,
+  promptTouchID: (_reason: string): Promise<void> => Promise.resolve(),
+  getMediaAccessStatus: (_mediaType: string): string => 'granted',
+};
+
 // Session stub covering every API reached from src/main.
 //
 // Callers include:
@@ -191,6 +218,8 @@ export default {
   screen,
   nativeImage,
   shell,
+  safeStorage,
+  systemPreferences,
   session,
   protocol,
   Menu,

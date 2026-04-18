@@ -19,6 +19,9 @@ export default defineConfig({
     name: 'unit',
     include: [
       'tests/unit/**/*.test.ts',
+      'tests/unit/profiles/**/*.spec.{ts,tsx}',
+      'tests/unit/permissions/**/*.spec.{ts,tsx}',
+      'tests/unit/passwords/**/*.spec.{ts,tsx}',
       'tests/pill/**/*.spec.ts',
       'tests/integration/**/*.test.ts',
       // Regression tests that don't need a live Electron process
@@ -31,6 +34,10 @@ export default defineConfig({
       'tests/unit/extensions/**/*.spec.tsx',
       'tests/unit/zoom/**/*.spec.ts',
       'tests/unit/shell/**/*.spec.tsx',
+    ],
+    // jsdom for React component specs; node for everything else
+    environmentMatchGlobs: [
+      ['tests/unit/**/*.spec.tsx', 'jsdom'],
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file
