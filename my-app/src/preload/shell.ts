@@ -236,6 +236,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('shell:set-chrome-height', height),
     getPlatform: (): Promise<string> =>
       ipcRenderer.invoke('shell:get-platform'),
+
+    setSidePanelWidth: (width: number): Promise<void> =>
+      ipcRenderer.invoke('shell:set-side-panel-width', width),
+
+    setSidePanelPosition: (position: 'left' | 'right'): Promise<void> =>
+      ipcRenderer.invoke('shell:set-side-panel-position', position),
+
+    getHistory: (): Promise<Array<{ url: string; title: string; visitedAt: number }>> =>
+      ipcRenderer.invoke('shell:get-history'),
   },
 
   // Issue #81 — Three-dot app menu (non-macOS)
