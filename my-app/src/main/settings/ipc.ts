@@ -89,6 +89,13 @@ const CH_SET_BIOMETRIC_LOCK  = 'settings:set-biometric-lock';
 const CH_BIOMETRIC_AVAILABLE = 'settings:biometric-available';
 const CH_GET_HTTPS_FIRST     = 'settings:get-https-first';
 const CH_SET_HTTPS_FIRST     = 'settings:set-https-first';
+const CH_GET_PREDICTION      = 'settings:get-prediction-service';
+const CH_SET_PREDICTION      = 'settings:set-prediction-service';
+const CH_GET_PRELOAD         = 'settings:get-preload-pages';
+const CH_SET_PRELOAD         = 'settings:set-preload-pages';
+
+const ALLOWED_PRELOAD_MODES = ['none', 'standard', 'extended'] as const;
+type PreloadMode = typeof ALLOWED_PRELOAD_MODES[number];
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -589,6 +596,41 @@ function handleSetHttpsFirst(_event: Electron.IpcMainInvokeEvent, enabled: boole
   mainLogger.info(`${CH_SET_HTTPS_FIRST}.ok`, { enabled });
 }
 
+
+function handleGetPredictionService(): boolean {
+  mainLogger.info(CH_GET_PREDICTION);
+  const prefs = readPrefs();
+  const enabled = prefs.predictionService === true;
+  mainLogger.info(`${CH_GET_PREDICTION}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetPredictionService(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('predictionService must be a boolean');
+  }
+  mainLogger.info(CH_SET_PREDICTION, { enabled });
+  mergePrefs({ predictionService: enabled });
+  mainLogger.info(`${CH_SET_PREDICTION}.ok`, { enabled });
+}
+
+function handleGetPreloadPages(): string {
+  mainLogger.info(CH_GET_PRELOAD);
+  const prefs = readPrefs();
+  const mode = (ALLOWED_PRELOAD_MODES as readonly string[]).includes(prefs.preloadPages as string)
+    ? (prefs.preloadPages as string)
+    : 'standard';
+  mainLogger.info(`${CH_GET_PRELOAD}.ok`, { mode });
+  return mode;
+}
+
+function handleSetPreloadPages(_event: Electron.IpcMainInvokeEvent, mode: string): void {
+  const validatedMode: PreloadMode = assertOneOf(mode, 'preloadPages', ALLOWED_PRELOAD_MODES);
+  mainLogger.info(CH_SET_PRELOAD, { mode: validatedMode });
+  mergePrefs({ preloadPages: validatedMode });
+  mainLogger.info(`${CH_SET_PRELOAD}.ok`, { mode: validatedMode });
+}
+
 function handleCloseWindow(): void {
   mainLogger.info(CH_CLOSE_WINDOW);
   const win = getSettingsWindow();
@@ -633,8 +675,12 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_BIOMETRIC_AVAILABLE, handleBiometricAvailable);
   ipcMain.handle(CH_GET_HTTPS_FIRST,    handleGetHttpsFirst);
   ipcMain.handle(CH_SET_HTTPS_FIRST,    handleSetHttpsFirst);
+  ipcMain.handle(CH_GET_PREDICTION,     handleGetPredictionService);
+  ipcMain.handle(CH_SET_PREDICTION,     handleSetPredictionService);
+  ipcMain.handle(CH_GET_PRELOAD,        handleGetPreloadPages);
+  ipcMain.handle(CH_SET_PRELOAD,        handleSetPreloadPages);
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 21 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -661,6 +707,10 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_BIOMETRIC_AVAILABLE);
   ipcMain.removeHandler(CH_GET_HTTPS_FIRST);
   ipcMain.removeHandler(CH_SET_HTTPS_FIRST);
+  ipcMain.removeHandler(CH_GET_PREDICTION);
+  ipcMain.removeHandler(CH_SET_PREDICTION);
+  ipcMain.removeHandler(CH_GET_PRELOAD);
+  ipcMain.removeHandler(CH_SET_PRELOAD);
 
   _accountStore  = null;
   _keychainStore = null;

@@ -149,6 +149,18 @@ export interface SettingsAPI {
 
   /** Set whether HTTPS-First mode is enabled */
   setHttpsFirst: (enabled: boolean) => Promise<void>;
+
+  /** Get whether prediction service is enabled */
+  getPredictionService: () => Promise<boolean>;
+
+  /** Set whether prediction service is enabled */
+  setPredictionService: (enabled: boolean) => Promise<void>;
+
+  /** Get the current preload pages mode */
+  getPreloadPages: () => Promise<string>;
+
+  /** Set the preload pages mode */
+  setPreloadPages: (mode: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +351,26 @@ const api: SettingsAPI = {
   setHttpsFirst: async (enabled: boolean): Promise<void> => {
     console.debug('[settings-preload] setHttpsFirst', { enabled });
     await ipcRenderer.invoke('settings:set-https-first', enabled);
+  },
+
+  getPredictionService: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getPredictionService');
+    return ipcRenderer.invoke('settings:get-prediction-service') as Promise<boolean>;
+  },
+
+  setPredictionService: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setPredictionService', { enabled });
+    await ipcRenderer.invoke('settings:set-prediction-service', enabled);
+  },
+
+  getPreloadPages: async (): Promise<string> => {
+    console.debug('[settings-preload] getPreloadPages');
+    return ipcRenderer.invoke('settings:get-preload-pages') as Promise<string>;
+  },
+
+  setPreloadPages: async (mode: string): Promise<void> => {
+    console.debug('[settings-preload] setPreloadPages', { mode });
+    await ipcRenderer.invoke('settings:set-preload-pages', mode);
   },
 };
 
