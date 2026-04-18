@@ -327,6 +327,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
 
+  // Issue #12 — Window naming
+  windowName: {
+    set: (name: string): Promise<void> =>
+      ipcRenderer.invoke('window:set-name', name),
+  },
+
   // Issue #98 — Share menu
   share: {
     copyLink: (): Promise<boolean> =>
@@ -664,6 +670,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_e: Electron.IpcRendererEvent, payload: { url: string }) => cb(payload);
       ipcRenderer.on('link-hover', handler);
       return () => ipcRenderer.removeListener('link-hover', handler);
+    },
+
+    // Issue #12 — Window naming: main asks renderer to open the name dialog
+    nameWindowDialog: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('name-window-dialog', handler);
+      return () => ipcRenderer.removeListener('name-window-dialog', handler);
     },
 
     // Issue #6 — Tab search (Cmd+Shift+A)

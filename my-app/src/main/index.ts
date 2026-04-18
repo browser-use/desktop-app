@@ -185,6 +185,10 @@ let deviceManager: DeviceManager | null = null;
 let activeProfileId = 'default';
 let isGuestSession = false;
 let guestPartitionName: string | null = null;
+// Issue #12 — Window naming: in-memory custom title; cleared on window close
+let windowCustomName: string | null = null;
+// Stores the default (pre-rename) title for each window, keyed by window.id.
+const windowDefaultTitles = new Map<number, string>();
 
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({ clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com' });
@@ -329,6 +333,14 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     });
   }
 
+  // Issue #12 — reset custom window name when shell window closes
+  const shellWinId = shellWindow.id;
+  shellWindow.on('closed', () => {
+    mainLogger.info('main.shellWindow.closed', { msg: 'Clearing custom window name' });
+    windowCustomName = null;
+    windowDefaultTitles.delete(shellWinId);
+  });
+
   return shellWindow;
 }
 
@@ -432,6 +444,11 @@ function openNewWindow(): BrowserWindow {
   });
 
   win.on('resize', () => tm.relayout());
+  const newWinId = win.id;
+  win.on('closed', () => {
+    windowDefaultTitles.delete(newWinId);
+    tm.destroy();
+  });
 
   mainLogger.info('main.openNewWindow.done', { windowId: win.id });
   return win;
@@ -465,7 +482,9 @@ function openIncognitoWindow(): BrowserWindow {
   incognitoWindows.add(win);
   mainLogger.info('main.openIncognitoWindow.tracked', { total: incognitoWindows.size });
 
+  const incogWinId = win.id;
   win.on('closed', () => {
+    windowDefaultTitles.delete(incogWinId);
     incognitoWindows.delete(win);
     mainLogger.info('main.incognitoWindow.closed', {
       remaining: incognitoWindows.size,
@@ -1702,6 +1721,14 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           },
         },
         {
+          label: 'Name Window…',
+          click: () => {
+            mainLogger.debug('shortcuts.nameWindow');
+            const focusedWin = BrowserWindow.getFocusedWindow() ?? shellWindow;
+            focusedWin?.webContents.send('name-window-dialog');
+          },
+        },
+        {
           label: 'Task Manager',
           enabled: false,
         },
@@ -1755,6 +1782,34 @@ function switchTabRelative(delta: number): void {
 // IPC: window-level handlers
 // ---------------------------------------------------------------------------
 ipcMain.handle('shell:get-platform', () => process.platform);
+
+// Issue #12 — Window naming: set a custom OS-level window title
+ipcMain.handle('window:set-name', (e, name: string) => {
+  windowCustomName = name && name.trim() ? name.trim() : null;
+  mainLogger.info('main.window:set-name', { name: windowCustomName });
+  const callerWin = BrowserWindow.fromWebContents(e.sender);
+  const targetWin = callerWin ?? shellWindow;
+  if (targetWin && !targetWin.isDestroyed()) {
+    const winId = targetWin.id;
+    if (windowCustomName) {
+      // Save default title before first rename so we can restore it later.
+      if (!windowDefaultTitles.has(winId)) {
+        windowDefaultTitles.set(winId, targetWin.getTitle());
+      }
+      targetWin.setTitle(windowCustomName);
+    } else {
+      // Restore the original title (preserves Guest/Incognito suffix).
+      // Only restore if the window was previously renamed; if no prior name
+      // was ever set, windowDefaultTitles has no entry and there is nothing
+      // to restore — the title is already correct.
+      if (windowDefaultTitles.has(winId)) {
+        const defaultTitle = windowDefaultTitles.get(winId)!;
+        windowDefaultTitles.delete(winId);
+        targetWin.setTitle(defaultTitle);
+      }
+    }
+  }
+});
 
 // Issue #81 — Three-dot app menu for non-macOS platforms.
 ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) => {
@@ -1917,6 +1972,14 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
         { label: 'JavaScript Console', accelerator: 'Ctrl+Shift+J', click: () => { tabManager?.openDevToolsConsoleForActive(); } },
         { type: 'separator' },
         { label: 'Task Manager', enabled: false },
+        { type: 'separator' },
+        {
+          label: 'Name Window…',
+          click: () => {
+            mainLogger.debug('shortcuts.nameWindow.threedot');
+            shellWindow?.webContents.send('name-window-dialog');
+          },
+        },
       ],
     },
     { type: 'separator' },
