@@ -323,6 +323,10 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     shellWindow?.webContents.send('fullscreen-changed', { isFullscreen: false });
   });
 
+  // Capture before module-level tabManager can be reassigned by a profile switch.
+  const shellTm = tabManager;
+  shellWindow.on('closed', () => shellTm.destroy());
+
   // DEV/TEST: expose tabManager on the Node.js global object so E2E tests can
   // reach it via electronApp.evaluate() calls (which run in the same Node.js
   // process and share the global scope).  The BrowserWindow proxy returned by
@@ -407,11 +411,13 @@ function openGuestShell(): BrowserWindow {
 
   shellWindow.on('resize', () => tabManager?.relayout());
 
+  const guestTm = tabManager;
   shellWindow.on('closed', () => {
     mainLogger.info('main.guestShell.closed', {
       msg: 'Guest window closed — clearing ephemeral session data',
       guestPartitionName,
     });
+    guestTm.destroy();
     if (guestPartitionName) {
       void clearGuestSession(guestPartitionName);
     }
