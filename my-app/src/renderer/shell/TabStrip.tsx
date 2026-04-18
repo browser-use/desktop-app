@@ -2,9 +2,16 @@
  * TabStrip: horizontal tab bar with favicons, title, loading indicator,
  * close button, drag-to-reorder, and new-tab button.
  * Arrow keys navigate between tabs when the tab strip has focus (Chrome parity).
+ *
+ * Overflow behaviour (issue #9):
+ *   - Tabs shrink proportionally as more are added (flex: 1 1 max-width).
+ *   - Title truncates with ellipsis before the favicon shrinks (CSS handles this).
+ *   - Below TAB_ICON_ONLY_WIDTH px the tab switches to favicon-only mode.
+ *   - When any tab is in icon-only mode a search/list button appears at the
+ *     right edge of the strip so the user can find and switch to any tab.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { TabState } from '../../main/tabs/TabManager';
 
 declare const electronAPI: {
@@ -18,6 +25,12 @@ declare const electronAPI: {
 // ---------------------------------------------------------------------------
 const DRAG_THRESHOLD_PX = 4;
 const GOOGLE_FAVICON_API = 'https://www.google.com/s2/favicons?sz=32&domain_url=';
+
+/** Width at which a tab switches to favicon-only mode (px). */
+const TAB_ICON_ONLY_WIDTH = 58;
+
+/** Width below which the tab-search button becomes visible. */
+const TAB_SEARCH_THRESHOLD_WIDTH = 100;
 
 function faviconSrc(tab: TabState): string | null {
   if (tab.favicon) return tab.favicon;
@@ -46,6 +59,7 @@ interface TabItemProps {
   tab: TabState;
   index: number;
   isActive: boolean;
+  isIconOnly: boolean;
   onActivate: () => void;
   onClose: (e: React.MouseEvent) => void;
   onDragStart: (e: React.DragEvent, tabId: string, index: number) => void;
@@ -61,6 +75,7 @@ function TabItem({
   tab,
   index,
   isActive,
+  isIconOnly,
   onActivate,
   onClose,
   onDragStart,
@@ -81,6 +96,7 @@ function TabItem({
         isActive ? 'tab-item--active' : '',
         isDragOver ? 'tab-item--drag-over' : '',
         isPinned ? 'tab-item--pinned' : '',
+        isIconOnly && !isPinned ? 'tab-item--icon-only' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -94,7 +110,7 @@ function TabItem({
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
       onContextMenu={onContextMenu}
-      title={isPinned ? tab.title : undefined}
+      title={isPinned || isIconOnly ? tab.title : undefined}
     >
       {/* Favicon / loading spinner / audio indicator */}
       <span className="tab-item__favicon" aria-hidden="true">
@@ -113,14 +129,14 @@ function TabItem({
         )}
       </span>
 
-      {/* Title — hidden for pinned tabs */}
+      {/* Title — hidden for pinned tabs and icon-only mode */}
       {!isPinned && (
         <span className="tab-item__title" title={tab.title}>
           {tab.title || 'New Tab'}
         </span>
       )}
 
-      {/* Close button — hidden for pinned tabs */}
+      {/* Close button — hidden for pinned tabs and icon-only mode */}
       {!isPinned && (
         <button
           type="button"
@@ -144,6 +160,112 @@ function TabItem({
 }
 
 // ---------------------------------------------------------------------------
+// TabSearch dropdown
+// ---------------------------------------------------------------------------
+interface TabSearchDropdownProps {
+  tabs: TabState[];
+  activeTabId: string | null;
+  onActivate: (tabId: string) => void;
+  onClose: () => void;
+}
+
+function TabSearchDropdown({
+  tabs,
+  activeTabId,
+  onActivate,
+  onClose,
+}: TabSearchDropdownProps): React.ReactElement {
+  const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the input when the dropdown mounts
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  // Fuzzy filter: each query character must appear in order in the title/url
+  const lowerQuery = query.toLowerCase();
+  const filtered = tabs.filter((tab) => {
+    if (!lowerQuery) return true;
+    const haystack = `${tab.title ?? ''} ${tab.url}`.toLowerCase();
+    let qi = 0;
+    for (let i = 0; i < haystack.length && qi < lowerQuery.length; i++) {
+      if (haystack[i] === lowerQuery[qi]) qi++;
+    }
+    return qi === lowerQuery.length;
+  });
+
+  return (
+    <div className="tab-strip__search-dropdown" role="dialog" aria-label="Search tabs">
+      <div className="tab-strip__search-input-wrap">
+        <input
+          ref={inputRef}
+          className="tab-strip__search-input"
+          type="text"
+          placeholder="Search tabs…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search tabs"
+        />
+      </div>
+      <div className="tab-strip__search-list" role="listbox">
+        {filtered.length === 0 ? (
+          <div className="tab-strip__search-empty">No tabs found</div>
+        ) : (
+          filtered.map((tab) => {
+            const favicon = faviconSrc(tab);
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={[
+                  'tab-strip__search-item',
+                  tab.id === activeTabId ? 'tab-strip__search-item--active' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                role="option"
+                aria-selected={tab.id === activeTabId}
+                onClick={() => {
+                  onActivate(tab.id);
+                  onClose();
+                }}
+              >
+                <span className="tab-strip__search-favicon" aria-hidden="true">
+                  {favicon ? (
+                    <img
+                      src={favicon}
+                      alt=""
+                      width={16}
+                      height={16}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <span className="tab-item__favicon-placeholder" />
+                  )}
+                </span>
+                <span className="tab-strip__search-title">
+                  {tab.title || 'New Tab'}
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // TabStrip
 // ---------------------------------------------------------------------------
 export function TabStrip({
@@ -155,8 +277,12 @@ export function TabStrip({
   onMove,
 }: TabStripProps): React.ReactElement {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [iconOnlySet, setIconOnlySet] = useState<Set<string>>(new Set());
+  const [searchOpen, setSearchOpen] = useState(false);
   const dragTabId = useRef<string | null>(null);
   const tabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const searchBtnRef = useRef<HTMLButtonElement>(null);
 
   const setTabRef = useCallback((index: number) => (el: HTMLDivElement | null) => {
     if (el) {
@@ -165,6 +291,63 @@ export function TabStrip({
       tabRefs.current.delete(index);
     }
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // ResizeObserver: measure each tab's rendered width and update icon-only state
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+
+    const measure = () => {
+      const next = new Set<string>();
+      tabRefs.current.forEach((el, index) => {
+        const tab = tabs[index];
+        if (!tab || tab.pinned) return;
+        const w = el.getBoundingClientRect().width;
+        if (w > 0 && w < TAB_ICON_ONLY_WIDTH) {
+          next.add(tab.id);
+        }
+      });
+      setIconOnlySet((prev) => {
+        // Avoid re-render if unchanged
+        if (prev.size === next.size && [...next].every((id) => prev.has(id))) return prev;
+        return next;
+      });
+    };
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(container);
+    // Also measure on tab count changes
+    measure();
+
+    return () => ro.disconnect();
+  }, [tabs]);
+
+  // Show search button when any non-pinned tab is narrower than the threshold
+  const showSearchBtn = (() => {
+    let show = false;
+    tabRefs.current.forEach((el, index) => {
+      const tab = tabs[index];
+      if (!tab || tab.pinned) return;
+      if (el.getBoundingClientRect().width < TAB_SEARCH_THRESHOLD_WIDTH) show = true;
+    });
+    return show || iconOnlySet.size > 0;
+  })();
+
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const dropdown = document.querySelector('.tab-strip__search-dropdown');
+      if (dropdown && !dropdown.contains(target) && !searchBtnRef.current?.contains(target)) {
+        setSearchOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [searchOpen]);
 
   const handleTabKeyDown = useCallback(
     (e: React.KeyboardEvent, tab: TabState, index: number) => {
@@ -247,13 +430,19 @@ export function TabStrip({
 
   return (
     <div className="tab-strip" role="presentation" onDragEnd={handleDragEnd}>
-      <div className="tab-strip__tabs" role="tablist" aria-label="Browser tabs">
+      <div
+        ref={tabsContainerRef}
+        className="tab-strip__tabs"
+        role="tablist"
+        aria-label="Browser tabs"
+      >
         {tabs.map((tab, index) => (
           <TabItem
             key={tab.id}
             tab={tab}
             index={index}
             isActive={tab.id === activeTabId}
+            isIconOnly={iconOnlySet.has(tab.id)}
             onActivate={() => onActivate(tab.id)}
             onClose={(e) => {
               e.stopPropagation();
@@ -290,6 +479,33 @@ export function TabStrip({
           </svg>
         </button>
       </div>
+
+      {/* Tab search button — appears when tabs are too narrow to read titles */}
+      {showSearchBtn && (
+        <button
+          ref={searchBtnRef}
+          type="button"
+          className="tab-strip__search-btn"
+          aria-label="Search tabs"
+          title="Search tabs"
+          onClick={() => setSearchOpen((prev) => !prev)}
+        >
+          {/* Down-chevron list icon */}
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M2 4h10M2 7h7M2 10h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <path d="M11 8l2 2-2 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+
+      {searchOpen && (
+        <TabSearchDropdown
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onActivate={onActivate}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }
