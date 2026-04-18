@@ -2373,8 +2373,11 @@ export class TabManager {
       const url = this.getActiveTabUrl() ?? '';
       if (!url) return 0;
       try {
-        const u = new URL(url);
-        const cookies = await this.win.webContents.session.cookies.get({ url });
+        const activeView = this.activeTabId ? this.tabs.get(this.activeTabId) : null;
+        const session = activeView
+          ? activeView.webContents.session
+          : this.win.webContents.session;
+        const cookies = await session.cookies.get({ url });
         return cookies.length;
       } catch {
         return 0;
