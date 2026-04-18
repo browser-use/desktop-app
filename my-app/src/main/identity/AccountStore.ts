@@ -40,6 +40,17 @@ export interface AccountData {
    * Gate any sync-related behaviour on `getSyncEnabled(account)`.
    */
   sync_enabled?: boolean;
+  /**
+   * The Google OAuth scopes the user selected during onboarding (or re-consent).
+   * Stored as full scope URL strings, e.g. "https://www.googleapis.com/auth/gmail.readonly".
+   * Absent on accounts created before this field was introduced.
+   */
+  oauth_scopes?: string[];
+  /**
+   * Whether the user has been through the Google OAuth consent screen at least once.
+   * Set to true when onboarding completes successfully.
+   */
+  scopes_granted?: boolean;
 }
 
 // ---------------------------------------------------------------------------

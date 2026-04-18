@@ -212,6 +212,7 @@ function OnboardingApp(): React.ReactElement {
       <AccountCreation
         onBack={() => setState((prev) => ({ ...prev, step: 'naming', oauthError: null }))}
         onComplete={(account, scopes) => void handleAccountComplete(account, scopes)}
+        onScopesSelected={(scopes) => setState((prev) => ({ ...prev, oauthScopes: scopes }))}
         oauthError={oauthError}
       />
     );

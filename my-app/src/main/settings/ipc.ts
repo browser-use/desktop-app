@@ -59,11 +59,11 @@ const ALLOWED_PAGE_ZOOM_PERCENTS = [
 ] as const;
 
 const GOOGLE_SCOPE_LIST = [
-  { scope: 'email',    label: 'Email address' },
-  { scope: 'profile',  label: 'Public profile' },
-  { scope: 'calendar', label: 'Google Calendar' },
-  { scope: 'drive',    label: 'Google Drive' },
-  { scope: 'gmail',    label: 'Gmail' },
+  { scope: 'https://www.googleapis.com/auth/gmail.readonly',  label: 'Gmail' },
+  { scope: 'https://www.googleapis.com/auth/calendar',        label: 'Google Calendar' },
+  { scope: 'https://www.googleapis.com/auth/spreadsheets',    label: 'Sheets' },
+  { scope: 'https://www.googleapis.com/auth/drive',           label: 'Google Drive' },
+  { scope: 'https://www.googleapis.com/auth/documents',       label: 'Docs' },
 ] as const;
 
 type ScopeName = typeof GOOGLE_SCOPE_LIST[number]['scope'];
@@ -430,7 +430,7 @@ function handleSetDefaultPageZoom(_event: Electron.IpcMainInvokeEvent, percent: 
 function handleGetOAuthScopes(): Array<{ scope: string; label: string; granted: boolean }> {
   mainLogger.info(CH_GET_OAUTH_SCOPES);
   const account = _accountStore?.load();
-  const grantedScopes: string[] = (account as unknown as { oauth_scopes?: string[] })?.oauth_scopes ?? [];
+  const grantedScopes: string[] = account?.oauth_scopes ?? [];
 
   const result = GOOGLE_SCOPE_LIST.map(({ scope, label }) => ({
     scope,
