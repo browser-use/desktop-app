@@ -4,7 +4,7 @@
  * Exposes a typed API surface on window.settingsAPI:
  *   - API key: save, load, test
  *   - Agent name: get, set
- *   - Theme: get, set
+ *   - Theme: get, set, getCustomTheme, setCustomTheme, resetTheme
  *   - OAuth scopes: get status, re-consent
  *   - Factory reset
  *   - Window close
@@ -125,6 +125,15 @@ export interface SiteCategoryOverride {
   updatedAt: number;
 }
 
+// ---------------------------------------------------------------------------
+// Custom theme type
+// ---------------------------------------------------------------------------
+
+export interface CustomThemeColors {
+  accentColor: string;
+  bgColor: string;
+}
+
 export interface SettingsAPI {
   /** Save API key to Keychain (never logged) */
   saveApiKey: (key: string) => Promise<void>;
@@ -146,6 +155,15 @@ export interface SettingsAPI {
 
   /** Set the theme preference */
   setTheme: (theme: string) => Promise<void>;
+
+  /** Get the custom theme colors (accent + background) */
+  getCustomTheme: () => Promise<CustomThemeColors>;
+
+  /** Set custom theme colors and activate custom theme */
+  setCustomTheme: (colors: CustomThemeColors) => Promise<void>;
+
+  /** Reset theme to default (onboarding) */
+  resetTheme: () => Promise<void>;
 
   /** Get OAuth scope grant status for all Google services */
   getOAuthScopes: () => Promise<OAuthScopeStatus[]>;
@@ -269,6 +287,19 @@ export interface SettingsAPI {
   updateCard: (payload: { id: string; nameOnCard?: string; cardNumber?: string; expiryMonth?: string; expiryYear?: string; nickname?: string }) => Promise<boolean>;
   deleteCard: (id: string) => Promise<boolean>;
   deleteAllAutofill: () => Promise<void>;
+
+  scanAutoRevokePermissions: () => Promise<{
+    candidates: Array<{
+      origin: string;
+      permissionType: string;
+      grantedAt: number;
+      daysSinceVisit: number | null;
+      lastVisit: number | null;
+    }>;
+    scannedAt: number;
+  }>;
+  applyAutoRevokePermissions: (revocations: Array<{ origin: string; permissionType: string }>) => Promise<number>;
+  optOutAutoRevoke: (origin: string, permissionType: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +340,24 @@ const api: SettingsAPI = {
   setTheme: async (theme: string): Promise<void> => {
     console.debug('[settings-preload] setTheme', { theme });
     await ipcRenderer.invoke('settings:set-theme', theme);
+  },
+
+  getCustomTheme: async (): Promise<CustomThemeColors> => {
+    console.debug('[settings-preload] getCustomTheme');
+    return ipcRenderer.invoke('settings:get-custom-theme') as Promise<CustomThemeColors>;
+  },
+
+  setCustomTheme: async (colors: CustomThemeColors): Promise<void> => {
+    console.debug('[settings-preload] setCustomTheme', {
+      accentColor: colors.accentColor,
+      bgColor: colors.bgColor,
+    });
+    await ipcRenderer.invoke('settings:set-custom-theme', colors);
+  },
+
+  resetTheme: async (): Promise<void> => {
+    console.debug('[settings-preload] resetTheme');
+    await ipcRenderer.invoke('settings:reset-theme');
   },
 
   getOAuthScopes: async (): Promise<OAuthScopeStatus[]> => {
@@ -573,6 +622,20 @@ const api: SettingsAPI = {
     await ipcRenderer.invoke('autofill:delete-all');
   },
 
+  scanAutoRevokePermissions: async () => {
+    console.debug('[settings-preload] scanAutoRevokePermissions');
+    return ipcRenderer.invoke('permissions:scan-auto-revoke');
+  },
+
+  applyAutoRevokePermissions: async (revocations) => {
+    console.debug('[settings-preload] applyAutoRevokePermissions', { count: revocations.length });
+    return ipcRenderer.invoke('permissions:apply-auto-revoke', revocations);
+  },
+
+  optOutAutoRevoke: async (origin: string, permissionType: string) => {
+    console.debug('[settings-preload] optOutAutoRevoke', { origin, permissionType });
+    return ipcRenderer.invoke('permissions:opt-out-auto-revoke', origin, permissionType);
+  },
 };
 
 contextBridge.exposeInMainWorld('settingsAPI', api);

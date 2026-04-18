@@ -44,8 +44,24 @@ const DAEMON_SOCK_PREFIX     = 'daemon-';
 const DAEMON_SOCK_SUFFIX     = '.sock';
 const LOGS_DIR_NAME          = 'logs';
 
-const ALLOWED_THEMES = ['onboarding', 'shell'] as const;
+const ALLOWED_THEMES = ['onboarding', 'shell', 'custom'] as const;
 type ThemeName = typeof ALLOWED_THEMES[number];
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+export interface CustomTheme {
+  accentColor: string;
+  bgColor: string;
+}
+
+const DEFAULT_CUSTOM_THEME: CustomTheme = {
+  accentColor: '#c8f135',
+  bgColor:     '#0a0a0d',
+};
+
+const CH_GET_CUSTOM_THEME = 'settings:get-custom-theme';
+const CH_SET_CUSTOM_THEME = 'settings:set-custom-theme';
+const CH_RESET_THEME      = 'settings:reset-theme';
 
 const DEFAULT_FONT_SIZE = 16;
 const DEFAULT_PAGE_ZOOM = 0;
@@ -133,6 +149,7 @@ interface Preferences {
   theme?: string;
   fontSize?: number;
   defaultPageZoom?: number;
+  customTheme?: CustomTheme;
   [key: string]: unknown;
 }
 
@@ -350,6 +367,52 @@ function handleSetTheme(_event: Electron.IpcMainInvokeEvent, theme: string): voi
     mainLogger.error(`${CH_SET_THEME}.failed`, { error: (err as Error).message });
     throw err;
   }
+}
+
+function handleGetCustomTheme(): CustomTheme {
+  mainLogger.info(CH_GET_CUSTOM_THEME);
+  const prefs = readPrefs();
+  const stored = prefs.customTheme as CustomTheme | undefined;
+  const result: CustomTheme = {
+    accentColor: stored?.accentColor ?? DEFAULT_CUSTOM_THEME.accentColor,
+    bgColor:     stored?.bgColor     ?? DEFAULT_CUSTOM_THEME.bgColor,
+  };
+  mainLogger.info(`${CH_GET_CUSTOM_THEME}.ok`, { accentColor: result.accentColor, bgColor: result.bgColor });
+  return result;
+}
+
+function handleSetCustomTheme(
+  _event: Electron.IpcMainInvokeEvent,
+  customTheme: CustomTheme,
+): void {
+  mainLogger.info(CH_SET_CUSTOM_THEME, {
+    accentColor: customTheme?.accentColor,
+    bgColor:     customTheme?.bgColor,
+  });
+
+  if (!customTheme || typeof customTheme !== 'object') {
+    throw new Error('customTheme must be an object');
+  }
+
+  const accent = assertString(customTheme.accentColor, 'accentColor', 7);
+  const bg     = assertString(customTheme.bgColor,     'bgColor',     7);
+
+  if (!HEX_COLOR_RE.test(accent)) {
+    throw new Error(`accentColor must be a 6-digit hex color like #rrggbb, got: ${accent}`);
+  }
+  if (!HEX_COLOR_RE.test(bg)) {
+    throw new Error(`bgColor must be a 6-digit hex color like #rrggbb, got: ${bg}`);
+  }
+
+  const validated: CustomTheme = { accentColor: accent, bgColor: bg };
+  mergePrefs({ customTheme: validated, theme: 'custom' });
+  mainLogger.info(`${CH_SET_CUSTOM_THEME}.ok`, { accentColor: accent, bgColor: bg });
+}
+
+function handleResetTheme(): void {
+  mainLogger.info(CH_RESET_THEME);
+  mergePrefs({ theme: DEFAULT_THEME, customTheme: DEFAULT_CUSTOM_THEME });
+  mainLogger.info(`${CH_RESET_THEME}.ok`, { theme: DEFAULT_THEME });
 }
 
 function handleGetFontSize(): number {
@@ -701,6 +764,9 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_SET_AGENT_NAME,   handleSetAgentName);
   ipcMain.handle(CH_GET_THEME,        handleGetTheme);
   ipcMain.handle(CH_SET_THEME,        handleSetTheme);
+  ipcMain.handle(CH_GET_CUSTOM_THEME, handleGetCustomTheme);
+  ipcMain.handle(CH_SET_CUSTOM_THEME, handleSetCustomTheme);
+  ipcMain.handle(CH_RESET_THEME,      handleResetTheme);
   ipcMain.handle(CH_GET_FONT_SIZE,    handleGetFontSize);
   ipcMain.handle(CH_SET_FONT_SIZE,    handleSetFontSize);
   ipcMain.handle(CH_GET_DEFAULT_ZOOM, handleGetDefaultPageZoom);
@@ -722,7 +788,7 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
 
   refreshPrivacyHeaders();
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 28 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -735,6 +801,9 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_SET_AGENT_NAME);
   ipcMain.removeHandler(CH_GET_THEME);
   ipcMain.removeHandler(CH_SET_THEME);
+  ipcMain.removeHandler(CH_GET_CUSTOM_THEME);
+  ipcMain.removeHandler(CH_SET_CUSTOM_THEME);
+  ipcMain.removeHandler(CH_RESET_THEME);
   ipcMain.removeHandler(CH_GET_FONT_SIZE);
   ipcMain.removeHandler(CH_SET_FONT_SIZE);
   ipcMain.removeHandler(CH_GET_DEFAULT_ZOOM);

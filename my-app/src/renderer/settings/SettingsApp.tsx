@@ -71,6 +71,12 @@ const TABS: Array<{ id: TabId; label: string }> = [
 
 const THEME_ONBOARDING = 'onboarding';
 const THEME_SHELL      = 'shell';
+const THEME_CUSTOM     = 'custom';
+
+const DEFAULT_ACCENT_COLOR = '#c8f135';
+const DEFAULT_BG_COLOR     = '#0a0a0d';
+
+const CWS_THEME_INSTALL_URL = 'https://chrome.google.com/webstore/category/themes';
 
 const FONT_SIZE_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 9,  label: 'Very small' },
@@ -129,6 +135,9 @@ declare global {
       setAgentName: (name: string) => Promise<void>;
       getTheme: () => Promise<string>;
       setTheme: (theme: string) => Promise<void>;
+      getCustomTheme: () => Promise<{ accentColor: string; bgColor: string }>;
+      setCustomTheme: (colors: { accentColor: string; bgColor: string }) => Promise<void>;
+      resetTheme: () => Promise<void>;
       getFontSize: () => Promise<number>;
       setFontSize: (size: number) => Promise<void>;
       getDefaultPageZoom: () => Promise<number>;
@@ -466,19 +475,124 @@ function AgentTab(): React.ReactElement {
 // Appearance tab
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Custom theme helpers
+// ---------------------------------------------------------------------------
+
+/** Derive a set of contrasting colors from accent + bg hex values. */
+function buildCustomThemeVars(accent: string, bg: string): string {
+  // Parse hex to r,g,b
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+
+  const [ar, ag, ab] = hexToRgb(accent);
+  const [br, bg2, bb] = hexToRgb(bg);
+
+  // Luminance helper
+  const lum = (r: number, g: number, b: number): number =>
+    0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255);
+
+  const bgLum = lum(br, bg2, bb);
+  const isDark = bgLum < 0.5;
+
+  // Derive elevated/overlay from bg by lightening/darkening slightly
+  const shift = (hex: string, amount: number): string => {
+    const [r, g, b] = hexToRgb(hex);
+    const clamp = (v: number): number => Math.max(0, Math.min(255, v));
+    const toHex = (v: number): string => v.toString(16).padStart(2, '0');
+    return `#${toHex(clamp(r + amount))}${toHex(clamp(g + amount))}${toHex(clamp(b + amount))}`;
+  };
+
+  const bgBase     = bg;
+  const bgElevated = isDark ? shift(bg, 14) : shift(bg, -14);
+  const bgOverlay  = isDark ? shift(bg, 22) : shift(bg, -22);
+  const bgSunken   = isDark ? shift(bg, -8)  : shift(bg, 8);
+
+  const fgPrimary   = isDark ? '#ededef' : '#111114';
+  const fgSecondary = isDark ? '#8a8a8e' : '#5c5c63';
+  const fgTertiary  = isDark ? '#5c5c63' : '#8a8a8e';
+  const fgInverse   = isDark ? bg        : '#ededef';
+
+  const borderSubtle  = isDark ? shift(bg, 18)  : shift(bg, -18);
+  const borderDefault = isDark ? shift(bg, 28)  : shift(bg, -28);
+  const borderStrong  = isDark ? shift(bg, 40)  : shift(bg, -40);
+
+  const accentMuted = `rgba(${ar},${ag},${ab},0.10)`;
+  const accentGlow  = `rgba(${ar},${ag},${ab},0.18)`;
+
+  return [
+    `--color-bg-base:${bgBase}`,
+    `--color-bg-elevated:${bgElevated}`,
+    `--color-bg-overlay:${bgOverlay}`,
+    `--color-bg-sunken:${bgSunken}`,
+    `--color-fg-primary:${fgPrimary}`,
+    `--color-fg-secondary:${fgSecondary}`,
+    `--color-fg-tertiary:${fgTertiary}`,
+    `--color-fg-inverse:${fgInverse}`,
+    `--color-border-subtle:${borderSubtle}`,
+    `--color-border-default:${borderDefault}`,
+    `--color-border-strong:${borderStrong}`,
+    `--color-accent-default:${accent}`,
+    `--color-accent-hover:${shift(accent, 16)}`,
+    `--color-accent-dim:${shift(accent, -16)}`,
+    `--color-accent-muted:${accentMuted}`,
+    `--color-accent-glow:${accentGlow}`,
+  ].join(';');
+}
+
+/** Inject or update the custom theme <style> tag on the document. */
+function applyCustomThemeToDocument(accent: string, bg: string): void {
+  const STYLE_ID = 'custom-theme-vars';
+  let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement('style');
+    el.id = STYLE_ID;
+    document.head.appendChild(el);
+  }
+  const vars = buildCustomThemeVars(accent, bg);
+  el.textContent = `[data-theme="custom"] { ${vars}; }`;
+}
+
+/** Remove the custom theme <style> tag (called when switching away from custom). */
+function removeCustomThemeFromDocument(): void {
+  const el = document.getElementById('custom-theme-vars');
+  if (el) el.remove();
+}
+
+// ---------------------------------------------------------------------------
+// AppearanceTab
+// ---------------------------------------------------------------------------
+
 function AppearanceTab(): React.ReactElement {
   const toast = useToast();
-  const [theme, setTheme]       = useState(THEME_ONBOARDING);
-  const [fontSize, setFontSize] = useState(16);
-  const [pageZoom, setPageZoom] = useState(100);
-  const [saving, setSaving]     = useState(false);
+  const [theme, setTheme]             = useState(THEME_ONBOARDING);
+  const [fontSize, setFontSize]       = useState(16);
+  const [pageZoom, setPageZoom]       = useState(100);
+  const [saving, setSaving]           = useState(false);
+  const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT_COLOR);
+  const [bgColor, setBgColor]         = useState(DEFAULT_BG_COLOR);
+  const [cwsUrl, setCwsUrl]           = useState('');
+  const [cwsInstalling, setCwsInstalling] = useState(false);
+  const [imageFile, setImageFile]     = useState<File | null>(null);
 
   useEffect(() => {
-    void window.settingsAPI.getTheme().then((t) => setTheme(t));
+    void window.settingsAPI.getTheme().then((t) => {
+      setTheme(t);
+      if (t === THEME_CUSTOM) {
+        document.documentElement.dataset.theme = THEME_CUSTOM;
+      }
+    });
     void window.settingsAPI.getFontSize().then((s) => setFontSize(s));
     void window.settingsAPI.getDefaultPageZoom().then((level) => {
       const percent = Math.round(Math.pow(1.2, level) * 100);
       setPageZoom(percent);
+    });
+    void window.settingsAPI.getCustomTheme().then((ct) => {
+      setAccentColor(ct.accentColor);
+      setBgColor(ct.bgColor);
+      applyCustomThemeToDocument(ct.accentColor, ct.bgColor);
     });
   }, []);
 
@@ -487,6 +601,8 @@ function AppearanceTab(): React.ReactElement {
     setSaving(true);
     try {
       await window.settingsAPI.setTheme(next);
+      document.documentElement.dataset.theme = next === THEME_CUSTOM ? THEME_CUSTOM : next;
+      if (next !== THEME_CUSTOM) removeCustomThemeFromDocument();
       toast.show({ variant: 'success', title: 'Theme updated' });
     } catch (err) {
       toast.show({
@@ -496,6 +612,94 @@ function AppearanceTab(): React.ReactElement {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleApplyCustomColors(): Promise<void> {
+    setSaving(true);
+    try {
+      await window.settingsAPI.setCustomTheme({ accentColor, bgColor });
+      applyCustomThemeToDocument(accentColor, bgColor);
+      document.documentElement.dataset.theme = THEME_CUSTOM;
+      setTheme(THEME_CUSTOM);
+      toast.show({ variant: 'success', title: 'Custom theme applied' });
+    } catch (err) {
+      toast.show({
+        variant: 'error',
+        title: 'Failed to apply custom theme',
+        message: (err as Error).message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleResetTheme(): Promise<void> {
+    setSaving(true);
+    try {
+      await window.settingsAPI.resetTheme();
+      setTheme(THEME_ONBOARDING);
+      setAccentColor(DEFAULT_ACCENT_COLOR);
+      setBgColor(DEFAULT_BG_COLOR);
+      removeCustomThemeFromDocument();
+      document.documentElement.dataset.theme = THEME_ONBOARDING;
+      toast.show({ variant: 'success', title: 'Theme reset to default' });
+    } catch (err) {
+      toast.show({
+        variant: 'error',
+        title: 'Reset failed',
+        message: (err as Error).message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleImageExtract(): Promise<void> {
+    if (!imageFile) return;
+    setSaving(true);
+    try {
+      const bitmap = await createImageBitmap(imageFile);
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas context unavailable');
+      ctx.drawImage(bitmap, 0, 0, 1, 1);
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+      const toHex = (v: number): string => v.toString(16).padStart(2, '0');
+      const extracted = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      setAccentColor(extracted);
+      toast.show({ variant: 'success', title: 'Dominant color extracted', message: extracted });
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Image extraction failed', message: (err as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCwsInstall(): Promise<void> {
+    const url = cwsUrl.trim();
+    if (!url) {
+      toast.show({ variant: 'error', title: 'Enter a Chrome Web Store theme URL' });
+      return;
+    }
+    const cwsThemeRe = /chrome\.google\.com\/webstore\/detail\/[^/]+\/([a-z]{32})/;
+    const match = cwsThemeRe.exec(url);
+    if (!match) {
+      toast.show({ variant: 'error', title: 'Invalid Chrome Web Store URL', message: 'Expected format: chrome.google.com/webstore/detail/<name>/<id>' });
+      return;
+    }
+    const themeId = match[1];
+    setCwsInstalling(true);
+    try {
+      const apiUrl = `https://chrome.google.com/webstore/detail/${themeId}`;
+      toast.show({ variant: 'info', title: 'CWS theme noted', message: `Theme ID: ${themeId}. Full CWS extension install requires browser session support.` });
+      setCwsUrl('');
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Install failed', message: (err as Error).message });
+    } finally {
+      setCwsInstalling(false);
     }
   }
 
@@ -531,9 +735,10 @@ function AppearanceTab(): React.ReactElement {
     <div className="settings-section">
       <h2 className="settings-section-title">Appearance</h2>
       <p className="settings-section-desc">
-        Customize the visual theme, font size, and page zoom.
+        Customize the visual theme, colors, font size, and page zoom.
       </p>
 
+      {/* Built-in theme selector */}
       <Card variant="default" padding="md" className="settings-card">
         <fieldset className="settings-fieldset" disabled={saving}>
           <legend className="settings-label">Theme</legend>
@@ -575,7 +780,188 @@ function AppearanceTab(): React.ReactElement {
               />
             </span>
           </label>
+
+          <label className="settings-radio-row">
+            <input
+              type="radio"
+              name="theme"
+              value={THEME_CUSTOM}
+              checked={theme === THEME_CUSTOM}
+              onChange={() => void handleThemeChange(THEME_CUSTOM)}
+            />
+            <span className="settings-radio-content">
+              <span className="settings-radio-label">Custom</span>
+              <span className="settings-radio-desc">Your color picker selections below</span>
+              <span
+                className="settings-swatch"
+                aria-hidden="true"
+                style={{ background: `linear-gradient(135deg, ${bgColor} 50%, ${accentColor} 50%)` }}
+              />
+            </span>
+          </label>
         </fieldset>
+
+        <div className="settings-row-actions">
+          <Button variant="secondary" size="sm" onClick={() => void handleResetTheme()} disabled={saving}>
+            Reset to default
+          </Button>
+        </div>
+      </Card>
+
+      {/* Color picker */}
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-section-title" style={{ fontSize: 14, marginBottom: 0 }}>Color picker</div>
+        <p className="settings-field-hint" style={{ marginTop: 4 }}>
+          Pick an accent color and background color to generate a custom theme.
+        </p>
+
+        <div className="theme-color-picker-row">
+          <div className="settings-field">
+            <label className="settings-label" htmlFor="accent-color-picker">Accent color</label>
+            <div className="theme-color-input-group">
+              <input
+                id="accent-color-picker"
+                type="color"
+                className="theme-color-swatch-input"
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+              />
+              <input
+                type="text"
+                className="settings-input theme-hex-input"
+                value={accentColor}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setAccentColor(v);
+                }}
+                placeholder="#c8f135"
+                maxLength={7}
+              />
+            </div>
+          </div>
+
+          <div className="settings-field">
+            <label className="settings-label" htmlFor="bg-color-picker">Background color</label>
+            <div className="theme-color-input-group">
+              <input
+                id="bg-color-picker"
+                type="color"
+                className="theme-color-swatch-input"
+                value={bgColor}
+                onChange={(e) => setBgColor(e.target.value)}
+              />
+              <input
+                type="text"
+                className="settings-input theme-hex-input"
+                value={bgColor}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setBgColor(v);
+                }}
+                placeholder="#0a0a0d"
+                maxLength={7}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="theme-preview-swatch" aria-hidden="true"
+          style={{ background: `linear-gradient(135deg, ${bgColor} 60%, ${accentColor} 60%)` }}
+        />
+
+        <div className="settings-row-actions">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void handleApplyCustomColors()}
+            loading={saving}
+            disabled={!/^#[0-9a-fA-F]{6}$/.test(accentColor) || !/^#[0-9a-fA-F]{6}$/.test(bgColor)}
+          >
+            Apply custom theme
+          </Button>
+        </div>
+      </Card>
+
+      {/* Image-based theme generation */}
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-section-title" style={{ fontSize: 14, marginBottom: 0 }}>Generate from image</div>
+        <p className="settings-field-hint" style={{ marginTop: 4 }}>
+          Upload an image to extract a dominant color as the accent.
+        </p>
+
+        <div className="settings-field">
+          <label className="settings-label" htmlFor="theme-image-input">Image file</label>
+          <input
+            id="theme-image-input"
+            type="file"
+            accept="image/*"
+            className="theme-file-input"
+            onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
+        {imageFile && (
+          <div className="theme-image-preview-row">
+            <img
+              src={URL.createObjectURL(imageFile)}
+              alt="Preview"
+              className="theme-image-preview"
+            />
+            <span className="settings-field-hint">{imageFile.name}</span>
+          </div>
+        )}
+
+        <div className="settings-row-actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleImageExtract()}
+            disabled={!imageFile || saving}
+            loading={saving}
+          >
+            Extract color
+          </Button>
+        </div>
+      </Card>
+
+      {/* Chrome Web Store theme install */}
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-section-title" style={{ fontSize: 14, marginBottom: 0 }}>Chrome Web Store themes</div>
+        <p className="settings-field-hint" style={{ marginTop: 4 }}>
+          Paste a Chrome Web Store theme URL to install it. Browse themes at{' '}
+          <a
+            href={CWS_THEME_INSTALL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="theme-cws-link"
+          >
+            chrome.google.com/webstore
+          </a>.
+        </p>
+
+        <div className="settings-field">
+          <label className="settings-label" htmlFor="cws-url-input">Chrome Web Store theme URL</label>
+          <input
+            id="cws-url-input"
+            type="text"
+            className="settings-input"
+            value={cwsUrl}
+            onChange={(e) => setCwsUrl(e.target.value)}
+            placeholder="https://chrome.google.com/webstore/detail/…"
+          />
+        </div>
+
+        <div className="settings-row-actions">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void handleCwsInstall()}
+            loading={cwsInstalling}
+            disabled={!cwsUrl.trim()}
+          >
+            Install theme
+          </Button>
+        </div>
       </Card>
 
       <Card variant="default" padding="md" className="settings-card">

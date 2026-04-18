@@ -707,3 +707,83 @@
   line-height: var(--line-height-relaxed);
   margin-top: -2px;
 }
+
+/* ---------------------------------------------------------------------------
+   Theme — color picker, image extraction, CWS install
+--------------------------------------------------------------------------- */
+
+.theme-color-picker-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.theme-color-picker-row .settings-field {
+  flex: 1;
+  min-width: 140px;
+}
+
+.theme-color-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-color-swatch-input {
+  width: 40px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  padding: 2px;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+
+.theme-hex-input {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.theme-preview-swatch {
+  height: 40px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  margin-top: 4px;
+}
+
+.theme-file-input {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-secondary);
+  width: 100%;
+  cursor: pointer;
+}
+
+.theme-image-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.theme-image-preview {
+  width: 56px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  flex-shrink: 0;
+}
+
+.theme-cws-link {
+  color: var(--color-accent-default);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.theme-cws-link:hover {
+  color: var(--color-accent-hover);
+}
