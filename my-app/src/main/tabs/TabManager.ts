@@ -147,7 +147,15 @@ const SKIP_HISTORY_RE = /^(data:|about:|chrome:|devtools:|view-source:)/i;
 const NEWTAB_URL_RE = /newtab\.html$/;
 
 export class TabManager {
+  // ---------------------------------------------------------------------------
+  // Static instance registry — lets callers look up by window id and broadcast
+  // to all active windows.
+  // ---------------------------------------------------------------------------
   static readonly instances = new Map<number, TabManager>();
+
+  static getAllInstances(): TabManager[] {
+    return Array.from(TabManager.instances.values());
+  }
 
   private win: BrowserWindow;
   private tabs: Map<string, WebContentsView> = new Map();
@@ -184,6 +192,7 @@ export class TabManager {
   private zoomStore: ZoomStore;
   private mutedSitesStore: MutedSitesStore;
   private urlMatchFn: UrlMatchFn | null = null;
+  private searchUrlTemplate: string | null = null;
   private historyStore: HistoryStore | null = null;
   private passwordStore: PasswordStore | null = null;
   private tabGroupStore: TabGroupStore | null = null;
@@ -289,6 +298,12 @@ export class TabManager {
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
     this.urlMatchFn = fn;
+  }
+
+  /** Update the search URL template (e.g. 'https://www.google.com/search?q=%s'). */
+  setSearchUrlTemplate(url: string | null): void {
+    this.searchUrlTemplate = url;
+    mainLogger.info('TabManager.setSearchUrlTemplate', { url: url ?? '(reset to default)' });
   }
 
   private isFullscreen = false;
@@ -778,7 +793,7 @@ export class TabManager {
   // ---------------------------------------------------------------------------
 
   navigate(tabId: string, input: string): void {
-    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined);
+    const url = parseNavigationInput(input, this.urlMatchFn ?? undefined, this.searchUrlTemplate ?? undefined);
     const chromeMatch = CHROME_URL_RE.exec(url);
     if (chromeMatch) {
       const page = chromeMatch[1].toLowerCase();
