@@ -188,7 +188,7 @@ export function URLBar({
     });
     closeDropdown();
     inputRef.current?.blur();
-  }, [onNavigate, closeDropdown]);
+  }, [onNavigate, closeDropdown, inputValue]);
 
   const handleFocus = useCallback(() => {
     setIsEditing(true);
