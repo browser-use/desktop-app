@@ -42,6 +42,7 @@ const DROPDOWN_OVERFLOW_HEIGHT = 300;
 // bookmarks bar treats those as "NTP" for the 'ntp-only' visibility mode.
 const NTP_URL_RE = /^(data:|about:blank$)/i;
 const AUTO_DISMISS_DELAY_MS = 5000;
+const DEFAULT_SIDE_PANEL_WIDTH = 340;
 
 // Typed reference to the contextBridge API
 declare const electronAPI: {
@@ -517,6 +518,22 @@ export function WindowChrome(): React.ReactElement {
     setShowOnComplete(value);
     electronAPI.downloads.setShowOnComplete(value);
   }, []);
+
+  // Side panel handlers
+  const handleSidePanelClose = useCallback(() => {
+    setSidePanelOpen(false);
+  }, []);
+
+  const handleSidePanelSelect = useCallback((id: SidePanelId) => {
+    setSidePanelActiveId(id);
+    setSidePanelOpen(true);
+  }, []);
+
+  const handleSidePanelWidthChange = useCallback((width: number) => {
+    setSidePanelWidth(width);
+    electronAPI.shell.setSidePanelWidth(width);
+  }, []);
+
 
   // ---------------------------------------------------------------------------
   // Render
