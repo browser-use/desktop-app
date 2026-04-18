@@ -12,6 +12,7 @@ import React, {
 import { OmniboxDropdown } from './OmniboxDropdown';
 import { usePopupLayer } from './PopupLayerContext';
 import type { OmniboxSuggestion } from '../../main/omnibox/providers';
+import { decode as punyDecode } from 'punycode';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -34,6 +35,39 @@ const DEFAULT_PORTS: Record<string, number> = {
 
 // Debounce delay for omnibox suggest IPC calls (ms).
 const SUGGEST_DEBOUNCE_MS = 120;
+
+// ---------------------------------------------------------------------------
+// IDN / Punycode display helpers (Chrome IDN policy)
+// ---------------------------------------------------------------------------
+
+// Script ranges for mixed-script spoofing detection.
+const CYRILLIC_RE = /[\u0400-\u04FF\u0500-\u052F]/;
+const GREEK_RE = /[\u0370-\u03FF\u1F00-\u1FFF]/;
+const LATIN_RE = /[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/;
+
+function isSafeUnicodeLabel(unicode: string): boolean {
+  const hasCyrillic = CYRILLIC_RE.test(unicode);
+  const hasGreek = GREEK_RE.test(unicode);
+  const hasLatin = LATIN_RE.test(unicode);
+  // Cyrillic or Greek mixed with Latin is a known IDN spoofing vector.
+  return !((hasCyrillic || hasGreek) && hasLatin);
+}
+
+function decodeHostnameForDisplay(hostname: string): string {
+  if (!hostname.includes('xn--')) return hostname;
+  return hostname
+    .split('.')
+    .map(label => {
+      if (!label.startsWith('xn--')) return label;
+      try {
+        const unicode = punyDecode(label.slice(4)); // strip 'xn--' prefix
+        return isSafeUnicodeLabel(unicode) ? unicode : label;
+      } catch {
+        return label;
+      }
+    })
+    .join('.');
+}
 
 interface URLBarProps {
   url: string;
@@ -76,8 +110,8 @@ function displayUrl(url: string): string {
     return url;
   }
 
-  // Build display hostname: strip trivial subdomains.
-  let host = parsed.hostname;
+  // Build display hostname: decode IDN labels, then strip trivial subdomains.
+  let host = decodeHostnameForDisplay(parsed.hostname);
   if (TRIVIAL_SUBDOMAIN_RE.test(host)) {
     host = host.replace(TRIVIAL_SUBDOMAIN_RE, '');
   }
