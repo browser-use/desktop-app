@@ -91,6 +91,8 @@ import { registerNtpHandlers, unregisterNtpHandlers } from './ntp/ipc';
 import { DeviceStore } from './devices/DeviceStore';
 import { DeviceManager } from './devices/DeviceManager';
 import { registerDeviceHandlers, unregisterDeviceHandlers } from './devices/ipc';
+// Issue #100 — Picture-in-Picture
+import { registerPipHandlers, unregisterPipHandlers } from './pip/PictureInPictureManager';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -230,6 +232,9 @@ function openShellAndWire(profileId?: string): BrowserWindow {
     });
     registerDeviceHandlers({ store: deviceStore, manager: deviceManager });
   }
+
+  // Issue #100 — Picture-in-Picture: register IPC handlers
+  registerPipHandlers(() => tabManager?.getActiveWebContents() ?? null);
 
   // History menu's "Recently Closed" submenu is dynamic — rebuild the whole
   // app menu whenever the closed-tabs stack mutates so the submenu reflects
@@ -663,6 +668,7 @@ app.whenReady().then(async () => {
     unregisterContentCategoryHandlers();
     unregisterPermissionHandlers();
     unregisterDeviceHandlers();
+    unregisterPipHandlers();
     unregisterExtensionsHandlers();
     unregisterAutofillHandlers();
     // ExtensionManager currently has no dispose()/destroy() hook; its
@@ -978,6 +984,20 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
             const info = tabManager?.getActiveTabPrintInfo();
             if (info && shellWindow) {
               openPrintPreviewWindow(info.webContentsId, info.title, info.url, shellWindow);
+            }
+          },
+        },
+        {
+          label: 'Picture in Picture',
+          accelerator: 'CommandOrControl+Shift+P',
+          click: () => {
+            mainLogger.debug('shortcuts.pip');
+            const wc = tabManager?.getActiveWebContents();
+            if (wc && !wc.isDestroyed()) {
+              wc.executeJavaScript(
+                'document.pictureInPictureElement ? document.exitPictureInPicture() : (document.querySelector("video") ? document.querySelector("video").requestPictureInPicture() : Promise.resolve())',
+                true
+              ).catch(() => {});
             }
           },
         },

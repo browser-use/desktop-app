@@ -323,6 +323,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPageInfo: (): Promise<{ url: string; title: string } | null> =>
       ipcRenderer.invoke('share:get-page-info'),
   },
+  // Issue #100 — Picture-in-Picture
+  pip: {
+    enter: (): Promise<{ ok: boolean; action?: string; error?: string }> =>
+      ipcRenderer.invoke('pip:enter'),
+
+    exit: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('pip:exit'),
+
+    getStatus: (): Promise<{ supported: boolean; active: boolean; hasVideo: boolean } | null> =>
+      ipcRenderer.invoke('pip:get-status'),
+  },
+
   // Issue #81 — Three-dot app menu (non-macOS)
   menu: {
     showAppMenu: (bounds: { x: number; y: number }): Promise<void> =>

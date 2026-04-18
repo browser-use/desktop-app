@@ -110,6 +110,11 @@ declare const electronAPI: {
     savePageAs: () => Promise<boolean>;
     getPageInfo: () => Promise<{ url: string; title: string } | null>;
   };
+  pip: {
+    enter: () => Promise<{ ok: boolean; action?: string; error?: string }>;
+    exit: () => Promise<{ ok: boolean; error?: string }>;
+    getStatus: () => Promise<{ supported: boolean; active: boolean; hasVideo: boolean } | null>;
+  };
   menu: {
     showAppMenu: (bounds: { x: number; y: number }) => Promise<void>;
   };
@@ -177,6 +182,9 @@ export function WindowChrome(): React.ReactElement {
   const [bubbleOpen, setBubbleOpen] = useState(false);
   const [showOnComplete, setShowOnComplete] = useState(true);
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // PiP state
+  const [pipActive, setPipActive] = useState(false);
 
   // Side panel state
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -483,6 +491,22 @@ export function WindowChrome(): React.ReactElement {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Picture-in-Picture actions
+  // ---------------------------------------------------------------------------
+  const handlePipClick = useCallback(async () => {
+    console.log('[WindowChrome] PiP button clicked, active:', pipActive);
+    try {
+      const result = await electronAPI.pip.enter();
+      console.log('[WindowChrome] PiP result:', result);
+      if (result.ok) {
+        setPipActive(result.action === 'enter');
+      }
+    } catch (err) {
+      console.warn('[WindowChrome] PiP failed:', err);
+    }
+  }, [pipActive]);
+
+  // ---------------------------------------------------------------------------
   // Side panel actions
   // ---------------------------------------------------------------------------
   const handleSidePanelToggle = useCallback(() => {
@@ -582,6 +606,20 @@ export function WindowChrome(): React.ReactElement {
           )}
         </div>
 
+        {pipActive && (
+          <button
+            type="button"
+            className="toolbar-btn toolbar-btn--pip toolbar-btn--pip-active"
+            onClick={handlePipClick}
+            aria-label="Exit Picture in Picture"
+            title="Exit Picture in Picture (Cmd+Shift+P)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+              <rect x="7" y="7" width="6" height="4" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+        )}
         <ShareButton onClick={handleShareClick} />
         <ShareMenu
           open={shareMenuOpen}
