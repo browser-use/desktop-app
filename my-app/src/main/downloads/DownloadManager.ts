@@ -44,6 +44,7 @@ export type DownloadItemDTO = Omit<DownloadItem, never>;
 const PREFS_FILE = 'preferences.json';
 const PROGRESS_THROTTLE_MS = 250;
 const AUTO_DISMISS_DELAY_MS = 5000;
+const IS_MACOS = process.platform === 'darwin';
 
 // IPC channels
 const CH_GET_DOWNLOADS = 'downloads:get-all';
@@ -162,6 +163,7 @@ export class DownloadManager {
         }
 
         this.throttledBroadcastProgress(id, dlItem);
+        this.updateDockProgress();
       });
 
       item.once('done', (_doneEvent, state) => {
@@ -423,6 +425,78 @@ export class DownloadManager {
   }
 
   // ---------------------------------------------------------------------------
+  // Dock / taskbar badge & progress
+  // ---------------------------------------------------------------------------
+
+  private getActiveDownloads(): DownloadItem[] {
+    const active: DownloadItem[] = [];
+    for (const dl of this.downloads.values()) {
+      if (dl.status === 'in-progress' || dl.status === 'paused') {
+        active.push(dl);
+      }
+    }
+    return active;
+  }
+
+  private updateDockBadge(): void {
+    const activeCount = this.getActiveDownloads().length;
+
+    if (IS_MACOS) {
+      app.dock.setBadge(activeCount > 0 ? String(activeCount) : '');
+      mainLogger.debug('DownloadManager.updateDockBadge', {
+        platform: 'macOS',
+        activeCount,
+        badge: activeCount > 0 ? String(activeCount) : '(cleared)',
+      });
+    } else {
+      app.setBadgeCount(activeCount);
+      mainLogger.debug('DownloadManager.updateDockBadge', {
+        platform: process.platform,
+        activeCount,
+      });
+    }
+  }
+
+  private updateDockProgress(): void {
+    if (this.win.isDestroyed()) return;
+
+    const active = this.getActiveDownloads();
+    if (active.length === 0) {
+      this.win.setProgressBar(-1);
+      mainLogger.debug('DownloadManager.updateDockProgress', { progress: 'cleared' });
+      return;
+    }
+
+    let totalBytes = 0;
+    let receivedBytes = 0;
+    for (const dl of active) {
+      totalBytes += dl.totalBytes;
+      receivedBytes += dl.receivedBytes;
+    }
+
+    const progress = totalBytes > 0 ? receivedBytes / totalBytes : 0;
+    this.win.setProgressBar(progress);
+    mainLogger.debug('DownloadManager.updateDockProgress', {
+      activeCount: active.length,
+      totalBytes,
+      receivedBytes,
+      progress: Math.round(progress * 100),
+    });
+  }
+
+  private clearDockIndicators(): void {
+    if (IS_MACOS) {
+      app.dock.setBadge('');
+    } else {
+      app.setBadgeCount(0);
+    }
+    if (!this.win.isDestroyed()) {
+      this.win.setProgressBar(-1);
+    }
+    mainLogger.debug('DownloadManager.clearDockIndicators', { msg: 'Badge and progress cleared' });
+  }
+
+  // ---------------------------------------------------------------------------
   // Broadcast helpers
   // ---------------------------------------------------------------------------
 
@@ -445,6 +519,8 @@ export class DownloadManager {
 
   private broadcastState(): void {
     this.safeSend(EVT_DOWNLOADS_STATE, this.getAllDTOs());
+    this.updateDockBadge();
+    this.updateDockProgress();
   }
 
   private getAllDTOs(): DownloadItemDTO[] {
@@ -481,6 +557,7 @@ export class DownloadManager {
       clearTimeout(timer);
     }
     this.throttleTimers.clear();
+    this.clearDockIndicators();
     mainLogger.info('DownloadManager.destroy');
   }
 }
