@@ -56,6 +56,16 @@ import {
   CERT_BYPASS_PREFIX,
   CERT_BACK_PREFIX,
 } from '../https/CertErrorController';
+import {
+  shouldShowErrorPage,
+  buildNetworkErrorPage,
+  buildCertErrorPage,
+  allowCertForOrigin,
+  isCertAllowedForOrigin,
+  NET_ERROR_RETRY_PREFIX,
+  CERT_ERROR_PROCEED_PREFIX,
+  CERT_ERROR_BACK_PREFIX,
+} from '../errors/NetworkErrorController';
 
 // Forge VitePlugin globals for the new-tab page (injected at build time)
 declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
@@ -184,6 +194,7 @@ export class TabManager {
     this.zoomStore = new ZoomStore();
     this.mutedSitesStore = new MutedSitesStore();
     this.registerIpcHandlers();
+    this.registerCertErrorHandler();
     mainLogger.info('TabManager.init', {
       isGuest: this.isGuest,
       partition: this.partition,
@@ -1467,6 +1478,34 @@ export class TabManager {
   // Internal: event attachment
   // ---------------------------------------------------------------------------
 
+  // Issue #27 — Register a single app-level certificate-error handler.
+  // Electron's certificate-error fires on app, not per-webContents session,
+  // so we register once and look up the owning tab by webContents id.
+  private registerCertErrorHandler(): void {
+    app.on('certificate-error', (event, webContents, certUrl, certError, _certificate, callback) => {
+      event.preventDefault();
+
+      let origin = certUrl;
+      try { origin = new URL(certUrl).host; } catch { /* use raw */ }
+
+      // If user has already bypassed this cert, allow it
+      if (isCertAllowedForOrigin(origin)) {
+        mainLogger.info('TabManager.certError.bypassed', { certUrl, origin });
+        callback(true);
+        return;
+      }
+
+      mainLogger.info('TabManager.certError', { certUrl, certError });
+      callback(false);
+
+      // Find the tab that owns this webContents and show the error page
+      if (webContents.isDestroyed()) return;
+      const certHtml = buildCertErrorPage(certUrl, certError);
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(certHtml);
+      webContents.loadURL(dataUrl);
+    });
+  }
+
   private attachViewEvents(tabId: string, view: WebContentsView): void {
     const wc = view.webContents;
 
@@ -1553,27 +1592,46 @@ export class TabManager {
       }
     });
 
-    // HTTPS-First: if an HTTPS upgrade fails, show an interstitial warning page
-    wc.on('did-fail-load', (_e, errorCode, _errorDesc, validatedURL) => {
+    // did-fail-load: handle HTTPS-First upgrade failures AND generic network errors
+    wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) => {
+      // HTTPS-First: if a pending upgrade failed, show the HTTPS interstitial
       const pendingHttpUrl = getPendingUpgrade(tabId);
-      if (!pendingHttpUrl) return;
+      if (pendingHttpUrl) {
+        mainLogger.info('TabManager.tab.httpsUpgradeFailed', {
+          tabId,
+          errorCode,
+          validatedURL,
+          pendingHttpUrl,
+        });
 
-      mainLogger.info('TabManager.tab.httpsUpgradeFailed', {
+        clearPendingUpgrade(tabId);
+
+        let hostname = '';
+        try { hostname = new URL(pendingHttpUrl).hostname; } catch { hostname = pendingHttpUrl; }
+
+        const interstitialHtml = buildInterstitialHtml(pendingHttpUrl, hostname);
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(interstitialHtml);
+        wc.loadURL(dataUrl);
+        return;
+      }
+
+      // Issue #27 — branded network error pages
+      if (!shouldShowErrorPage(errorCode)) return;
+      // Skip sub-frame failures (isMainFrame is the 4th arg after validatedURL in some Electron versions)
+      if (!validatedURL) return;
+
+      mainLogger.info('TabManager.tab.networkError', {
         tabId,
         errorCode,
+        errorDescription,
         validatedURL,
-        pendingHttpUrl,
       });
 
-      clearPendingUpgrade(tabId);
-
-      let hostname = '';
-      try { hostname = new URL(pendingHttpUrl).hostname; } catch { hostname = pendingHttpUrl; }
-
-      const interstitialHtml = buildInterstitialHtml(pendingHttpUrl, hostname);
-      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(interstitialHtml);
+      const errorHtml = buildNetworkErrorPage(errorCode, errorDescription, validatedURL);
+      const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml);
       wc.loadURL(dataUrl);
     });
+
 
     // Listen for password form submissions via console-message prefix
     wc.on('console-message', (_e, _level, message) => {
@@ -1606,7 +1664,7 @@ export class TabManager {
         mainLogger.info('TabManager.tab.safeBrowsingBack', { tabId });
         return;
       }
-      // Cert error: bypass (thisisunsafe typed on interstitial)
+      // Cert error: bypass (thisisunsafe typed on interstitial) — from #153 HSTSStore
       if (message.startsWith(CERT_BYPASS_PREFIX) && currentUrl.startsWith('data:text/html')) {
         const certUrl = message.slice(CERT_BYPASS_PREFIX.length);
         mainLogger.info('TabManager.tab.certBypass', { tabId, certUrl });
@@ -1617,7 +1675,7 @@ export class TabManager {
         wc.loadURL(certUrl);
         return;
       }
-      // Cert error: back button pressed
+      // Cert error: back button pressed — from #153 HSTSStore
       if (message === CERT_BACK_PREFIX && currentUrl.startsWith('data:text/html')) {
         mainLogger.info('TabManager.tab.certBack', { tabId });
         if (wc.canGoBack()) {
@@ -1625,6 +1683,29 @@ export class TabManager {
         } else {
           wc.loadURL('about:blank');
         }
+        return;
+      }
+      // Issue #27 — network error page retry
+      if (message.startsWith(NET_ERROR_RETRY_PREFIX) && currentUrl.startsWith('data:text/html')) {
+        const retryUrl = message.slice(NET_ERROR_RETRY_PREFIX.length);
+        mainLogger.info('TabManager.tab.netErrorRetry', { tabId, retryUrl });
+        wc.loadURL(retryUrl);
+        return;
+      }
+      // Issue #27 — cert error: proceed (thisisunsafe bypass)
+      if (message.startsWith(CERT_ERROR_PROCEED_PREFIX) && currentUrl.startsWith('data:text/html')) {
+        const unsafeUrl = message.slice(CERT_ERROR_PROCEED_PREFIX.length);
+        mainLogger.info('TabManager.tab.certErrorProceed', { tabId, unsafeUrl });
+        try {
+          const host = new URL(unsafeUrl).host;
+          allowCertForOrigin(host);
+        } catch { /* ignore parse errors */ }
+        wc.loadURL(unsafeUrl);
+        return;
+      }
+      // Issue #27 — cert error: back to safety
+      if (message === CERT_ERROR_BACK_PREFIX && currentUrl.startsWith('data:text/html')) {
+        mainLogger.info('TabManager.tab.certErrorBack', { tabId });
         return;
       }
       if (!message.startsWith(FORM_DETECTOR_PREFIX)) return;
