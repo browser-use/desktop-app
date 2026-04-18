@@ -512,6 +512,12 @@ export class TabManager {
     this.pinnedTabs.delete(tabId);
     this.tabOrder = this.tabOrder.filter((id) => id !== tabId);
 
+    // Remove tab from its group before any early return so the store is always clean.
+    if (this.tabGroupStore?.getGroupForTab(tabId)) {
+      this.tabGroupStore.removeTabFromGroup(tabId);
+      this.safeSend('tab-groups:updated', this.tabGroupStore.listGroups());
+    }
+
     if (this.activeTabId === tabId) {
       const newActive = this.tabOrder[this.tabOrder.length - 1] ?? null;
       this.activeTabId = null;
@@ -524,12 +530,6 @@ export class TabManager {
         if (!this.win.isDestroyed()) this.win.close();
         return;
       }
-    }
-
-    // Remove tab from its group, if any, so the group store doesn't hold stale IDs.
-    if (this.tabGroupStore?.getGroupForTab(tabId)) {
-      this.tabGroupStore.removeTabFromGroup(tabId);
-      this.safeSend('tab-groups:updated', this.tabGroupStore.listGroups());
     }
 
     this.saveSession();
