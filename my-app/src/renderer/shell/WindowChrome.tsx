@@ -10,6 +10,7 @@ import { NavButtons } from './NavButtons';
 import { URLBar } from './URLBar';
 import { BookmarksBar } from './BookmarksBar';
 import { BookmarkDialog } from './BookmarkDialog';
+import { BookmarkAllTabsDialog } from './BookmarkAllTabsDialog';
 import { FindBar } from './FindBar';
 import { TabSearchDropdown } from './TabSearchDropdown';
 import { StatusBar } from './StatusBar';
@@ -134,6 +135,7 @@ declare const electronAPI: {
     targetLost: (cb: (payload: { tabId: string }) => void) => () => void;
     bookmarksUpdated: (cb: (tree: PersistedBookmarks) => void) => () => void;
     openBookmarkDialog: (cb: () => void) => () => void;
+    openBookmarkAllTabsDialog: (cb: () => void) => () => void;
     toggleBookmarksBar: (cb: () => void) => () => void;
     focusBookmarksBar: (cb: () => void) => () => void;
     zoomChanged: (cb: (payload: { percent: number }) => void) => () => void;
@@ -179,6 +181,7 @@ export function WindowChrome(): React.ReactElement {
   // Bookmarks state
   const [bookmarksTree, setBookmarksTree] = useState<PersistedBookmarks | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+  const [bookmarkAllTabsDialogOpen, setBookmarkAllTabsDialogOpen] = useState(false);
   const [focusBookmarksBarTick, setFocusBookmarksBarTick] = useState(0);
 
   // Downloads state
@@ -323,6 +326,10 @@ export function WindowChrome(): React.ReactElement {
       setBookmarkDialogOpen(true);
     });
 
+    const unsubOpenAllTabsDialog = electronAPI.on.openBookmarkAllTabsDialog(() => {
+      setBookmarkAllTabsDialogOpen(true);
+    });
+
     const unsubToggleBar = electronAPI.on.toggleBookmarksBar(() => {
       const current = bookmarksTree?.visibility ?? 'always';
       const next: Visibility = current === 'always' ? 'never' : 'always';
@@ -345,6 +352,7 @@ export function WindowChrome(): React.ReactElement {
       unsubTargetLost();
       unsubBookmarksUpdated();
       unsubOpenDialog();
+      unsubOpenAllTabsDialog();
       unsubToggleBar();
       unsubFocusBar();
     };
@@ -666,6 +674,14 @@ export function WindowChrome(): React.ReactElement {
             electronAPI.tabs.create(url);
           }}
           focusTick={focusBookmarksBarTick}
+          onBookmarkAllTabs={() => setBookmarkAllTabsDialogOpen(true)}
+        />
+      )}
+
+      {bookmarkAllTabsDialogOpen && bookmarksTree && (
+        <BookmarkAllTabsDialog
+          tree={bookmarksTree}
+          onClose={() => setBookmarkAllTabsDialogOpen(false)}
         />
       )}
 

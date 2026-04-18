@@ -151,7 +151,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getVisibility: (): Promise<Visibility> =>
       ipcRenderer.invoke('bookmarks:get-visibility'),
 
-    bookmarkAllTabs: (payload: { folderName: string }): Promise<BookmarkNode> =>
+    bookmarkAllTabs: (payload: { folderName: string; parentId?: string }): Promise<BookmarkNode> =>
       ipcRenderer.invoke('bookmarks:bookmark-all-tabs', payload),
   },
 
@@ -472,6 +472,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('open-bookmark-dialog', handler);
       return () => ipcRenderer.removeListener('open-bookmark-dialog', handler);
+    },
+
+    openBookmarkAllTabsDialog: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('open-bookmark-all-tabs-dialog', handler);
+      return () => ipcRenderer.removeListener('open-bookmark-all-tabs-dialog', handler);
     },
 
     toggleBookmarksBar: (cb: () => void): (() => void) => {

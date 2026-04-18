@@ -107,9 +107,12 @@ export function registerBookmarkHandlers(opts: BookmarksIpcOptions): void {
 
   ipcMain.handle('bookmarks:get-visibility', () => store.getVisibility());
 
-  ipcMain.handle('bookmarks:bookmark-all-tabs', (_e, payload: { folderName: string }) => {
+  ipcMain.handle('bookmarks:bookmark-all-tabs', (_e, payload: { folderName: string; parentId?: string }) => {
     const folderName = assertString(payload?.folderName, 'folderName', 512);
-    const folder = store.addFolder({ name: folderName });
+    const parentId = payload?.parentId
+      ? assertString(payload.parentId, 'parentId', 128)
+      : undefined;
+    const folder = store.addFolder({ name: folderName, parentId });
     for (const t of getAllTabs()) {
       if (!t.url || /^(data:|about:)/i.test(t.url)) continue;
       store.addBookmark({ name: t.name || t.url, url: t.url, parentId: folder.id });
