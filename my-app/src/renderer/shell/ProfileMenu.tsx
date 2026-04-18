@@ -6,6 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { SignOutDialog } from './SignOutDialog';
 
 declare const electronAPI: {
   profiles: {
@@ -42,6 +43,7 @@ export function ProfileMenu({ onDropdownChange }: ProfileMenuProps): React.React
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [currentProfileId, setCurrentProfileId] = useState<string>('default');
   const [colors, setColors] = useState<readonly string[]>([]);
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -126,6 +128,12 @@ export function ProfileMenu({ onDropdownChange }: ProfileMenuProps): React.React
   const handleOpenGuest = useCallback(() => {
     console.log('[ProfileMenu] Opening guest window');
     setOpenState(false);
+  }, [setOpenState]);
+
+  const handleSignOut = useCallback(() => {
+    console.log('[ProfileMenu] Opening sign out dialog');
+    setOpenState(false);
+    setSignOutOpen(true);
   }, [setOpenState]);
 
   if (!currentProfile) {
@@ -250,8 +258,31 @@ export function ProfileMenu({ onDropdownChange }: ProfileMenuProps): React.React
             </span>
             <span className="profile-menu__item-name">Open Guest</span>
           </button>
+
+          <div className="profile-menu__divider" />
+
+          <button
+            type="button"
+            className="profile-menu__item profile-menu__item--signout"
+            role="menuitem"
+            onClick={handleSignOut}
+          >
+            <span className="profile-menu__item-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M6 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2M10 12l4-4-4-4M14 8H6"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span className="profile-menu__item-name">Sign out</span>
+          </button>
         </div>
       )}
+    <SignOutDialog open={signOutOpen} onClose={() => setSignOutOpen(false)} />
     </div>
   );
 }

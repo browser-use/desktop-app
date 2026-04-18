@@ -25,6 +25,12 @@ import {
   type ClearDataResult,
 } from '../privacy/ClearDataController';
 import { isBiometricAvailable } from '../passwords/BiometricAuth';
+import {
+  performSignOut,
+  turnOffSync,
+  type SignOutMode,
+  type SignOutResult,
+} from '../identity/SignOutController';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -89,12 +95,9 @@ const CH_SET_BIOMETRIC_LOCK  = 'settings:set-biometric-lock';
 const CH_BIOMETRIC_AVAILABLE = 'settings:biometric-available';
 const CH_GET_HTTPS_FIRST     = 'settings:get-https-first';
 const CH_SET_HTTPS_FIRST     = 'settings:set-https-first';
-const CH_GET_SAFE_BROWSING   = 'settings:get-safe-browsing';
-const CH_SET_SAFE_BROWSING   = 'settings:set-safe-browsing';
-
-const ALLOWED_SAFE_BROWSING_LEVELS = ['enhanced', 'standard', 'disabled'] as const;
-type SafeBrowsingLevel = typeof ALLOWED_SAFE_BROWSING_LEVELS[number];
-const DEFAULT_SAFE_BROWSING: SafeBrowsingLevel = 'standard';
+const CH_SIGN_OUT            = 'identity:sign-out';
+const CH_TURN_OFF_SYNC       = 'identity:turn-off-sync';
+const CH_GET_ACCOUNT_INFO    = 'identity:get-account-info';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -596,21 +599,69 @@ function handleSetHttpsFirst(_event: Electron.IpcMainInvokeEvent, enabled: boole
 }
 
 
-function handleGetSafeBrowsing(): string {
-  mainLogger.info(CH_GET_SAFE_BROWSING);
-  const prefs = readPrefs();
-  const level = typeof prefs.safeBrowsing === 'string' && (ALLOWED_SAFE_BROWSING_LEVELS as readonly string[]).includes(prefs.safeBrowsing as string)
-    ? prefs.safeBrowsing as string
-    : DEFAULT_SAFE_BROWSING;
-  mainLogger.info(`${CH_GET_SAFE_BROWSING}.ok`, { level });
-  return level;
+async function handleSignOut(
+  _event: Electron.IpcMainInvokeEvent,
+  mode: string,
+): Promise<SignOutResult> {
+  mainLogger.info(CH_SIGN_OUT, { mode });
+
+  if (mode !== 'clear' && mode !== 'keep') {
+    throw new Error('mode must be "clear" or "keep"');
+  }
+
+  if (!_accountStore || !_keychainStore) {
+    mainLogger.error(`${CH_SIGN_OUT}.notInitialised`);
+    throw new Error('AccountStore or KeychainStore not initialised');
+  }
+
+  const result = await performSignOut(mode as SignOutMode, _accountStore, _keychainStore);
+
+  mainLogger.info(`${CH_SIGN_OUT}.complete`, {
+    mode,
+    success: result.success,
+    tokenRevoked: result.tokenRevoked,
+    dataCleared: result.dataCleared,
+  });
+
+  if (result.success && process.env.NODE_ENV !== 'test') {
+    app.relaunch();
+    app.quit();
+  }
+
+  return result;
 }
 
-function handleSetSafeBrowsing(_event: Electron.IpcMainInvokeEvent, level: string): void {
-  const validated: SafeBrowsingLevel = assertOneOf(level, 'safeBrowsing', ALLOWED_SAFE_BROWSING_LEVELS);
-  mainLogger.info(CH_SET_SAFE_BROWSING, { level: validated });
-  mergePrefs({ safeBrowsing: validated });
-  mainLogger.info(`${CH_SET_SAFE_BROWSING}.ok`, { level: validated });
+async function handleTurnOffSync(): Promise<{ success: boolean }> {
+  mainLogger.info(CH_TURN_OFF_SYNC);
+
+  if (!_accountStore) {
+    mainLogger.error(`${CH_TURN_OFF_SYNC}.notInitialised`);
+    throw new Error('AccountStore not initialised');
+  }
+
+  const result = await turnOffSync(_accountStore);
+  mainLogger.info(`${CH_TURN_OFF_SYNC}.complete`, { success: result.success });
+  return result;
+}
+
+function handleGetAccountInfo(): { email: string; agentName: string } | null {
+  mainLogger.info(CH_GET_ACCOUNT_INFO);
+
+  const account = _accountStore?.load();
+  if (!account) {
+    mainLogger.info(`${CH_GET_ACCOUNT_INFO}.noAccount`);
+    return null;
+  }
+
+  mainLogger.info(`${CH_GET_ACCOUNT_INFO}.ok`, {
+    hasEmail: !!account.email,
+    hasAgentName: !!account.agent_name,
+  });
+
+  return {
+    email: account.email,
+    agentName: account.agent_name,
+  };
 }
 
 function handleCloseWindow(): void {
@@ -657,10 +708,11 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_BIOMETRIC_AVAILABLE, handleBiometricAvailable);
   ipcMain.handle(CH_GET_HTTPS_FIRST,    handleGetHttpsFirst);
   ipcMain.handle(CH_SET_HTTPS_FIRST,    handleSetHttpsFirst);
-  ipcMain.handle(CH_GET_SAFE_BROWSING,  handleGetSafeBrowsing);
-  ipcMain.handle(CH_SET_SAFE_BROWSING,  handleSetSafeBrowsing);
+  ipcMain.handle(CH_SIGN_OUT,           handleSignOut);
+  ipcMain.handle(CH_TURN_OFF_SYNC,      handleTurnOffSync);
+  ipcMain.handle(CH_GET_ACCOUNT_INFO,   handleGetAccountInfo);
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 23 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 21 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -687,8 +739,9 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_BIOMETRIC_AVAILABLE);
   ipcMain.removeHandler(CH_GET_HTTPS_FIRST);
   ipcMain.removeHandler(CH_SET_HTTPS_FIRST);
-  ipcMain.removeHandler(CH_GET_SAFE_BROWSING);
-  ipcMain.removeHandler(CH_SET_SAFE_BROWSING);
+  ipcMain.removeHandler(CH_SIGN_OUT);
+  ipcMain.removeHandler(CH_TURN_OFF_SYNC);
+  ipcMain.removeHandler(CH_GET_ACCOUNT_INFO);
 
   _accountStore  = null;
   _keychainStore = null;

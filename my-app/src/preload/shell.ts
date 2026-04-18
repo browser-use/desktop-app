@@ -545,6 +545,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('profiles:get-colors'),
   },
 
+  // Identity — sign-out + account info
+  identity: {
+    signOut: (mode: 'clear' | 'keep'): Promise<{
+      success: boolean;
+      mode: string;
+      tokenRevoked: boolean;
+      dataCleared: boolean;
+      errors: string[];
+    }> =>
+      ipcRenderer.invoke('identity:sign-out', mode),
+
+    turnOffSync: (): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('identity:turn-off-sync'),
+
+    getAccountInfo: (): Promise<{ email: string; agentName: string } | null> =>
+      ipcRenderer.invoke('identity:get-account-info'),
+  },
+
   // Passwords
   passwords: {
     save: (payload: { origin: string; username: string; password: string }): Promise<unknown> =>
