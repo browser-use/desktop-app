@@ -129,6 +129,7 @@ export class TabManager {
   // does not import pill.ts.
   private pillToggle: (() => void) | null = null;
   private caretBrowsingToggle: (() => void) | null = null;
+  private sendingF7 = false;
   private zoomStore: ZoomStore;
   private urlMatchFn: UrlMatchFn | null = null;
   private historyStore: HistoryStore | null = null;
@@ -197,8 +198,13 @@ export class TabManager {
     const view = this.tabs.get(this.activeTabId);
     if (!view || view.webContents.isDestroyed()) return;
     mainLogger.debug('TabManager.sendF7ToActiveTab', { tabId: this.activeTabId, enable });
-    view.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F7' });
-    view.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'F7' });
+    this.sendingF7 = true;
+    try {
+      view.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F7' });
+      view.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'F7' });
+    } finally {
+      this.sendingF7 = false;
+    }
   }
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
@@ -1400,6 +1406,7 @@ export class TabManager {
 
       // F7 — caret browsing: forward to main process handler via callback
       if (input.key === 'F7') {
+        if (this.sendingF7) return;
         event.preventDefault();
         mainLogger.debug('TabManager.beforeInput.F7', { url: wc.getURL() });
         this.caretBrowsingToggle?.();
