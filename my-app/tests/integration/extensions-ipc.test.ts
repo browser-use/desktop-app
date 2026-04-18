@@ -127,6 +127,7 @@ function makeFakeManager(initial: ExtensionRecord[] = []) {
         hostPermissions: [],
         hostAccess: 'on-click',
         icons: {},
+        manifestVersion: 2,
       };
       records.push(newRec);
       return newRec;
@@ -141,6 +142,8 @@ function makeFakeManager(initial: ExtensionRecord[] = []) {
     setDeveloperMode: vi.fn((enabled: boolean) => {
       devMode = !!enabled;
     }),
+    listAllCommands: vi.fn(() => []),
+    setExtensionShortcut: vi.fn(),
   };
 }
 
@@ -184,6 +187,8 @@ describe('extensions-ipc — registration', () => {
       'extensions:get-dev-mode',
       'extensions:set-dev-mode',
       'extensions:pick-directory',
+      'extensions:list-commands',
+      'extensions:set-shortcut',
     ]) {
       expect(invokeHandlers.has(ch)).toBe(true);
     }
@@ -212,6 +217,8 @@ describe('extensions-ipc — registration', () => {
         'extensions:get-dev-mode',
         'extensions:set-dev-mode',
         'extensions:pick-directory',
+        'extensions:list-commands',
+        'extensions:set-shortcut',
       ]),
     );
     expect(removedListeners).toContain('extensions:close-window');
@@ -242,6 +249,7 @@ describe('extensions-ipc — list / details / toggles', () => {
         hostPermissions: [],
         hostAccess: 'on-click',
         icons: {},
+        manifestVersion: 2,
       },
     ];
   }

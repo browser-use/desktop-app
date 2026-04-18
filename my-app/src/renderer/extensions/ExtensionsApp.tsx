@@ -1,11 +1,11 @@
 /**
  * ExtensionsApp.tsx — Extensions window root component.
  *
- * Grid of extension cards with toggle, remove, details drawer,
- * developer mode controls, and per-extension host-access dropdown.
+ * Two tabs: "Extensions" (grid of extension cards) and "Shortcuts"
+ * (keyboard shortcut bindings for extension commands).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Button,
   Card,
@@ -33,7 +33,17 @@ interface ExtensionRecord {
   icons: Record<string, string>;
 }
 
+interface ExtensionCommandEntry {
+  extensionId: string;
+  extensionName: string;
+  commandName: string;
+  description: string;
+  shortcut: string;
+  isAction: boolean;
+}
+
 type HostAccessLevel = 'all-sites' | 'specific-sites' | 'on-click';
+type Tab = 'extensions' | 'shortcuts';
 
 declare global {
   interface Window {
@@ -50,6 +60,8 @@ declare global {
       setDeveloperMode: (enabled: boolean) => Promise<void>;
       pickDirectory: () => Promise<string | null>;
       closeWindow: () => void;
+      listCommands: () => Promise<ExtensionCommandEntry[]>;
+      setShortcut: (extensionId: string, commandName: string, shortcut: string) => Promise<void>;
     };
   }
 }
@@ -63,6 +75,46 @@ const HOST_ACCESS_LABELS: Record<HostAccessLevel, string> = {
   'specific-sites': 'On specific sites',
   'on-click': 'On click',
 };
+
+// Chrome built-in shortcuts that should be flagged as conflicts.
+// Uses the same format as Electron accelerators but lowercased for comparison.
+const CHROME_RESERVED_SHORTCUTS = new Set([
+  'ctrl+t', 'cmd+t',
+  'ctrl+n', 'cmd+n',
+  'ctrl+shift+n', 'cmd+shift+n',
+  'ctrl+w', 'cmd+w',
+  'ctrl+shift+w', 'cmd+shift+w',
+  'ctrl+l', 'cmd+l',
+  'ctrl+r', 'cmd+r',
+  'ctrl+shift+r', 'cmd+shift+r',
+  'ctrl+f', 'cmd+f',
+  'ctrl+g', 'cmd+g',
+  'ctrl+shift+g', 'cmd+shift+g',
+  'ctrl+p', 'cmd+p',
+  'ctrl+s', 'cmd+s',
+  'ctrl+o', 'cmd+o',
+  'ctrl+d', 'cmd+d',
+  'ctrl+=', 'cmd+=',
+  'ctrl+-', 'cmd+-',
+  'ctrl+0', 'cmd+0',
+  'ctrl+,', 'cmd+,',
+  'ctrl+alt+i', 'cmd+alt+i',
+  'ctrl+alt+j', 'cmd+alt+j',
+  'ctrl+alt+u', 'cmd+alt+u',
+  'ctrl+shift+i', 'cmd+shift+i',
+  'f12',
+  'f5',
+  'escape',
+]);
+
+function normalizeShortcut(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, '').replace(/commandorcontrol/g, 'ctrl');
+}
+
+function isConflict(shortcut: string): boolean {
+  if (!shortcut) return false;
+  return CHROME_RESERVED_SHORTCUTS.has(normalizeShortcut(shortcut));
+}
 
 // ---------------------------------------------------------------------------
 // SVG Icons
@@ -142,6 +194,24 @@ function FolderIcon(): React.ReactElement {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function KeyboardIcon(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="1.167" y="3.5" width="11.666" height="7" rx="1.167" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 6.417h.583M5.25 6.417h.583M7 6.417h.583M8.75 6.417h.583M10.5 6.417h.583M3.5 8.167h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function WarningIcon(): React.ReactElement {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M6 1L11 10H1L6 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M6 5v2.5M6 8.5v.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -380,11 +450,268 @@ function EmptyState(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// Shortcut capture field
+// ---------------------------------------------------------------------------
+
+function ShortcutField({
+  value,
+  onSave,
+  hasConflict,
+}: {
+  value: string;
+  onSave: (shortcut: string) => void;
+  hasConflict: boolean;
+}): React.ReactElement {
+  const [capturing, setCapturing] = useState(false);
+  const [pending, setPending] = useState('');
+  const inputRef = useRef<HTMLDivElement>(null);
+
+  function startCapture(): void {
+    setPending('');
+    setCapturing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function cancelCapture(): void {
+    setCapturing(false);
+    setPending('');
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.key === 'Escape') {
+      cancelCapture();
+      return;
+    }
+
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      setCapturing(false);
+      onSave('');
+      return;
+    }
+
+    // Only record when a non-modifier key is pressed along with at least one modifier
+    const isModifier = ['Control', 'Meta', 'Alt', 'Shift'].includes(e.key);
+    if (isModifier) return;
+
+    const parts: string[] = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.metaKey) parts.push('Ctrl'); // normalize Meta to Ctrl for cross-platform
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+
+    // Need at least one modifier (except for function keys)
+    const isFunctionKey = /^F\d+$/.test(e.key);
+    if (parts.length === 0 && !isFunctionKey) return;
+
+    const keyName = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    parts.push(keyName);
+
+    const combo = parts.join('+');
+    setPending(combo);
+    setCapturing(false);
+    onSave(combo);
+  }
+
+  if (capturing) {
+    return (
+      <div
+        ref={inputRef}
+        className="ext-shortcut-capture ext-shortcut-capture--active"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onBlur={cancelCapture}
+        aria-label="Press shortcut keys"
+      >
+        <span className="ext-shortcut-capture-hint">Press shortcut…</span>
+        <button
+          type="button"
+          className="ext-shortcut-cancel"
+          onMouseDown={(e) => { e.preventDefault(); cancelCapture(); }}
+          aria-label="Cancel"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
+  const displayValue = pending || value;
+
+  return (
+    <div className="ext-shortcut-field-row">
+      {hasConflict && displayValue && (
+        <span className="ext-shortcut-conflict-badge" title="Conflicts with a browser shortcut">
+          <WarningIcon />
+        </span>
+      )}
+      <button
+        type="button"
+        className={`ext-shortcut-capture ${hasConflict && displayValue ? 'ext-shortcut-capture--conflict' : ''}`}
+        onClick={startCapture}
+        aria-label={displayValue ? `Current shortcut: ${displayValue}. Click to change.` : 'Click to set shortcut'}
+      >
+        {displayValue ? (
+          <kbd className="ext-shortcut-keys">{displayValue}</kbd>
+        ) : (
+          <span className="ext-shortcut-placeholder">Click to set</span>
+        )}
+      </button>
+      {displayValue && (
+        <button
+          type="button"
+          className="ext-shortcut-clear"
+          onClick={() => { setPending(''); onSave(''); }}
+          aria-label="Clear shortcut"
+          title="Clear shortcut"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shortcuts page
+// ---------------------------------------------------------------------------
+
+function ShortcutsPage(): React.ReactElement {
+  const toast = useToast();
+  const [commands, setCommands] = useState<ExtensionCommandEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadCommands = useCallback(async () => {
+    try {
+      const list = await window.extensionsAPI.listCommands();
+      setCommands(list);
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to load shortcuts', message: (err as Error).message });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void loadCommands();
+  }, [loadCommands]);
+
+  async function handleSaveShortcut(
+    extensionId: string,
+    commandName: string,
+    shortcut: string,
+  ): Promise<void> {
+    try {
+      await window.extensionsAPI.setShortcut(extensionId, commandName, shortcut);
+      // Update local state immediately
+      setCommands((prev) =>
+        prev.map((cmd) =>
+          cmd.extensionId === extensionId && cmd.commandName === commandName
+            ? { ...cmd, shortcut }
+            : cmd,
+        ),
+      );
+    } catch (err) {
+      toast.show({ variant: 'error', title: 'Failed to save shortcut', message: (err as Error).message });
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="ext-loading">
+        <Spinner size="md" />
+      </div>
+    );
+  }
+
+  if (commands.length === 0) {
+    return (
+      <div className="ext-empty">
+        <div className="ext-empty-icon">
+          <KeyboardIcon />
+        </div>
+        <h3 className="ext-empty-title">No extension commands</h3>
+        <p className="ext-empty-desc">
+          Extensions that define keyboard commands will appear here.
+          Install an extension with a <code>commands</code> manifest field to get started.
+        </p>
+      </div>
+    );
+  }
+
+  // Group by extension
+  const grouped = new Map<string, { name: string; commands: ExtensionCommandEntry[] }>();
+  for (const cmd of commands) {
+    const existing = grouped.get(cmd.extensionId);
+    if (existing) {
+      existing.commands.push(cmd);
+    } else {
+      grouped.set(cmd.extensionId, { name: cmd.extensionName, commands: [cmd] });
+    }
+  }
+
+  return (
+    <div className="ext-shortcuts-page">
+      <div className="ext-shortcuts-intro">
+        <p className="ext-shortcuts-intro-text">
+          Assign keyboard shortcuts to extension commands. Press <kbd>Backspace</kbd> or <kbd>Delete</kbd> while capturing to clear a shortcut.
+        </p>
+      </div>
+
+      <div className="ext-shortcuts-list">
+        {Array.from(grouped.entries()).map(([extId, group]) => (
+          <div key={extId} className="ext-shortcuts-group">
+            <div className="ext-shortcuts-group-header">
+              <div className="ext-shortcuts-group-icon">
+                <PuzzleIcon />
+              </div>
+              <h3 className="ext-shortcuts-group-name">{group.name}</h3>
+            </div>
+
+            <div className="ext-shortcuts-rows">
+              {group.commands.map((cmd) => {
+                const conflict = isConflict(cmd.shortcut);
+                const displayName = cmd.isAction
+                  ? 'Activate extension'
+                  : cmd.description || cmd.commandName;
+
+                return (
+                  <div key={cmd.commandName} className="ext-shortcuts-row">
+                    <div className="ext-shortcuts-row-info">
+                      <span className="ext-shortcuts-row-name">{displayName}</span>
+                      {cmd.isAction && (
+                        <span className="ext-shortcuts-row-badge">Action</span>
+                      )}
+                    </div>
+                    <ShortcutField
+                      value={cmd.shortcut}
+                      hasConflict={conflict}
+                      onSave={(shortcut) => void handleSaveShortcut(cmd.extensionId, cmd.commandName, shortcut)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Inner app (uses useToast — must be inside ToastProvider)
 // ---------------------------------------------------------------------------
 
 function ExtensionsInner(): React.ReactElement {
   const toast = useToast();
+  const [tab, setTab] = useState<Tab>('extensions');
   const [extensions, setExtensions] = useState<ExtensionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [devMode, setDevMode] = useState(false);
@@ -509,16 +836,37 @@ function ExtensionsInner(): React.ReactElement {
       <header className="ext-header">
         <div className="ext-header-left">
           <h1 className="ext-title">Extensions</h1>
+          <nav className="ext-tabs" aria-label="Extensions navigation">
+            <button
+              type="button"
+              className={`ext-tab ${tab === 'extensions' ? 'ext-tab--active' : ''}`}
+              onClick={() => setTab('extensions')}
+              aria-current={tab === 'extensions' ? 'page' : undefined}
+            >
+              Extensions
+            </button>
+            <button
+              type="button"
+              className={`ext-tab ${tab === 'shortcuts' ? 'ext-tab--active' : ''}`}
+              onClick={() => setTab('shortcuts')}
+              aria-current={tab === 'shortcuts' ? 'page' : undefined}
+            >
+              <KeyboardIcon />
+              Keyboard shortcuts
+            </button>
+          </nav>
         </div>
         <div className="ext-header-right">
-          <div className="ext-dev-mode">
-            <span className="ext-dev-mode-label">Developer mode</span>
-            <ToggleSwitch
-              checked={devMode}
-              onChange={handleDevModeToggle}
-              label="Toggle developer mode"
-            />
-          </div>
+          {tab === 'extensions' && (
+            <div className="ext-dev-mode">
+              <span className="ext-dev-mode-label">Developer mode</span>
+              <ToggleSwitch
+                checked={devMode}
+                onChange={handleDevModeToggle}
+                label="Toggle developer mode"
+              />
+            </div>
+          )}
           <KeyHint keys={['Esc']} size="xs" aria-label="Esc to close" />
           <button
             type="button"
@@ -533,8 +881,8 @@ function ExtensionsInner(): React.ReactElement {
         </div>
       </header>
 
-      {/* Developer mode toolbar */}
-      {devMode && (
+      {/* Developer mode toolbar — only on extensions tab */}
+      {tab === 'extensions' && devMode && (
         <div className="ext-dev-toolbar">
           <Button variant="secondary" size="sm" onClick={handleLoadUnpacked}>
             <FolderIcon />
@@ -560,24 +908,28 @@ function ExtensionsInner(): React.ReactElement {
         </div>
       )}
 
-      {/* Extension grid */}
+      {/* Tab content */}
       <main className="ext-main">
-        {extensions.length === 0 ? (
-          <EmptyState />
+        {tab === 'extensions' ? (
+          extensions.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="ext-grid">
+              {extensions.map((ext) => (
+                <ExtensionCard
+                  key={ext.id}
+                  ext={ext}
+                  onToggle={(id, en) => void handleToggle(id, en)}
+                  onRemove={(id, name) => setRemoveTarget({ id, name })}
+                  onDetails={(id) => void handleDetails(id)}
+                  onHostAccessChange={(id, access) => void handleHostAccessChange(id, access)}
+                  onUpdate={(id) => void handleUpdate(id)}
+                />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="ext-grid">
-            {extensions.map((ext) => (
-              <ExtensionCard
-                key={ext.id}
-                ext={ext}
-                onToggle={(id, en) => void handleToggle(id, en)}
-                onRemove={(id, name) => setRemoveTarget({ id, name })}
-                onDetails={(id) => void handleDetails(id)}
-                onHostAccessChange={(id, access) => void handleHostAccessChange(id, access)}
-                onUpdate={(id) => void handleUpdate(id)}
-              />
-            ))}
-          </div>
+          <ShortcutsPage />
         )}
       </main>
 

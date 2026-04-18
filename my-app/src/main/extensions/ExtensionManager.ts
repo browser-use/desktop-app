@@ -32,6 +32,15 @@ export interface ExtensionRecord {
   manifestVersion: number;
 }
 
+export interface ExtensionCommandEntry {
+  extensionId: string;
+  extensionName: string;
+  commandName: string;
+  description: string;
+  shortcut: string;
+  isAction: boolean;
+}
+
 interface PersistedState {
   extensions: Array<{
     id: string;
@@ -40,6 +49,7 @@ interface PersistedState {
     hostAccess: string;
   }>;
   developerMode: boolean;
+  shortcuts: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,6 +58,9 @@ interface PersistedState {
 
 const STATE_FILE_NAME = 'extensions-state.json';
 const LOG_PREFIX = 'ExtensionManager';
+
+// Shortcut key: "<extensionId>/<commandName>"
+const SHORTCUT_KEY_SEP = '/';
 
 // ---------------------------------------------------------------------------
 // ExtensionManager
@@ -84,6 +97,7 @@ export class ExtensionManager {
         return {
           extensions: Array.isArray(parsed.extensions) ? parsed.extensions : [],
           developerMode: parsed.developerMode === true,
+          shortcuts: (parsed.shortcuts && typeof parsed.shortcuts === 'object') ? parsed.shortcuts : {},
         };
       }
     } catch (err) {
@@ -91,7 +105,7 @@ export class ExtensionManager {
         error: (err as Error).message,
       });
     }
-    return { extensions: [], developerMode: false };
+    return { extensions: [], developerMode: false, shortcuts: {} };
   }
 
   private saveState(): void {
@@ -329,6 +343,12 @@ export class ExtensionManager {
     }
 
     this.state.extensions = this.state.extensions.filter((e) => e.id !== id);
+    // Clean up persisted shortcuts for removed extension
+    for (const key of Object.keys(this.state.shortcuts)) {
+      if (key.startsWith(`${id}${SHORTCUT_KEY_SEP}`)) {
+        delete this.state.shortcuts[key];
+      }
+    }
     this.saveState();
     mainLogger.info(`${LOG_PREFIX}.removeExtension.ok`, { id });
   }
@@ -379,6 +399,61 @@ export class ExtensionManager {
   getExtensionDetails(id: string): ExtensionRecord | null {
     const all = this.listExtensions();
     return all.find((e) => e.id === id) ?? null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Extension commands / shortcuts
+  // -------------------------------------------------------------------------
+
+  listAllCommands(): ExtensionCommandEntry[] {
+    mainLogger.info(`${LOG_PREFIX}.listAllCommands`);
+
+    const loaded = session.defaultSession.getAllExtensions();
+    const results: ExtensionCommandEntry[] = [];
+
+    for (const ext of loaded) {
+      const manifest = ext.manifest as Record<string, unknown> | undefined;
+      if (!manifest) continue;
+
+      const commands = manifest.commands as Record<string, unknown> | undefined;
+      if (!commands) continue;
+
+      const extName = ext.name ?? (manifest.name as string) ?? 'Unknown';
+
+      for (const [commandName, rawCmd] of Object.entries(commands)) {
+        const cmd = rawCmd as Record<string, unknown>;
+        const description = (cmd.description as string) ?? '';
+        const isAction = commandName === '_execute_action' || commandName === '_execute_browser_action' || commandName === '_execute_page_action';
+        const manifestDefault = (cmd.suggested_key as Record<string, string> | undefined)?.default ?? '';
+        const stateKey = `${ext.id}${SHORTCUT_KEY_SEP}${commandName}`;
+        const shortcut = this.state.shortcuts[stateKey] ?? manifestDefault;
+
+        results.push({
+          extensionId: ext.id,
+          extensionName: extName,
+          commandName,
+          description,
+          shortcut,
+          isAction,
+        });
+      }
+    }
+
+    mainLogger.info(`${LOG_PREFIX}.listAllCommands.ok`, { count: results.length });
+    return results;
+  }
+
+  setExtensionShortcut(extensionId: string, commandName: string, shortcut: string): void {
+    mainLogger.info(`${LOG_PREFIX}.setExtensionShortcut`, { extensionId, commandName, shortcut });
+
+    const stateKey = `${extensionId}${SHORTCUT_KEY_SEP}${commandName}`;
+    if (shortcut === '') {
+      delete this.state.shortcuts[stateKey];
+    } else {
+      this.state.shortcuts[stateKey] = shortcut;
+    }
+    this.saveState();
+    mainLogger.info(`${LOG_PREFIX}.setExtensionShortcut.ok`, { extensionId, commandName, shortcut });
   }
 
   // -------------------------------------------------------------------------

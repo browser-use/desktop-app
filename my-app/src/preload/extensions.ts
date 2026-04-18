@@ -26,6 +26,15 @@ export interface ExtensionRecord {
 
 export type HostAccessLevel = 'all-sites' | 'specific-sites' | 'on-click';
 
+export interface ExtensionCommandEntry {
+  extensionId: string;
+  extensionName: string;
+  commandName: string;
+  description: string;
+  shortcut: string;
+  isAction: boolean;
+}
+
 export interface ExtensionsAPI {
   listExtensions: () => Promise<ExtensionRecord[]>;
   enableExtension: (id: string) => Promise<void>;
@@ -39,6 +48,8 @@ export interface ExtensionsAPI {
   setDeveloperMode: (enabled: boolean) => Promise<void>;
   pickDirectory: () => Promise<string | null>;
   closeWindow: () => void;
+  listCommands: () => Promise<ExtensionCommandEntry[]>;
+  setShortcut: (extensionId: string, commandName: string, shortcut: string) => Promise<void>;
 }
 
 export interface MV3API {
@@ -123,6 +134,16 @@ const api: ExtensionsAPI = {
   closeWindow: (): void => {
     console.debug('[extensions-preload] closeWindow');
     ipcRenderer.send('extensions:close-window');
+  },
+
+  listCommands: async (): Promise<ExtensionCommandEntry[]> => {
+    console.debug('[extensions-preload] listCommands');
+    return ipcRenderer.invoke('extensions:list-commands') as Promise<ExtensionCommandEntry[]>;
+  },
+
+  setShortcut: async (extensionId: string, commandName: string, shortcut: string): Promise<void> => {
+    console.debug('[extensions-preload] setShortcut', { extensionId, commandName, shortcut });
+    await ipcRenderer.invoke('extensions:set-shortcut', extensionId, commandName, shortcut);
   },
 };
 

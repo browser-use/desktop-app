@@ -544,3 +544,251 @@
   flex: 1;
   padding: 64px;
 }
+
+/* ---------------------------------------------------------------------------
+   Tab navigation
+--------------------------------------------------------------------------- */
+
+.ext-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 16px;
+}
+
+.ext-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-tertiary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out);
+}
+
+.ext-tab:hover {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg-secondary);
+}
+
+.ext-tab--active {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Shortcuts page
+--------------------------------------------------------------------------- */
+
+.ext-shortcuts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 720px;
+}
+
+.ext-shortcuts-intro {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.ext-shortcuts-intro-text {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--line-height-relaxed);
+}
+
+.ext-shortcuts-intro-text kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-overlay);
+  border: 1px solid var(--color-border-default);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-primary);
+}
+
+.ext-shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ext-shortcuts-group {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  overflow: hidden;
+}
+
+.ext-shortcuts-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background-color: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.ext-shortcuts-group-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--color-fg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ext-shortcuts-group-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ext-shortcuts-group-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-primary);
+}
+
+.ext-shortcuts-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ext-shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.ext-shortcuts-row:last-child {
+  border-bottom: none;
+}
+
+.ext-shortcuts-row-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ext-shortcuts-row-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-shortcuts-row-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-bg-overlay);
+  border: 1px solid var(--color-border-default);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-tertiary);
+}
+
+/* ---------------------------------------------------------------------------
+   Shortcut capture field
+--------------------------------------------------------------------------- */
+
+.ext-shortcut-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ext-shortcut-capture {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  min-width: 140px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-overlay);
+  border: 1px solid var(--color-border-default);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  transition:
+    border-color     var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.ext-shortcut-capture:hover {
+  border-color: var(--color-accent-default);
+}
+
+.ext-shortcut-capture--active {
+  border-color: var(--color-accent-default);
+  background-color: var(--color-bg-elevated);
+  cursor: text;
+  outline: none;
+}
+
+.ext-shortcut-capture--conflict {
+  border-color: var(--color-status-warning, #f59e0b);
+}
+
+.ext-shortcut-capture-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
+  flex: 1;
+}
+
+.ext-shortcut-placeholder {
+  color: var(--color-fg-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.ext-shortcut-keys {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-primary);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.ext-shortcut-cancel,
+.ext-shortcut-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-tertiary);
+  flex-shrink: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color            var(--duration-fast) var(--ease-out);
+}
+
+.ext-shortcut-cancel:hover,
+.ext-shortcut-clear:hover {
+  background-color: var(--color-bg-overlay);
+  color: var(--color-fg-primary);
+}
+
+.ext-shortcut-conflict-badge {
+  display: flex;
+  align-items: center;
+  color: var(--color-status-warning, #f59e0b);
+  flex-shrink: 0;
+}
