@@ -671,6 +671,7 @@ app.whenReady().then(async () => {
     unregisterShareHandlers();
     unregisterBookmarkHandlers();
     unregisterHistoryHandlers();
+    shortcutsStore?.flushSync();
     unregisterOmniboxHandlers();
     unregisterChromeHandlers();
     unregisterProfileHandlers();

@@ -79,12 +79,19 @@ export function registerOmniboxHandlers(opts: OmniboxIpcOptions): void {
       mainLogger.debug('omnibox:suggest', { input });
 
       const results: OmniboxSuggestion[] = [];
-      const seen = new Set<string>();
+      const seenIndex = new Map<string, number>(); // url → index in results
 
       function push(s: OmniboxSuggestion): void {
         if (!s.url) return;
-        if (seen.has(s.url)) return;
-        seen.add(s.url);
+        const existing = seenIndex.get(s.url);
+        if (existing !== undefined) {
+          // Replace if this entry has higher relevance (e.g. bookmark > history).
+          if (s.relevance > results[existing].relevance) {
+            results[existing] = s;
+          }
+          return;
+        }
+        seenIndex.set(s.url, results.length);
         results.push(s);
       }
 
