@@ -1,7 +1,7 @@
 /*
- * theme.onboarding.css — warm character-forward onboarding palette
+ * theme.onboarding.css — Linear-inspired dark onboarding theme
  * Activate by setting <html data-theme="onboarding"> on the document element.
- * More rounded, more generous padding, pastel capability pills, mascot-forward.
+ * Minimal, monochromatic, sophisticated. ONE accent color.
  *
  * This file ONLY overrides semantic color tokens and onboarding-specific tokens.
  * Primitive tokens (--slate-*, --accent-*, --danger, etc.) come from
@@ -16,55 +16,43 @@
   --font-mono:    'Berkeley Mono', 'JetBrains Mono', ui-monospace, monospace;
   --font-display: 'Geist', 'Söhne', system-ui, sans-serif;
 
-  /* -- Semantic background overrides (warmer, more purple-shifted) -- */
-  --color-bg-base:     #1a1a1f;
-  --color-bg-elevated: #22222a;
-  --color-bg-overlay:  #2a2a34;
-  --color-bg-sunken:   #111118;
-  /* onboarding-specific card surface */
-  --color-bg-card:     #1e1e26;
+  /* -- Semantic background (deep, cool, Linear-esque) -- */
+  --color-bg-base:     #101012;
+  --color-bg-elevated: #18181b;
+  --color-bg-overlay:  #1f1f23;
+  --color-bg-sunken:   #0a0a0c;
+  --color-bg-card:     #141416;
 
-  /* -- Semantic foreground overrides -- */
-  --color-fg-primary:   #f2f0ee;
-  --color-fg-secondary: #9a96a0;
-  --color-fg-tertiary:  #7a7580;  /* WCAG 3.52:1 on bg-elevated */
-  --color-fg-disabled:  #4a4550;
-  --color-fg-inverse:   #1a1a1f;
+  /* -- Semantic foreground -- */
+  --color-fg-primary:   #ededef;
+  --color-fg-secondary: #8a8a8e;
+  --color-fg-tertiary:  #5c5c63;
+  --color-fg-disabled:  #3a3a3f;
+  --color-fg-inverse:   #101012;
 
-  /* -- Semantic border overrides -- */
-  --color-border-subtle:  #2a2a34;
-  --color-border-default: #34343f;
-  --color-border-strong:  #44444f;
+  /* -- Semantic border -- */
+  --color-border-subtle:  #1f1f23;
+  --color-border-default: #27272b;
+  --color-border-strong:  #35353a;
 
-  /* -- Accent overrides (same base, slightly warmer glow) -- */
-  --color-accent-default: var(--accent-base);   /* #c8f135 */
-  --color-accent-hover:   var(--accent-hover);  /* #d4f74e */
-  --color-accent-dim:     var(--accent-dim);    /* #b8e020 */
-  --color-accent-muted:   rgba(200, 241, 53, 0.12);
-  --color-accent-glow:    rgba(200, 241, 53, 0.20);
-  /* backward-compat aliases */
-  --color-accent-subtle:  rgba(200, 241, 53, 0.12);
+  /* -- Accent (same base — the app's signature green/yellow) -- */
+  --color-accent-default: var(--accent-base);
+  --color-accent-hover:   var(--accent-hover);
+  --color-accent-dim:     var(--accent-dim);
+  --color-accent-muted:   rgba(200, 241, 53, 0.10);
+  --color-accent-glow:    rgba(200, 241, 53, 0.15);
+  --color-accent-subtle:  rgba(200, 241, 53, 0.08);
 
   /* -- Status -- */
-  --color-status-success: var(--success); /* #4ade80 */
-  --color-status-warning: var(--warning); /* #f59e0b */
-  --color-status-error:   var(--danger);  /* #f87171 */
-  --color-status-danger:  var(--danger);  /* #f87171 */
-  --color-status-info:    var(--info);    /* #60a5fa */
+  --color-status-success: var(--success);
+  --color-status-warning: var(--warning);
+  --color-status-error:   var(--danger);
+  --color-status-danger:  var(--danger);
+  --color-status-info:    var(--info);
 
-  /* -- Capability pill palette (pastel — matches mascot stage screenshot) -- */
-  --color-pill-research:    #a78bfa;
-  --color-pill-research-bg: rgba(167, 139, 250, 0.18);
-  --color-pill-sourcing:    #fbbf24;
-  --color-pill-sourcing-bg: rgba(251, 191, 36, 0.18);
-  --color-pill-automation:  #34d399;
-  --color-pill-automation-bg: rgba(52, 211, 153, 0.18);
-  --color-pill-emails:      var(--info);   /* #60a5fa */
-  --color-pill-emails-bg:   rgba(96, 165, 250, 0.18);
-  --color-pill-scraping:    var(--danger); /* #f87171 */
-  --color-pill-scraping-bg: rgba(248, 113, 113, 0.18);
-  --color-pill-more:        #fb923c;
-  --color-pill-more-bg:     rgba(251, 146, 60, 0.18);
+  /* -- Capability list (monochromatic — no rainbow) -- */
+  --color-capability-fg:  var(--color-fg-secondary);
+  --color-capability-icon: var(--color-fg-tertiary);
 
   /* -- Mascot palette -- */
   --color-mascot-body:      #7fb3d0;
@@ -73,51 +61,51 @@
   --color-mascot-highlight: #b0d4e8;
 
   /* -- Modal surface -- */
-  --color-modal-bg:     #22222a;
-  --color-modal-border: #34343f;
-  --color-modal-scrim:  rgba(10, 10, 13, 0.75);
+  --color-modal-bg:     #18181b;
+  --color-modal-border: #27272b;
+  --color-modal-scrim:  rgba(0, 0, 0, 0.80);
 
-  /* -- Google service brand colors (third-party — not from our palette) -- */
+  /* -- Google service brand colors (third-party) -- */
   --color-google-gmail:    #ea4335;
   --color-google-calendar: #4285f4;
   --color-google-sheets:   #34a853;
   --color-google-drive:    #fbbc05;
   --color-google-docs:     #1967d2;
 
-  /* -- Border radii (rounder than shell — warmer feel) -- */
-  --radius-xs:   4px;
-  --radius-sm:   7px;
-  --radius-md:   10px;
-  --radius-lg:   14px;
-  --radius-xl:   18px;
-  --radius-2xl:  24px;
+  /* -- Border radii -- */
+  --radius-xs:   3px;
+  --radius-sm:   5px;
+  --radius-md:   8px;
+  --radius-lg:   10px;
+  --radius-xl:   14px;
+  --radius-2xl:  20px;
   --radius-full: 9999px;
 
-  /* -- Motion (slightly more leisurely than shell) -- */
-  --duration-fast:     100ms;
-  --duration-normal:   180ms;
-  --duration-moderate: 260ms;
-  --duration-slow:     380ms;
-  --duration-crawl:    550ms;
+  /* -- Motion (smooth, professional — no springs) -- */
+  --duration-fast:     80ms;
+  --duration-normal:   150ms;
+  --duration-moderate: 300ms;
+  --duration-slow:     450ms;
+  --duration-crawl:    600ms;
 
-  --ease-out:        cubic-bezier(0.2, 0, 0, 1);
-  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-in-out:     cubic-bezier(0.4, 0, 0.6, 1);
-  --ease-standard:   cubic-bezier(0.2, 0, 0, 1);
+  --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-standard:   cubic-bezier(0.16, 1, 0.3, 1);
   --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
   --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
 
-  /* -- Shadows (warmer, subtler — onboarding uses depth; shell does not) -- */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.55);
-  --shadow-xl: 0 16px 64px rgba(0, 0, 0, 0.65);
+  /* -- Shadows (deep, minimal) -- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.50);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.60);
+  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.70);
 
-  --glow-accent-sm: 0 0 8px rgba(200, 241, 53, 0.12);
-  --glow-accent-md: 0 0 16px rgba(200, 241, 53, 0.20);
-  --glow-accent-lg: 0 0 32px rgba(200, 241, 53, 0.30);
-  --glow-accent:    var(--glow-accent-md);
+  --glow-accent-sm: 0 0 12px rgba(200, 241, 53, 0.08);
+  --glow-accent-md: 0 0 24px rgba(200, 241, 53, 0.12);
+  --glow-accent-lg: 0 0 40px rgba(200, 241, 53, 0.18);
+  --glow-accent:    var(--glow-accent-sm);
 
   /* -- Z-index layers -- */
   --z-base:     0;
@@ -144,57 +132,53 @@
   overflow: hidden;
 }
 
-/* Left panel — copy + interactive elements */
 [data-theme="onboarding"] .onboarding-panel-left {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: var(--space-24) 40px;
-  width: 56%;
-  gap: var(--space-12);
+  padding: var(--space-32) 56px;
+  width: 55%;
+  gap: var(--space-16);
 }
 
-/* Right panel — mascot stage */
 [data-theme="onboarding"] .onboarding-panel-right {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44%;
+  width: 45%;
   background-color: var(--color-bg-card);
   border-left: 1px solid var(--color-border-subtle);
   position: relative;
 }
 
 /* ---------------------------------------------------------------------------
-   Step indicator (dots)
+   Step indicator — thin, minimal segments
 --------------------------------------------------------------------------- */
 
 [data-theme="onboarding"] .step-indicator {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 3px;
 }
 
 [data-theme="onboarding"] .step-dot {
-  width: 24px;
-  height: 4px;
+  width: 20px;
+  height: 2px;
   border-radius: var(--radius-full);
   background-color: var(--color-border-strong);
   transition:
-    background-color var(--duration-normal) var(--ease-out),
-    width var(--duration-normal) var(--ease-out),
-    box-shadow var(--duration-normal) var(--ease-out);
+    background-color var(--duration-moderate) var(--ease-out),
+    width var(--duration-moderate) var(--ease-out);
 }
 
 [data-theme="onboarding"] .step-dot[data-active="true"] {
-  background-color: var(--color-fg-primary);
-  width: 32px;
-  /* Subtle glow ring — accent at low alpha, not a hard border */
-  box-shadow: 0 0 0 4px var(--color-accent-muted);
+  background-color: var(--color-accent-default);
+  width: 28px;
+  box-shadow: none;
 }
 
 [data-theme="onboarding"] .step-dot[data-completed="true"] {
-  background-color: var(--color-status-success);
+  background-color: var(--color-fg-secondary);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -204,15 +188,15 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Typography — welcome screen
+   Typography
 --------------------------------------------------------------------------- */
 
 [data-theme="onboarding"] .onboarding-headline {
-  font-size: var(--font-size-4xl);
-  font-weight: var(--font-weight-bold);
+  font-size: 28px;
+  font-weight: var(--font-weight-semibold);
   color: var(--color-fg-primary);
-  line-height: var(--line-height-tight);
-  letter-spacing: -0.02em;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
 [data-theme="onboarding"] .onboarding-subhead {
@@ -223,117 +207,82 @@
 }
 
 [data-theme="onboarding"] .onboarding-eyebrow {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 /* ---------------------------------------------------------------------------
-   Capability pills — pastel colored, floating layout
+   Capabilities list — clean, monochromatic, no rainbow pills
 --------------------------------------------------------------------------- */
 
-[data-theme="onboarding"] .capability-pills {
+[data-theme="onboarding"] .capability-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-block: var(--space-2);
+  flex-direction: column;
+  gap: 0;
 }
 
-[data-theme="onboarding"] .capability-pill {
-  display: inline-flex;
+[data-theme="onboarding"] .capability-item {
+  display: flex;
   align-items: center;
-  padding: 7px 14px;
-  border-radius: var(--radius-full);
+  gap: var(--space-5);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+[data-theme="onboarding"] .capability-item:last-child {
+  border-bottom: none;
+}
+
+[data-theme="onboarding"] .capability-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-overlay);
+  border: 1px solid var(--color-border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--color-fg-tertiary);
+}
+
+[data-theme="onboarding"] .capability-label {
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  cursor: default;
-  user-select: none;
-  transition:
-    transform var(--duration-fast) var(--ease-spring),
-    box-shadow var(--duration-normal) var(--ease-out);
-}
-
-[data-theme="onboarding"] .capability-pill:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-[data-theme="onboarding"] .capability-pill[data-variant="research"] {
-  color: var(--color-pill-research);
-  background-color: var(--color-pill-research-bg);
-}
-
-[data-theme="onboarding"] .capability-pill[data-variant="sourcing"] {
-  color: var(--color-pill-sourcing);
-  background-color: var(--color-pill-sourcing-bg);
-}
-
-[data-theme="onboarding"] .capability-pill[data-variant="automation"] {
-  color: var(--color-pill-automation);
-  background-color: var(--color-pill-automation-bg);
-}
-
-[data-theme="onboarding"] .capability-pill[data-variant="emails"] {
-  color: var(--color-pill-emails);
-  background-color: var(--color-pill-emails-bg);
-}
-
-[data-theme="onboarding"] .capability-pill[data-variant="scraping"] {
-  color: var(--color-pill-scraping);
-  background-color: var(--color-pill-scraping-bg);
-}
-
-[data-theme="onboarding"] .capability-pill[data-variant="more"] {
-  color: var(--color-pill-more);
-  background-color: var(--color-pill-more-bg);
-}
-
-/* ---------------------------------------------------------------------------
-   Name display inline
---------------------------------------------------------------------------- */
-
-[data-theme="onboarding"] .name-placeholder {
-  font-style: italic;
   font-weight: var(--font-weight-medium);
-  color: var(--color-fg-primary);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
+  color: var(--color-fg-secondary);
 }
 
 /* ---------------------------------------------------------------------------
-   CTA button — "Get Started" / primary action
+   CTA button — accent pill, not full-width white block
 --------------------------------------------------------------------------- */
 
 [data-theme="onboarding"] .cta-button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-4);
-  padding: 10px var(--space-12);
-  border-radius: var(--radius-lg);
-  background-color: var(--color-fg-primary);
+  padding: 10px 28px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-accent-default);
   color: var(--color-fg-inverse);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
   user-select: none;
   border: none;
+  letter-spacing: -0.01em;
   transition:
-    background-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-spring),
-    box-shadow var(--duration-normal) var(--ease-out);
+    background-color var(--duration-normal) var(--ease-out),
+    transform var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-moderate) var(--ease-out);
 }
 
 [data-theme="onboarding"] .cta-button:hover {
-  /* why-not-a-token: this is a slight lightening of --color-fg-primary (#f2f0ee)
-     for hover — the fg-primary token is used as the button fill, and we need
-     a distinct lighter value for hover. A dedicated --color-cta-hover token
-     would be correct but is out of scope for this refactor. */
-  background-color: #eae8e6;
+  background-color: var(--color-accent-hover);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glow-accent-md);
 }
 
 [data-theme="onboarding"] .cta-button:active {
@@ -354,18 +303,19 @@
 
 [data-theme="onboarding"] .mascot-wrapper {
   will-change: transform;
+  opacity: 0.9;
 }
 
 [data-theme="onboarding"] .mascot-anim-idle {
-  animation: mascot-float 3s ease-in-out infinite;
+  animation: mascot-float 4s ease-in-out infinite;
 }
 
 [data-theme="onboarding"] .mascot-anim-thinking {
-  animation: mascot-float 0.8s ease-in-out infinite;
+  animation: mascot-float 1.2s ease-in-out infinite;
 }
 
 [data-theme="onboarding"] .mascot-anim-celebrating {
-  animation: mascot-celebrate 0.4s var(--ease-spring) forwards;
+  animation: mascot-celebrate 0.5s var(--ease-out) forwards;
 }
 
 [data-theme="onboarding"] .mascot-anim-error {
@@ -373,7 +323,7 @@
 }
 
 [data-theme="onboarding"] .mascot-wrapper[data-state="loading"] {
-  animation: mascot-float 0.8s ease-in-out infinite;
+  animation: mascot-float 1.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -400,16 +350,16 @@
   height: 40px;
   border-radius: var(--radius-full);
   cursor: pointer;
-  opacity: 0.6;
+  opacity: 0.5;
   transition:
-    opacity var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-spring);
+    opacity var(--duration-normal) var(--ease-out),
+    transform var(--duration-normal) var(--ease-out);
 }
 
 [data-theme="onboarding"] .mascot-variant-thumb:hover,
 [data-theme="onboarding"] .mascot-variant-thumb[data-selected="true"] {
   opacity: 1;
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
 /* ---------------------------------------------------------------------------
@@ -419,7 +369,7 @@
 [data-theme="onboarding"] .auth-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
   width: 100%;
 }
 
@@ -430,9 +380,11 @@
 }
 
 [data-theme="onboarding"] .auth-label {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--color-fg-secondary);
+  color: var(--color-fg-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 [data-theme="onboarding"] .auth-input {
@@ -442,7 +394,7 @@
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
   color: var(--color-fg-primary);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   transition:
     border-color var(--duration-normal) var(--ease-out),
     box-shadow var(--duration-normal) var(--ease-out);
@@ -450,33 +402,34 @@
 }
 
 [data-theme="onboarding"] .auth-input::placeholder {
-  color: var(--color-fg-tertiary);
+  color: var(--color-fg-disabled);
 }
 
 [data-theme="onboarding"] .auth-input:focus {
-  border-color: var(--color-accent-default);
-  box-shadow: var(--glow-accent);
+  border-color: var(--color-border-strong);
+  box-shadow: none;
 }
 
 [data-theme="onboarding"] .auth-submit {
-  height: 42px;
-  border-radius: var(--radius-md);
-  background-color: var(--color-fg-primary);
+  height: 40px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-accent-default);
   color: var(--color-fg-inverse);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
   border: none;
+  letter-spacing: -0.01em;
   transition:
-    background-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-spring);
+    background-color var(--duration-normal) var(--ease-out),
+    transform var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-moderate) var(--ease-out);
 }
 
 [data-theme="onboarding"] .auth-submit:hover {
-  /* why-not-a-token: slight lightening of --color-fg-primary for hover feedback.
-     See cta-button comment above — same rationale. */
-  background-color: #eae8e6;
+  background-color: var(--color-accent-hover);
   transform: translateY(-1px);
+  box-shadow: var(--glow-accent-md);
 }
 
 [data-theme="onboarding"] .auth-submit:active {
@@ -488,7 +441,9 @@
   align-items: center;
   gap: var(--space-6);
   color: var(--color-fg-tertiary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 [data-theme="onboarding"] .auth-divider::before,
@@ -504,17 +459,17 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-4);
-  height: 42px;
+  height: 40px;
   border-radius: var(--radius-md);
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border-default);
   color: var(--color-fg-primary);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
+    background-color var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out);
 }
 
 [data-theme="onboarding"] .google-btn:hover {
@@ -534,7 +489,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: fade-in var(--duration-normal) var(--ease-decelerate) forwards;
+  animation: fade-in var(--duration-moderate) var(--ease-decelerate) forwards;
 }
 
 [data-theme="onboarding"] .modal-panel {
@@ -542,10 +497,10 @@
   border: 1px solid var(--color-modal-border);
   border-radius: var(--radius-xl);
   padding: var(--space-12);
-  width: 400px;
+  width: 420px;
   max-width: calc(100vw - 48px);
-  box-shadow: var(--shadow-lg);
-  animation: scale-in var(--duration-moderate) var(--ease-spring) forwards;
+  box-shadow: var(--shadow-xl);
+  animation: scale-in var(--duration-moderate) var(--ease-out) forwards;
 }
 
 [data-theme="onboarding"] .modal-title {
@@ -553,6 +508,7 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg-primary);
   margin-bottom: var(--space-2);
+  letter-spacing: -0.02em;
 }
 
 [data-theme="onboarding"] .modal-subtitle {
@@ -565,12 +521,12 @@
 [data-theme="onboarding"] .google-service-row {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
-  padding-block: var(--space-6);
+  gap: var(--space-5);
+  padding-block: var(--space-5);
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-out);
-  border-radius: var(--radius-sm);
-  padding-inline: var(--space-2);
+  border-radius: var(--radius-md);
+  padding-inline: var(--space-3);
 }
 
 [data-theme="onboarding"] .google-service-row:hover {
@@ -578,14 +534,14 @@
 }
 
 [data-theme="onboarding"] .google-service-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 [data-theme="onboarding"] .google-service-info {
@@ -601,13 +557,13 @@
 
 [data-theme="onboarding"] .google-service-desc {
   font-size: var(--font-size-xs);
-  color: var(--color-fg-secondary);
+  color: var(--color-fg-tertiary);
 }
 
 [data-theme="onboarding"] .google-service-check {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
   border: 1.5px solid var(--color-border-strong);
   background-color: transparent;
   display: flex;
@@ -615,19 +571,17 @@
   justify-content: center;
   flex-shrink: 0;
   transition:
-    background-color var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
+    background-color var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out);
 }
 
 [data-theme="onboarding"] .google-service-check[data-checked="true"] {
   background-color: var(--color-accent-default);
   border-color: var(--color-accent-default);
-  transform: scale(1.08);
 }
 
 [data-theme="onboarding"] .google-service-check[data-checked="false"] {
-  transform: scale(1);
+  transform: none;
 }
 
 [data-theme="onboarding"] .google-service-check svg path {
@@ -636,13 +590,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   [data-theme="onboarding"] .google-service-check {
-    transition:
-      background-color var(--duration-instant) var(--ease-out),
-      border-color var(--duration-instant) var(--ease-out);
-    transform: none;
-  }
-  [data-theme="onboarding"] .google-service-check[data-checked="true"] {
-    transform: none;
+    transition: none;
   }
 }
 
@@ -687,13 +635,13 @@
 --------------------------------------------------------------------------- */
 
 [data-theme="onboarding"] .auth-switch {
-  font-size: var(--font-size-sm);
-  color: var(--color-fg-secondary);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
   text-align: center;
 }
 
 [data-theme="onboarding"] .auth-switch button {
-  color: var(--color-fg-primary);
+  color: var(--color-fg-secondary);
   font-weight: var(--font-weight-medium);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -704,5 +652,17 @@
 }
 
 [data-theme="onboarding"] .auth-switch button:hover {
-  color: var(--color-accent-default);
+  color: var(--color-fg-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Fade-in animation for screen transitions
+--------------------------------------------------------------------------- */
+
+[data-theme="onboarding"] .onboarding-fade-in {
+  animation: fade-in var(--duration-moderate) var(--ease-decelerate) forwards;
+}
+
+[data-theme="onboarding"] .onboarding-slide-up {
+  animation: slide-up var(--duration-slow) var(--ease-out) forwards;
 }

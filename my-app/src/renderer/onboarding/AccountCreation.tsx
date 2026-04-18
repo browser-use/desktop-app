@@ -1,11 +1,7 @@
 /**
  * AccountCreation — Screen 3 of onboarding.
  *
- * Email/password form + "Continue with Google" button.
- * When Continue with Google is clicked, shows the GoogleScopesModal.
- * On scope confirmation, fires startOAuth via the preload API.
- *
- * Layout matches screenshot: form on left, mascot on right, modal overlays both.
+ * Google OAuth + email/password form. Linear-inspired styling.
  */
 
 import React, { useState } from 'react';
@@ -14,27 +10,14 @@ import { CharacterMascot } from './CharacterMascot';
 import { GoogleScopesModal } from './GoogleScopesModal';
 import type { GoogleOAuthScope } from '../../shared/types';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const TOTAL_STEPS = 5;
 const CURRENT_STEP = 3;
 
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
-
 interface AccountCreationProps {
   onBack: () => void;
-  /** Called after email/password account created or OAuth callback received */
   onComplete: (account: { email: string; display_name?: string }, scopes: GoogleOAuthScope[]) => void;
   oauthError?: string | null;
 }
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreationProps): React.ReactElement {
   const [email, setEmail] = useState('');
@@ -61,8 +44,6 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
       return;
     }
 
-    // Email/password account creation — for now, complete with local account
-    // (no backend yet; tokens will be added when auth service is available)
     onComplete({ email: email.trim() }, []);
   }
 
@@ -75,10 +56,8 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
     setIsLoading(true);
 
     try {
-      // Start OAuth flow via preload API
       if (typeof window !== 'undefined' && (window as Window & { onboardingAPI?: { startOAuth: (scopes: GoogleOAuthScope[]) => Promise<void> } }).onboardingAPI) {
         await (window as Window & { onboardingAPI: { startOAuth: (scopes: GoogleOAuthScope[]) => Promise<void> } }).onboardingAPI.startOAuth(scopes);
-        // The result arrives via the oauth-callback IPC event handled in index.tsx
       }
     } catch (err) {
       setFormError(`OAuth failed to start: ${(err as Error).message}`);
@@ -94,12 +73,11 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
 
   return (
     <>
-      <div className="onboarding-root">
-        {/* Step indicator */}
+      <div className="onboarding-root onboarding-fade-in">
         <div
           style={{
             position: 'absolute',
-            top: 24,
+            top: 20,
             left: 0,
             right: 0,
             display: 'flex',
@@ -110,16 +88,14 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
           <StepIndicator step={CURRENT_STEP} total={TOTAL_STEPS} />
         </div>
 
-        {/* Left panel */}
         <div className="onboarding-panel-left">
           <div>
-            <h1 className="onboarding-headline">Let's create an account</h1>
+            <h1 className="onboarding-headline">Create your account</h1>
             <p className="onboarding-subhead" style={{ marginTop: 8 }}>
-              Create an account to save your preferences and continue where you left off.
+              Sign in to save your preferences and sync across devices.
             </p>
           </div>
 
-          {/* Google button */}
           <div>
             <button
               type="button"
@@ -127,8 +103,9 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
               onClick={handleGoogleClick}
               disabled={isLoading}
               aria-label="Continue with Google"
+              style={{ width: '100%' }}
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
                 <path
                   fill="#4285F4"
                   d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"
@@ -146,22 +123,19 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
                   d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z"
                 />
               </svg>
-              {isLoading ? 'Opening browser…' : 'Continue with Google'}
+              {isLoading ? 'Opening browser\u2026' : 'Continue with Google'}
             </button>
-            {/* Trust signal — visible below OAuth button */}
-            <p className="account-trust-signal" aria-label="Credentials are stored securely in your system keychain">
+            <p className="account-trust-signal" aria-label="Credentials stored securely">
               <svg width="10" height="11" viewBox="0 0 10 11" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
                 <rect x="1" y="4.5" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
                 <path d="M3 4.5V3a2 2 0 0 1 4 0v1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
-              We use Keychain to store your credentials securely
+              Stored securely in your system keychain
             </p>
           </div>
 
-          {/* Divider */}
           <div className="auth-divider">or</div>
 
-          {/* Email/password form */}
           <form className="auth-form" onSubmit={handleEmailSubmit} noValidate>
             <div className="auth-input-group">
               <label className="auth-label" htmlFor="email-input">Email</label>
@@ -185,21 +159,21 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder="At least 8 characters"
                 autoComplete="new-password"
                 aria-required="true"
               />
             </div>
 
             <div className="auth-input-group">
-              <label className="auth-label" htmlFor="confirm-password-input">Confirm Password</label>
+              <label className="auth-label" htmlFor="confirm-password-input">Confirm password</label>
               <input
                 id="confirm-password-input"
                 className="auth-input"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your password"
+                placeholder="Re-enter your password"
                 autoComplete="new-password"
                 aria-required="true"
               />
@@ -207,8 +181,7 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
 
             {displayError && (
               <p
-                className="onboarding-subhead"
-                style={{ color: 'var(--color-status-error)' }}
+                style={{ color: 'var(--color-status-error)', fontSize: 'var(--font-size-xs)' }}
                 role="alert"
                 aria-live="polite"
               >
@@ -239,7 +212,7 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
                 style={{ flex: 2 }}
                 aria-label="Create Account"
               >
-                Create Account
+                Create account
               </button>
             </div>
           </form>
@@ -252,13 +225,11 @@ export function AccountCreation({ onBack, onComplete, oauthError }: AccountCreat
           </p>
         </div>
 
-        {/* Right panel */}
         <div className="onboarding-panel-right">
-          <CharacterMascot state={isLoading ? 'loading' : 'idle'} />
+          <CharacterMascot state={isLoading ? 'loading' : 'idle'} width={180} height={200} />
         </div>
       </div>
 
-      {/* Google Scopes Modal — rendered outside the split layout so it overlays everything */}
       {showScopesModal && (
         <GoogleScopesModal
           onConfirm={(scopes) => void handleScopesConfirm(scopes)}

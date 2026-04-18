@@ -78,21 +78,21 @@ function CompletionScreen({ agentName }: { agentName: string }): React.ReactElem
   return (
     <div className="completion-screen" role="main" aria-label="Onboarding complete">
       <div className="completion-checkmark" aria-hidden="true">
-        <svg width="32" height="28" viewBox="0 0 32 28" fill="none">
+        <svg width="24" height="20" viewBox="0 0 24 20" fill="none">
           <path
-            d="M3 14l9 9L29 3"
-            stroke="#ffffff"
-            strokeWidth="3.5"
+            d="M2 10l7 7L22 2"
+            stroke="var(--color-fg-inverse)"
+            strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
       </div>
       <h1 className="onboarding-headline" style={{ textAlign: 'center' }}>
-        Welcome, {agentName}!
+        Welcome, {agentName}
       </h1>
-      <p className="onboarding-subhead" style={{ textAlign: 'center', maxWidth: 360 }}>
-        Your companion is ready. Opening your browser now…
+      <p className="onboarding-subhead" style={{ textAlign: 'center', maxWidth: 320 }}>
+        Opening your browser now&hellip;
       </p>
     </div>
   );

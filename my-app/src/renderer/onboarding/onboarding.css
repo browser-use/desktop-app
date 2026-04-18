@@ -3,11 +3,8 @@
  * Only styles that cannot be expressed via theme.onboarding.css classes go here.
  * All colors via CSS custom properties from theme.global.css + theme.onboarding.css.
  * Zero hex literals — every color is a token.
- *
- * This file is imported in onboarding/index.tsx after theme.onboarding.css.
  */
 
-/* Full-height root for the onboarding window (920 × 640, not resizable) */
 html,
 body,
 #onboarding-root {
@@ -16,77 +13,41 @@ body,
   overflow: hidden;
 }
 
-/* Traffic-light area clearance (hiddenInset titlebar on macOS = ~28px) */
 body {
   padding-top: 28px;
 }
 
-/* Onboarding root fills the padded body */
 .onboarding-root {
-  height: calc(100% - 0px);
+  height: 100%;
 }
 
-/* Input focus: lift border to neutral fg-secondary. No neon outline/glow —
-   the accent ring was too aggressive and made every naming/account input
-   glow green. (Re-applied after 5c44e54 token-refactor reverted this.) */
 .auth-input:focus-visible {
   outline: none;
-  border-color: var(--color-fg-secondary);
+  border-color: var(--color-border-strong);
   box-shadow: none;
 }
 
-/* Disabled state for submit button */
 .auth-submit:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
   transform: none;
 }
 
-/* Google button disabled */
 .google-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* Name placeholder inline emphasis */
-.name-placeholder {
-  font-style: italic;
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg-primary);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
-}
-
-/* Trust signal under Google OAuth button */
 .account-trust-signal {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 7px;
+  margin-top: 8px;
   font-size: var(--font-size-xs);
   color: var(--color-fg-tertiary);
   line-height: var(--line-height-normal);
 }
 
-/* NamingFlow "nice name!" hint — appears below input on 3+ chars */
-.naming-hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-fg-tertiary);
-  margin-top: 4px;
-  min-height: 16px;
-  transition: opacity var(--duration-normal) var(--ease-standard);
-}
-
-.naming-hint--visible {
-  opacity: 1;
-}
-
-.naming-hint--hidden {
-  opacity: 0;
-}
-
-/* Scope count summary line in GoogleScopesModal */
 .modal-scope-count {
   font-size: var(--font-size-xs);
   color: var(--color-fg-tertiary);
@@ -95,8 +56,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .naming-hint {
-    transition: none;
+  .onboarding-fade-in,
+  .onboarding-slide-up {
+    animation: none;
   }
 }
 
@@ -108,18 +70,18 @@ body {
   justify-content: center;
   width: 100%;
   height: 100%;
-  gap: 24px;
+  gap: 20px;
   background-color: var(--color-bg-base);
-  animation: fade-in var(--duration-moderate) var(--ease-decelerate) forwards;
+  animation: fade-in var(--duration-slow) var(--ease-decelerate) forwards;
 }
 
 .completion-checkmark {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-full);
-  background-color: var(--color-status-success);
+  background-color: var(--color-accent-default);
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: scale-in var(--duration-moderate) var(--ease-spring) forwards;
+  animation: scale-in var(--duration-moderate) var(--ease-out) forwards;
 }

@@ -1,12 +1,9 @@
 /**
  * Welcome — Screen 1 of onboarding.
  *
- * Layout (matches screenshot):
- *   Left panel: headline, subhead, capability pills, name placeholder, CTA button
- *   Right panel: mascot with float animation
- *
- * StepIndicator is rendered at top-center spanning both panels.
- * Uses only CSS classes from theme.onboarding.css — no hardcoded styles.
+ * Linear-inspired: clean layout, accent CTA pill, no playful elements.
+ * Left panel: wordmark, subhead, capabilities, CTA
+ * Right panel: mascot
  */
 
 import React from 'react';
@@ -14,43 +11,24 @@ import { StepIndicator } from './StepIndicator';
 import { CapabilitiesGrid } from './CapabilitiesGrid';
 import { CharacterMascot } from './CharacterMascot';
 import { KeyHint } from '../components/base';
-// wordmark-dark.svg is the DARK-MODE variant (white text on transparent).
-// wordmark-light.svg is for LIGHT backgrounds (dark text). Onboarding is dark
-// so we use dark-variant. Previous build had this backwards — text was invisible.
 import wordmarkDarkUrl from '../../../assets/brand/wordmarks/wordmark-dark.svg';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
 const TOTAL_STEPS = 5;
 const CURRENT_STEP = 1;
-
-// Wordmark rendered at this width; height scales proportionally from the
-// SVG viewBox (420×64 → ~220×33.5 at display size).
-const WORDMARK_WIDTH = 220;
-
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
+const WORDMARK_WIDTH = 200;
 
 interface WelcomeProps {
   onNext: () => void;
   agentName: string | undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement {
+export function Welcome({ onNext }: WelcomeProps): React.ReactElement {
   return (
-    <div className="onboarding-root">
-      {/* Step indicator — top-center, spans both panels */}
+    <div className="onboarding-root onboarding-fade-in">
       <div
         style={{
           position: 'absolute',
-          top: 24,
+          top: 20,
           left: 0,
           right: 0,
           display: 'flex',
@@ -61,10 +39,8 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
         <StepIndicator step={CURRENT_STEP} total={TOTAL_STEPS} />
       </div>
 
-      {/* Left panel */}
       <div className="onboarding-panel-left">
         <div>
-          {/* Wordmark — visually hidden h1 preserved for screen readers */}
           <h1 className="onboarding-headline sr-only" aria-label="Agentic Browser">
             Agentic Browser
           </h1>
@@ -74,25 +50,16 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
             width={WORDMARK_WIDTH}
             aria-hidden="true"
             draggable={false}
-            style={{ display: 'block', marginBottom: 16 }}
+            style={{ display: 'block', marginBottom: 20, opacity: 0.9 }}
           />
-          <p className="onboarding-subhead" style={{ marginTop: 0 }}>
-            A browser agent that acts on your behalf. Here's what it can do:
+          <p className="onboarding-subhead">
+            A browser agent that acts on your behalf.
           </p>
         </div>
 
         <CapabilitiesGrid />
 
-        <p className="onboarding-subhead">
-          My name is{' '}
-          <span className="name-placeholder">
-            {agentName ?? 'not set yet'}
-          </span>
-          .{' '}
-          {!agentName && "You'll give me one in the next step."}
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button
             className="cta-button"
             onClick={onNext}
@@ -100,7 +67,7 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
             aria-label="Get started with setup"
           >
             Get started
-            <span aria-hidden="true">→</span>
+            <span aria-hidden="true" style={{ fontSize: 13, opacity: 0.7 }}>&#8594;</span>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <KeyHint keys={['Enter']} size="xs" />
@@ -111,9 +78,8 @@ export function Welcome({ onNext, agentName }: WelcomeProps): React.ReactElement
         </div>
       </div>
 
-      {/* Right panel — mascot */}
       <div className="onboarding-panel-right">
-        <CharacterMascot state="idle" />
+        <CharacterMascot state="idle" width={180} height={200} />
       </div>
     </div>
   );
