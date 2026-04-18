@@ -32,6 +32,8 @@ import { KeychainStore } from './identity/KeychainStore';
 import { registerProtocol, initOAuthHandler } from './oauth';
 import { createOnboardingWindow } from './identity/onboardingWindow';
 import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './identity/onboardingHandlers';
+import { performSignOut, turnOffSync } from './identity/SignOutController';
+import type { SignOutMode } from './identity/SignOutController';
 import { mainLogger } from './logger';
 // daemon imports removed — Docker-per-task architecture replaces the persistent daemon
 import { getApiKey } from './agentApiKey';
@@ -2183,6 +2185,26 @@ ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) 
 
   const menu = Menu.buildFromTemplate(template);
   menu.popup({ window: shellWindow, x: Math.round(bounds.x), y: Math.round(bounds.y) });
+});
+
+// ---------------------------------------------------------------------------
+// IPC: identity — sign-out dialog handlers (closes #215)
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('identity:sign-out', async (_event, mode: SignOutMode) => {
+  mainLogger.info('main.identity:sign-out', { mode });
+  return performSignOut(mode, accountStore, keychainStore);
+});
+
+ipcMain.handle('identity:turn-off-sync', async () => {
+  mainLogger.info('main.identity:turn-off-sync');
+  return turnOffSync(accountStore);
+});
+
+ipcMain.handle('identity:get-account-info', () => {
+  const account = accountStore.load();
+  if (!account) return null;
+  return { email: account.email, agentName: account.agent_name };
 });
 
 ipcMain.handle('shell:get-cdp-info', async () => {
