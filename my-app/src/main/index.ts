@@ -346,6 +346,7 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   const shellTm = tabManager;
   shellWindow.on('closed', () => shellTm.destroy());
 
+
   // DEV/TEST: expose tabManager on the Node.js global object so E2E tests can
   // reach it via electronApp.evaluate() calls (which run in the same Node.js
   // process and share the global scope).  The BrowserWindow proxy returned by
