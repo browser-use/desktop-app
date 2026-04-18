@@ -56,6 +56,7 @@ type TabId =
   | typeof TAB_PERMISSIONS
   | typeof TAB_ADDRESSES
   | typeof TAB_PAYMENTS
+  | typeof TAB_DOWNLOADS
   | typeof TAB_ACCESSIBILITY
   | typeof TAB_SEARCH_ENGINES
   | typeof TAB_DANGER;
