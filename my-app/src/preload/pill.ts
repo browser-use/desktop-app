@@ -72,7 +72,7 @@ contextBridge.exposeInMainWorld('pillAPI', {
    * Grow or shrink the pill window. true = expanded (palette / streaming log),
    * false = collapsed (idle input row only).
    */
-  setExpanded: (expanded: boolean): void => {
+  setExpanded: (expanded: boolean | number): void => {
     log.debug('preload.pill.setExpanded', { expanded });
     ipcRenderer.invoke('pill:set-expanded', expanded);
   },
