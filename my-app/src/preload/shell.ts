@@ -382,6 +382,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('ntp:pick-background-image'),
   },
 
+  // Issue #104 — Live Caption: get current persisted state for initial hydration
+  liveCaption: {
+    getState: (): Promise<{ enabled: boolean; language: string }> =>
+      ipcRenderer.invoke('settings:get-live-caption') as Promise<{ enabled: boolean; language: string }>,
+  },
+
   // Event listeners
   on: {
     tabsState: (
