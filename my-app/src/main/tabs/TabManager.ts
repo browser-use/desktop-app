@@ -172,6 +172,7 @@ export class TabManager {
   private onTabClosed: ((tabId: string) => void) | null = null;
   private onWebContentsCreated: ((wc: import("electron").WebContents) => void) | null = null;
   private onMoveTabToNewWindow: ((url: string, title: string) => void) | null = null;
+  private onActiveTabChanged: ((tabId: string) => void) | null = null;
   // Extra pixels the renderer added on top of the base chrome (e.g. 32 px
   // for a visible bookmarks bar). The page-hosting WebContentsView is then
   // positioned at CHROME_HEIGHT + chromeOffset.
@@ -244,6 +245,10 @@ export class TabManager {
 
   setOnMoveTabToNewWindow(cb: ((url: string, title: string) => void) | null): void {
     this.onMoveTabToNewWindow = cb;
+  }
+
+  setOnActiveTabChanged(cb: ((tabId: string) => void) | null): void {
+    this.onActiveTabChanged = cb;
   }
 
   setHistoryStore(store: HistoryStore): void {
@@ -712,6 +717,7 @@ export class TabManager {
     this.win.webContents.send('tab-activated', tabId);
     this.broadcastState();
     this.broadcastZoom();
+    this.onActiveTabChanged?.(tabId);
   }
 
   moveTab(tabId: string, toIndex: number): void {

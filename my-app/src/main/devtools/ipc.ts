@@ -7,6 +7,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
 import { DevToolsBridge } from './DevToolsBridge';
 import { TabManager } from '../tabs/TabManager';
+import { getDevToolsWindow } from './DevToolsWindow';
 
 let bridge: DevToolsBridge | null = null;
 
@@ -66,13 +67,25 @@ export function registerDevToolsHandlers(tabManager: TabManager): void {
     const tab = state.tabs.find((t) => t.id === state.activeTabId);
     return tab ?? null;
   });
+
+  tabManager.setOnActiveTabChanged((tabId: string) => {
+    const win = getDevToolsWindow();
+    if (!win) return;
+    const state = tabManager.getState();
+    const tab = state.tabs.find((t) => t.id === tabId);
+    mainLogger.info('devtools:tab-changed', { tabId, url: tab?.url });
+    win.webContents.send('devtools:tab-changed', tabId);
+  });
 }
 
-export function unregisterDevToolsHandlers(): void {
+export function unregisterDevToolsHandlers(tabManager?: TabManager): void {
   mainLogger.info('devtools.ipc.unregister');
   if (bridge) {
     bridge.detach();
     bridge = null;
+  }
+  if (tabManager) {
+    tabManager.setOnActiveTabChanged(null);
   }
   ipcMain.removeHandler('devtools:attach');
   ipcMain.removeHandler('devtools:detach');

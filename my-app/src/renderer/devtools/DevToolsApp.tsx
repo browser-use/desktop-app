@@ -138,6 +138,16 @@ export function DevToolsApp(): React.ReactElement {
     };
   }, [connect]);
 
+  useEffect(() => {
+    const unsubscribe = devtoolsAPI.onTabChanged((_tabId: string) => {
+      console.log('[DevToolsApp] active tab changed, reattaching...', _tabId);
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+      void devtoolsAPI.detach().then(() => connect());
+    });
+    return unsubscribe;
+  }, [connect]);
+
   const isAttached = connectionState === 'connected';
 
   const renderPanel = (): React.ReactElement | null => {
