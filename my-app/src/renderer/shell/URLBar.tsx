@@ -154,7 +154,7 @@ function PageInfoPopover({
   );
 
   const handleSiteSettings = useCallback(() => {
-    void (window as any).electronAPI?.chrome?.openPage?.('settings');
+    electronAPI.tabs.navigateActive('chrome://settings').catch(() => {});
     onClose();
   }, [onClose]);
 
