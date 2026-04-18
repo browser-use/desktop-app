@@ -1,92 +1,97 @@
 /**
- * updater.ts — electron-updater integration stub.
+ * updater.ts — electron-updater integration.
  *
- * Uses electron-updater to check for updates from a placeholder feed URL.
- * The feed URL must be replaced with a real S3/GH Releases URL before v0.1 ships.
+ * Uses electron-updater with the GitHub Releases provider to check for
+ * updates against https://github.com/browser-use/desktop-app/releases. The
+ * release.yml workflow uploads DMGs + SHA256SUMS.txt to the tagged Release,
+ * which is exactly the feed format electron-updater's `github` provider
+ * expects.
  *
- * TODO (requires update feed setup — not available in this session):
- *   1. Replace FEED_URL with your actual update feed URL.
- *      Options:
- *        - GitHub Releases: https://github.com/your-org/desktop-app/releases/latest/download/
- *        - update.electronjs.org: https://update.electronjs.org/your-org/desktop-app/${process.platform}/${app.getVersion()}
- *        - S3: https://your-bucket.s3.amazonaws.com/releases/
- *   2. Install electron-updater: npm install electron-updater
- *      (listed in .track-F-deps.txt — do NOT run npm install in this session)
- *   3. Configure forge publish config in forge.config.ts to match the feed type.
+ * Flow:
+ *   1. App becomes ready → initUpdater() schedules an initial check +
+ *      a periodic check every hour.
+ *   2. `update-available`  → electron-updater downloads in the background.
+ *   3. `update-downloaded` → user is prompted to restart; dismissing falls
+ *      through to `autoInstallOnAppQuit`.
+ *   4. App is quitting    → stopUpdater() clears the periodic timer.
  *
- * NOTE: utilityProcess is used for the Python daemon (not child_process).
- *       RunAsNode fuse is false; this file runs in the main process only.
+ * Dev-mode guard: electron-updater refuses to run when `app.isPackaged` is
+ * false (and also when NODE_ENV !== 'production'); initUpdater() short-
+ * circuits in that case so `npm run dev` stays fast and offline.
+ *
+ * Signing / notarization: auto-update on macOS requires the DMG to be signed
+ * by the same Developer ID that signed the currently running app; the
+ * release workflow handles that when the Apple secrets are present.
  */
 
 import { app, dialog } from 'electron';
-
-// TODO: replace with real update feed URL before shipping v0.1.
-const FEED_URL = 'https://TODO_REPLACE_WITH_REAL_UPDATE_FEED_URL/';
+import type { AppUpdater } from 'electron-updater';
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
+// GitHub Releases provider — see forge.config.ts / release.yml. Using a
+// static options object (vs. reading `publish` from package.json) keeps the
+// feed config colocated with the code that consumes it and avoids needing
+// an electron-builder-style config block in package.json.
+const GITHUB_OWNER = 'browser-use';
+const GITHUB_REPO = 'desktop-app';
+
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
+let initialized = false;
 
 /**
- * Initialize auto-updater. Call once from app.whenReady().
- *
- * In dev mode (app.isPackaged === false) update checks are skipped —
- * electron-updater will throw if the app is not packaged.
+ * Return true when auto-update should be skipped (dev / non-packaged /
+ * non-production). Exported for tests.
  */
-export async function initUpdater(): Promise<void> {
-  if (!app.isPackaged) {
-    console.log('[updater] Skipping auto-update init — app is not packaged (dev mode)');
-    return;
-  }
+export function shouldSkipUpdates(): boolean {
+  if (!app.isPackaged) return true;
+  if (process.env.NODE_ENV && process.env.NODE_ENV !== 'production') return true;
+  return false;
+}
 
-  // Lazy-import electron-updater so dev builds don't fail if it's not installed yet.
-  // The module isn't in package.json (see initUpdater TODO), so the specifier
-  // is built as a dynamic expression and typed as `any` — tsc will otherwise
-  // fail to resolve `electron-updater`. Remove this workaround once the dep
-  // is added to package.json.
+/**
+ * Configure the electron-updater autoUpdater instance. Split out for tests
+ * so the lifecycle wiring can be verified without a real AppUpdater.
+ */
+export function configureAutoUpdater(autoUpdater: AppUpdater): void {
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+  });
+
+  // Verbose diagnostics — electron-updater's logger interface is compatible
+  // with the global console (info/warn/error).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let autoUpdater: any;
-  try {
-    const specifier = 'electron-updater';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod: any = await import(/* @vite-ignore */ specifier);
-    autoUpdater = mod.autoUpdater;
-  } catch (err) {
-    console.warn('[updater] electron-updater not installed — auto-update disabled');
-    console.warn('[updater] Run: npm install electron-updater');
-    return;
-  }
-
-  autoUpdater.setFeedURL(FEED_URL);
-
-  // Verbose logging for diagnostics (Track H telemetry will wire this up properly).
-  autoUpdater.logger = console;
+  (autoUpdater as any).logger = console;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
-    console.log('[updater] Checking for update at', FEED_URL);
+    console.log('[updater] Checking for update');
   });
 
-  autoUpdater.on('update-available', (info: any) => {
+  autoUpdater.on('update-available', (info) => {
     console.log('[updater] Update available:', info.version, 'current:', app.getVersion());
   });
 
-  autoUpdater.on('update-not-available', (info: any) => {
+  autoUpdater.on('update-not-available', (info) => {
     console.log('[updater] No update available. Current version is latest:', info.version);
   });
 
-  autoUpdater.on('download-progress', (progress: any) => {
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = typeof progress.percent === 'number' ? progress.percent.toFixed(1) : '?';
     console.log(
-      `[updater] Download progress: ${progress.percent.toFixed(1)}%`,
+      `[updater] Download progress: ${pct}%`,
       `(${progress.transferred}/${progress.total} bytes)`,
       `speed: ${progress.bytesPerSecond} B/s`,
     );
   });
 
-  autoUpdater.on('update-downloaded', (info: any) => {
+  autoUpdater.on('update-downloaded', (info) => {
     console.log('[updater] Update downloaded:', info.version);
-    // Notify the user and offer to restart.
+    // Prompt the user. If they dismiss, autoInstallOnAppQuit handles it on
+    // the next natural quit, so we never block an update forever.
     dialog
       .showMessageBox({
         type: 'info',
@@ -100,6 +105,9 @@ export async function initUpdater(): Promise<void> {
         if (response === 0) {
           autoUpdater.quitAndInstall();
         }
+      })
+      .catch((err: unknown) => {
+        console.warn('[updater] Failed to show update dialog:', (err as Error)?.message ?? err);
       });
   });
 
@@ -107,26 +115,62 @@ export async function initUpdater(): Promise<void> {
     console.error('[updater] Auto-update error:', err.message);
     // Non-fatal — log and continue. Do not crash the app on update errors.
   });
+}
+
+/**
+ * Initialize auto-updater. Call once from app.whenReady().
+ *
+ * In dev mode (`!app.isPackaged` or `NODE_ENV !== 'production'`) update
+ * checks are skipped — electron-updater itself throws in dev, and we never
+ * want to surface those errors to local contributors.
+ */
+export async function initUpdater(): Promise<void> {
+  if (initialized) {
+    console.warn('[updater] initUpdater called twice — ignoring');
+    return;
+  }
+  if (shouldSkipUpdates()) {
+    console.log('[updater] Skipping auto-update init — dev mode / not packaged');
+    return;
+  }
+
+  // Dynamic import so that pulling this module into a renderer bundle or
+  // into a test harness without electron-updater installed doesn't fail at
+  // require time. The dep is a real `dependency` in package.json, so in a
+  // packaged app this resolves synchronously out of node_modules.
+  let autoUpdater: AppUpdater;
+  try {
+    const mod = await import('electron-updater');
+    autoUpdater = mod.autoUpdater;
+  } catch (err) {
+    console.warn('[updater] electron-updater failed to load — auto-update disabled:', (err as Error)?.message ?? err);
+    return;
+  }
+
+  configureAutoUpdater(autoUpdater);
+  initialized = true;
 
   // Initial check on startup.
   try {
     await autoUpdater.checkForUpdatesAndNotify();
-  } catch (err: any) {
-    console.warn('[updater] Initial update check failed:', err?.message);
+  } catch (err) {
+    console.warn('[updater] Initial update check failed:', (err as Error)?.message ?? err);
   }
 
   // Periodic check every hour.
   updateCheckTimer = setInterval(async () => {
     try {
       await autoUpdater.checkForUpdatesAndNotify();
-    } catch (err: any) {
-      console.warn('[updater] Periodic update check failed:', err?.message);
+    } catch (err) {
+      console.warn('[updater] Periodic update check failed:', (err as Error)?.message ?? err);
     }
   }, UPDATE_CHECK_INTERVAL_MS);
 }
 
 /**
- * Stop the periodic update check timer. Call from before-quit handler.
+ * Stop the periodic update check timer. Call from the will-quit handler.
+ *
+ * Safe to call even if initUpdater was never invoked (dev / skipped).
  */
 export function stopUpdater(): void {
   if (updateCheckTimer !== null) {
@@ -134,4 +178,19 @@ export function stopUpdater(): void {
     updateCheckTimer = null;
     console.log('[updater] Stopped periodic update check timer');
   }
+  initialized = false;
+}
+
+/**
+ * Test helper — reset module state between test cases.
+ *
+ * NOT exported from the public surface by convention; tests import the
+ * symbol directly.
+ */
+export function __resetUpdaterForTests(): void {
+  if (updateCheckTimer !== null) {
+    clearInterval(updateCheckTimer);
+    updateCheckTimer = null;
+  }
+  initialized = false;
 }

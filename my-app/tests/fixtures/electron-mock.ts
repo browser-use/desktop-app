@@ -24,6 +24,11 @@ export const app = {
   getName: (): string => 'AgenticBrowser',
   isReady: (): boolean => true,
   whenReady: (): Promise<void> => Promise.resolve(),
+  // Default to unpackaged so dev-only code paths (auto-updater skip, etc.)
+  // run in tests. Individual tests can override this with
+  //   Object.defineProperty(app, 'isPackaged', { value: true, configurable: true })
+  // or with `vi.spyOn(app, 'isPackaged', 'get')`.
+  isPackaged: false,
 };
 
 export const ipcMain = {
@@ -62,6 +67,16 @@ export const nativeImage = {
 
 export const shell = {
   openExternal: (_url: string): Promise<void> => Promise.resolve(),
+};
+
+export const dialog = {
+  showMessageBox: (_opts?: unknown): Promise<{ response: number; checkboxChecked: boolean }> =>
+    Promise.resolve({ response: 0, checkboxChecked: false }),
+  showErrorBox: (_title: string, _content: string): void => undefined,
+  showOpenDialog: (): Promise<{ canceled: boolean; filePaths: string[] }> =>
+    Promise.resolve({ canceled: true, filePaths: [] }),
+  showSaveDialog: (): Promise<{ canceled: boolean; filePath?: string }> =>
+    Promise.resolve({ canceled: true }),
 };
 
 // safeStorage stub — used by PasswordStore (passwords) and KeychainStore
@@ -218,6 +233,7 @@ export default {
   screen,
   nativeImage,
   shell,
+  dialog,
   safeStorage,
   systemPreferences,
   session,

@@ -15,7 +15,12 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['@anthropic-ai/sdk', 'dotenv'],
+      // electron-updater has a native-ish stack (fs-extra, js-yaml,
+      // builder-util-runtime) that must be resolved at runtime from
+      // node_modules rather than bundled into main.js — Forge copies the
+      // dependency tree into the asar, and bundling it would also drop the
+      // lazy macOS auto-update HTTP server.
+      external: ['@anthropic-ai/sdk', 'dotenv', 'electron-updater'],
       output: {
         entryFileNames: 'main.js',
       },

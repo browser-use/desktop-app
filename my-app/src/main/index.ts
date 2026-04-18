@@ -115,6 +115,8 @@ import { registerPipHandlers, unregisterPipHandlers } from './pip/PictureInPictu
 // Issue #5 — Tab groups
 import { TabGroupStore } from './tabs/TabGroupStore';
 import { registerTabGroupHandlers, unregisterTabGroupHandlers } from './tabs/tab-groups-ipc';
+// Issue #202 — Auto-updater (electron-updater + GitHub Releases)
+import { initUpdater, stopUpdater } from './updater';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -953,7 +955,13 @@ app.whenReady().then(async () => {
     }
   }
 
-
+  // Issue #202 — Auto-updater. initUpdater() is internally a no-op when
+  // !app.isPackaged (or NODE_ENV !== 'production'), so this is safe to call
+  // unconditionally here. Errors are swallowed inside initUpdater(); we still
+  // catch at the await boundary so a throw doesn't poison the ready handler.
+  initUpdater().catch((err) => {
+    mainLogger.warn('main.updater.initFailed', { error: (err as Error)?.message ?? String(err) });
+  });
 
   // Flush session + bookmarks on quit
   app.on('before-quit', async () => {
@@ -1000,6 +1008,8 @@ app.whenReady().then(async () => {
     unregisterExtensionsHandlers();
     unregisterMV3Handlers();
     unregisterAutofillHandlers();
+    // Issue #202 — cancel the periodic auto-update check timer.
+    stopUpdater();
     // ExtensionManager currently has no dispose()/destroy() hook; its
     // internal MV3 runtime tears itself down via its own lifecycle. If a
     // top-level cleanup is ever added, wire it in here.
