@@ -1796,3 +1796,122 @@
   pointer-events: none;
   opacity: 0.9;
 }
+
+/* ---------------------------------------------------------------------------
+ * Issue #103 — Accessibility: screen reader status region
+ * Visually hidden but exposed to the accessibility tree so VoiceOver/NVDA/JAWS
+ * can read out page titles and loading state without polluting the visual UI.
+ * --------------------------------------------------------------------------- */
+.window-chrome__sr-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Issue #103 — Accessibility: forced-colors (Windows High Contrast) support
+ * Override transparent backgrounds/borders so interactive chrome elements
+ * remain visible in forced-colors mode. Electron inherits this media query
+ * from the OS just like a regular Chromium browser.
+ * --------------------------------------------------------------------------- */
+@media (forced-colors: active) {
+  .tab-item {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+  }
+
+  .tab-item--active {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .tab-item__close,
+  .tab-strip__new-tab,
+  .nav-buttons__btn,
+  .url-bar__star,
+  .app-menu-btn,
+  .side-panel-toggle,
+  .zoom-badge,
+  .find-bar__btn,
+  .bookmark-dialog__btn,
+  .profile-menu__avatar-btn,
+  .side-panel__close-btn,
+  .side-panel__picker-btn {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+  }
+
+  .tab-item__close:hover,
+  .tab-strip__new-tab:hover,
+  .nav-buttons__btn:hover:not(:disabled),
+  .url-bar__star:hover,
+  .app-menu-btn:hover,
+  .side-panel-toggle:hover,
+  .zoom-badge:hover,
+  .find-bar__btn:hover:not(:disabled),
+  .bookmark-dialog__btn:hover,
+  .profile-menu__avatar-btn:hover,
+  .side-panel__close-btn:hover,
+  .side-panel__picker-btn:hover {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+
+  .url-bar {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+    background: Field;
+    color: FieldText;
+  }
+
+  .url-bar:focus-within {
+    border-color: Highlight;
+  }
+
+  .url-bar__input {
+    color: FieldText;
+  }
+
+  .url-bar__star--on {
+    color: Highlight;
+    border-color: Highlight;
+  }
+
+  .nav-buttons__btn:disabled {
+    color: GrayText;
+    border-color: GrayText;
+    opacity: 1;
+  }
+
+  .tab-item__spinner {
+    border-color: ButtonText;
+    border-top-color: Highlight;
+  }
+
+  .url-bar__loading {
+    background: Highlight;
+  }
+
+  .bookmarks-bar__chip {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+  }
+
+  .bookmarks-bar__chip:hover {
+    border-color: Highlight;
+    color: HighlightText;
+    background: Highlight;
+  }
+}

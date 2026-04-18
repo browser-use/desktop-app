@@ -504,8 +504,20 @@ export function WindowChrome(): React.ReactElement {
   // ---------------------------------------------------------------------------
   return (
     <div className="window-chrome">
+      {/* Screen-reader live region: announces page title and loading state */}
+      <div
+        className="window-chrome__sr-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {(activeTab?.isLoading ?? false)
+          ? `Loading${activeTab?.title ? `: ${activeTab.title}` : ''}`
+          : (activeTab?.title ?? '')}
+      </div>
+
       {/* Tab strip row */}
-      <div className="window-chrome__tab-row">
+      <div className="window-chrome__tab-row" role="navigation" aria-label="Tab bar">
         <div className="window-chrome__traffic-light-spacer" aria-hidden="true" />
 
         <TabStrip
@@ -519,7 +531,7 @@ export function WindowChrome(): React.ReactElement {
       </div>
 
       {/* Toolbar row */}
-      <div className="window-chrome__toolbar">
+      <div className="window-chrome__toolbar" role="toolbar" aria-label="Browser toolbar">
         <NavButtons
           canGoBack={activeTab?.canGoBack ?? false}
           canGoForward={activeTab?.canGoForward ?? false}

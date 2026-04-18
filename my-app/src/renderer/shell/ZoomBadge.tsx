@@ -96,6 +96,7 @@ export function ZoomBadge({
             type="button"
             className="zoom-popover__reset"
             onClick={() => { onReset(); setOpen(false); }}
+            aria-label="Reset zoom to 100%"
           >
             Reset
           </button>

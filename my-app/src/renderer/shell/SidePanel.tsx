@@ -211,6 +211,7 @@ function HistoryPanel({ onNavigate }: { onNavigate: (url: string) => void }): Re
           className="side-panel__search"
           type="text"
           placeholder="Search history…"
+          aria-label="Search history"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -357,6 +358,8 @@ export function SidePanel({
     <div
       className={`side-panel side-panel--${position}`}
       style={{ width: `${width}px` }}
+      role="complementary"
+      aria-label={`${activeDef.label} side panel`}
     >
       {/* Resize divider */}
       <div
@@ -381,6 +384,7 @@ export function SidePanel({
             className="side-panel__close-btn"
             onClick={onClose}
             title="Close side panel"
+            aria-label="Close side panel"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -433,17 +437,22 @@ function PanelPicker({
         className="side-panel__picker-btn"
         onClick={() => setOpen((prev) => !prev)}
         title="Switch panel"
+        aria-label="Switch side panel"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M3.5 5.25L7 8.75l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {open && (
-        <div className="side-panel__picker-menu">
+        <div className="side-panel__picker-menu" role="listbox" aria-label="Side panel options">
           {panels.map((p) => (
             <button
               key={p.id}
               className={`side-panel__picker-item ${p.id === activePanel ? 'side-panel__picker-item--active' : ''}`}
+              role="option"
+              aria-selected={p.id === activePanel}
               onClick={() => {
                 onSelect(p.id);
                 setOpen(false);
