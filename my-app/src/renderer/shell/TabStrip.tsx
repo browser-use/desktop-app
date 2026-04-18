@@ -1,6 +1,7 @@
 /**
  * TabStrip: horizontal tab bar with favicons, title, loading indicator,
  * close button, drag-to-reorder, and new-tab button.
+ * Arrow keys navigate between tabs when the tab strip has focus (Chrome parity).
  */
 
 import React, { useCallback, useRef, useState } from 'react';
@@ -52,6 +53,8 @@ interface TabItemProps {
   onDrop: (e: React.DragEvent, toIndex: number) => void;
   isDragOver: boolean;
   onContextMenu: (e: React.MouseEvent) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  tabRef: (el: HTMLDivElement | null) => void;
 }
 
 function TabItem({
@@ -65,11 +68,14 @@ function TabItem({
   onDrop,
   isDragOver,
   onContextMenu,
+  onKeyDown,
+  tabRef,
 }: TabItemProps): React.ReactElement {
   const isPinned = tab.pinned;
   const favicon = faviconSrc(tab);
   return (
     <div
+      ref={tabRef}
       className={[
         'tab-item',
         isActive ? 'tab-item--active' : '',
@@ -80,12 +86,10 @@ function TabItem({
         .join(' ')}
       role="tab"
       aria-selected={isActive}
-      tabIndex={0}
+      tabIndex={isActive ? 0 : -1}
       draggable
       onClick={onActivate}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') onActivate();
-      }}
+      onKeyDown={onKeyDown}
       onDragStart={(e) => onDragStart(e, tab.id, index)}
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
@@ -123,6 +127,7 @@ function TabItem({
           className="tab-item__close"
           aria-label={`Close ${tab.title || 'tab'}`}
           onClick={onClose}
+          tabIndex={-1}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path
@@ -151,6 +156,60 @@ export function TabStrip({
 }: TabStripProps): React.ReactElement {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragTabId = useRef<string | null>(null);
+  const tabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  const setTabRef = useCallback((index: number) => (el: HTMLDivElement | null) => {
+    if (el) {
+      tabRefs.current.set(index, el);
+    } else {
+      tabRefs.current.delete(index);
+    }
+  }, []);
+
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent, tab: TabState, index: number) => {
+      const count = tabs.length;
+      let targetIndex = -1;
+
+      switch (e.key) {
+        case 'ArrowRight':
+          targetIndex = (index + 1) % count;
+          break;
+        case 'ArrowLeft':
+          targetIndex = (index - 1 + count) % count;
+          break;
+        case 'Home':
+          targetIndex = 0;
+          break;
+        case 'End':
+          targetIndex = count - 1;
+          break;
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          onActivate(tab.id);
+          return;
+        case 'Delete':
+          if (!tab.pinned) {
+            e.preventDefault();
+            onClose(tab.id);
+          }
+          return;
+        default:
+          return;
+      }
+
+      if (targetIndex >= 0 && targetIndex < count) {
+        e.preventDefault();
+        const targetTab = tabs[targetIndex];
+        onActivate(targetTab.id);
+        const el = tabRefs.current.get(targetIndex);
+        el?.focus();
+        console.log('[TabStrip] Arrow key navigation to index:', targetIndex, 'tab:', targetTab.title);
+      }
+    },
+    [tabs, onActivate, onClose],
+  );
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, tabId: string, _index: number) => {
@@ -209,6 +268,8 @@ export function TabStrip({
               e.stopPropagation();
               electronAPI.tabs.showContextMenu(tab.id);
             }}
+            onKeyDown={(e) => handleTabKeyDown(e, tab, index)}
+            tabRef={setTabRef(index)}
           />
         ))}
         {/* + button sits right after the last tab (Chrome-style), not pinned right */}

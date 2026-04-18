@@ -219,11 +219,32 @@ function openShellAndWire(profileId?: string): BrowserWindow {
   // fires, so the before-input-event listener in TabManager is the
   // primary path; the Menu accelerator is a fallback for no-tab states.
   tabManager.setPillToggle(() => togglePill());
+  tabManager.setCaretBrowsingToggle(() => handleCaretBrowsingToggle());
 
   // Attach the same before-input-event handler to the shell window's own
   // webContents so Cmd+K works when the omnibox/URL bar has focus.
+  // Also handles F6 (region cycling) and F7 (caret browsing toggle).
   shellWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
+
+    // F6 — cycle chrome regions
+    if (input.key === 'F6') {
+      event.preventDefault();
+      const forward = !input.shift;
+      mainLogger.debug('main.shellBeforeInput.F6', { forward });
+      shellWindow?.webContents.send('region-cycle', { forward });
+      return;
+    }
+
+    // F7 — toggle caret browsing
+    if (input.key === 'F7') {
+      event.preventDefault();
+      mainLogger.debug('main.shellBeforeInput.F7');
+      handleCaretBrowsingToggle();
+      return;
+    }
+
+    // Cmd+K — pill toggle
     if (input.key !== 'k' && input.key !== 'K') return;
     const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
     if (!cmdOrCtrl) return;
@@ -297,9 +318,28 @@ function openGuestShell(): BrowserWindow {
     mainLogger.warn('main.hotkey.guest', { msg: 'Cmd+K hotkey registration failed' });
   }
   tabManager.setPillToggle(() => togglePill());
+  tabManager.setCaretBrowsingToggle(() => handleCaretBrowsingToggle());
 
   shellWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
+
+    // F6 — cycle chrome regions
+    if (input.key === 'F6') {
+      event.preventDefault();
+      const forward = !input.shift;
+      mainLogger.debug('main.guestShellBeforeInput.F6', { forward });
+      shellWindow?.webContents.send('region-cycle', { forward });
+      return;
+    }
+
+    // F7 — toggle caret browsing
+    if (input.key === 'F7') {
+      event.preventDefault();
+      mainLogger.debug('main.guestShellBeforeInput.F7');
+      handleCaretBrowsingToggle();
+      return;
+    }
+
     if (input.key !== 'k' && input.key !== 'K') return;
     const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
     if (!cmdOrCtrl) return;
@@ -616,6 +656,45 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Issue #102 — Caret browsing state
+// ---------------------------------------------------------------------------
+let caretBrowsingEnabled = false;
+let caretBrowsingConfirmed = false;
+
+async function handleCaretBrowsingToggle(): Promise<boolean> {
+  mainLogger.info('main.caretBrowsing.toggle', { current: caretBrowsingEnabled, confirmed: caretBrowsingConfirmed });
+
+  if (!caretBrowsingConfirmed) {
+    const result = await dialog.showMessageBox({
+      type: 'question',
+      buttons: ['Turn on', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Caret Browsing',
+      message: 'Turn on caret browsing?',
+      detail: 'Press F7 to move the cursor through web pages. This lets you select text with the keyboard using Shift + arrow keys.',
+    });
+
+    if (result.response === 1) {
+      mainLogger.debug('main.caretBrowsing.cancelled');
+      return caretBrowsingEnabled;
+    }
+    caretBrowsingConfirmed = true;
+  }
+
+  caretBrowsingEnabled = !caretBrowsingEnabled;
+  mainLogger.info('main.caretBrowsing.toggled', { enabled: caretBrowsingEnabled });
+
+  // Notify the shell renderer for the status indicator
+  shellWindow?.webContents.send('caret-browsing-toggled', { enabled: caretBrowsingEnabled });
+
+  // Forward F7 to the active tab's webContents to toggle Chromium's native caret browsing
+  tabManager?.sendF7ToActiveTab(caretBrowsingEnabled);
+
+  return caretBrowsingEnabled;
+}
 
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts + application menu
@@ -1306,6 +1385,18 @@ function switchTabRelative(delta: number): void {
 // IPC: window-level handlers
 // ---------------------------------------------------------------------------
 ipcMain.handle('shell:get-platform', () => process.platform);
+
+// Issue #102 — Focus content: shell renderer requests focus on the active tab's webContents
+ipcMain.handle('shell:focus-content', () => {
+  mainLogger.debug('main.shell:focus-content');
+  tabManager?.focusActiveTab();
+});
+
+// Issue #102 — Caret browsing toggle
+ipcMain.handle('shell:toggle-caret-browsing', () => {
+  mainLogger.debug('main.shell:toggle-caret-browsing');
+  return handleCaretBrowsingToggle();
+});
 
 // Issue #81 — Three-dot app menu for non-macOS platforms.
 ipcMain.handle('menu:show-app-menu', (_event, bounds: { x: number; y: number }) => {

@@ -245,6 +245,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     getHistory: (): Promise<Array<{ url: string; title: string; visitedAt: number }>> =>
       ipcRenderer.invoke('shell:get-history'),
+
+    focusContent: (): Promise<void> =>
+      ipcRenderer.invoke('shell:focus-content'),
+
+    toggleCaretBrowsing: (): Promise<boolean> =>
+      ipcRenderer.invoke('shell:toggle-caret-browsing'),
   },
 
   // Issue #81 — Three-dot app menu (non-macOS)
@@ -355,6 +361,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('focus-bookmarks-bar', handler);
       return () => ipcRenderer.removeListener('focus-bookmarks-bar', handler);
+    },
+
+    regionCycle: (
+      cb: (payload: { forward: boolean }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        payload: { forward: boolean },
+      ) => cb(payload);
+      ipcRenderer.on('region-cycle', handler);
+      return () => ipcRenderer.removeListener('region-cycle', handler);
+    },
+
+    caretBrowsingToggled: (
+      cb: (payload: { enabled: boolean }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        payload: { enabled: boolean },
+      ) => cb(payload);
+      ipcRenderer.on('caret-browsing-toggled', handler);
+      return () => ipcRenderer.removeListener('caret-browsing-toggled', handler);
     },
 
     // Menu → 'Find…' asks the renderer to open the FindBar.

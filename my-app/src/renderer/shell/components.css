@@ -1636,3 +1636,48 @@
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Issue #102 — Focus-visible ring for keyboard navigation
+ * Applied to all interactive elements in the chrome UI.
+ * Uses :focus-visible so mouse clicks don't show the ring.
+ * --------------------------------------------------------------------------- */
+.tab-item:focus-visible,
+.tab-strip__new-tab:focus-visible,
+.nav-btn:focus-visible,
+.url-bar__input:focus-visible,
+.url-bar__star:focus-visible,
+.bookmark-chip:focus-visible,
+.bookmark-folder-chip:focus-visible,
+.side-panel-toggle:focus-visible,
+.profile-menu-btn:focus-visible,
+.app-menu-btn:focus-visible,
+.download-btn:focus-visible,
+.zoom-badge__btn:focus-visible,
+.find-bar__input:focus-visible,
+.find-bar__btn:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+[data-region]:focus-visible {
+  outline: none;
+}
+
+/* Caret browsing status indicator */
+.caret-browsing-indicator {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-secondary);
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-default);
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.9;
+}

@@ -128,6 +128,7 @@ export class TabManager {
   // before the NSMenu accelerator can fire. Kept as a callback so TabManager
   // does not import pill.ts.
   private pillToggle: (() => void) | null = null;
+  private caretBrowsingToggle: (() => void) | null = null;
   private zoomStore: ZoomStore;
   private urlMatchFn: UrlMatchFn | null = null;
   private historyStore: HistoryStore | null = null;
@@ -171,6 +172,33 @@ export class TabManager {
    */
   setPillToggle(cb: (() => void) | null): void {
     this.pillToggle = cb;
+  }
+
+  setCaretBrowsingToggle(cb: (() => void) | null): void {
+    this.caretBrowsingToggle = cb;
+  }
+
+  focusActiveTab(): void {
+    if (!this.activeTabId) {
+      mainLogger.warn('TabManager.focusActiveTab.noActiveTab');
+      return;
+    }
+    const view = this.tabs.get(this.activeTabId);
+    if (!view) {
+      mainLogger.warn('TabManager.focusActiveTab.viewNotFound', { tabId: this.activeTabId });
+      return;
+    }
+    mainLogger.debug('TabManager.focusActiveTab', { tabId: this.activeTabId });
+    view.webContents.focus();
+  }
+
+  sendF7ToActiveTab(enable: boolean): void {
+    if (!this.activeTabId) return;
+    const view = this.tabs.get(this.activeTabId);
+    if (!view || view.webContents.isDestroyed()) return;
+    mainLogger.debug('TabManager.sendF7ToActiveTab', { tabId: this.activeTabId, enable });
+    view.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'F7' });
+    view.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'F7' });
   }
 
   setUrlMatchFn(fn: UrlMatchFn | null): void {
@@ -1358,6 +1386,26 @@ export class TabManager {
   private attachGlobalKeyHandlers(wc: Electron.WebContents): void {
     wc.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return;
+
+      // F6 — region cycling: intercept from tab webContents and forward to shell
+      if (input.key === 'F6') {
+        event.preventDefault();
+        const forward = !input.shift;
+        mainLogger.debug('TabManager.beforeInput.F6', { forward, url: wc.getURL() });
+        if (!this.win.isDestroyed()) {
+          this.win.webContents.send('region-cycle', { forward });
+        }
+        return;
+      }
+
+      // F7 — caret browsing: forward to main process handler via callback
+      if (input.key === 'F7') {
+        event.preventDefault();
+        mainLogger.debug('TabManager.beforeInput.F7', { url: wc.getURL() });
+        this.caretBrowsingToggle?.();
+        return;
+      }
+
       if (input.key !== 'k' && input.key !== 'K') return;
       // CommandOrControl semantics: meta on macOS, control elsewhere.
       const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
