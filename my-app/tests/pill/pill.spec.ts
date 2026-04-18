@@ -26,6 +26,7 @@ vi.mock('electron', () => {
     webContents: {
       send: vi.fn(),
       once: vi.fn(),
+      on: vi.fn(),
       openDevTools: vi.fn(),
       setZoomFactor: vi.fn(),
       setVisualZoomLevelLimits: vi.fn(),

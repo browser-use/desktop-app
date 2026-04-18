@@ -76,6 +76,8 @@ interface PillAPI {
   submit: (prompt: string) => Promise<{ task_id: string }>;
   cancel: (task_id: string) => Promise<{ ok: boolean }>;
   hide: () => void;
+  // `boolean` collapses/expands to default height; `number` expands to that
+  // exact pixel height (used for the palette's visible-rows layout).
   setExpanded: (expanded: boolean | number) => void;
   onEvent: (cb: (event: AgentEvent) => void) => () => void;
   onHideRequest: (cb: () => void) => () => void;
