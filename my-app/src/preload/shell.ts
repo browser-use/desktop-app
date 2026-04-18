@@ -695,6 +695,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('fullscreen-changed', handler);
       return () => ipcRenderer.removeListener('fullscreen-changed', handler);
     },
+
+    // Issue #104 — Live Caption: receive state changes from main process
+    liveCaptionStateChanged: (cb: (enabled: boolean) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, enabled: boolean) => cb(enabled);
+      ipcRenderer.on('live-caption:state-changed', handler);
+      return () => ipcRenderer.removeListener('live-caption:state-changed', handler);
+    },
   },
 
   // Profiles — current profile info + switch

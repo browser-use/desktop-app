@@ -2674,3 +2674,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ---------------------------------------------------------------------------
+   Live Caption overlay (issue #104)
+   --------------------------------------------------------------------------- */
+
+.caption-overlay {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 600px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 16px;
+  line-height: 1.5;
+  z-index: 9999;
+  pointer-events: none;
+  user-select: none;
+}
+
+.caption-overlay__text {
+  display: block;
+  text-align: center;
+}

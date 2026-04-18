@@ -105,6 +105,8 @@ const CH_SET_ASK_BEFORE_SAVE      = 'settings:set-ask-before-save';
 const CH_GET_FILE_TYPE_ASSOC      = 'settings:get-file-type-associations';
 const CH_SET_FILE_TYPE_ASSOC      = 'settings:set-file-type-association';
 const CH_REMOVE_FILE_TYPE_ASSOC   = 'settings:remove-file-type-association';
+const CH_GET_LIVE_CAPTION         = 'settings:get-live-caption';
+const CH_SET_LIVE_CAPTION         = 'settings:set-live-caption';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -163,6 +165,8 @@ interface Preferences {
     // Random salt (hex) persisted alongside the hash for PBKDF2 verification
     encryptionSalt?: string;
   };
+  liveCaptionEnabled?: boolean;
+  liveCaptionLanguage?: string;
   [key: string]: unknown;
 }
 
@@ -868,6 +872,33 @@ function handleRemoveFileTypeAssociation(_event: Electron.IpcMainInvokeEvent, ex
   mainLogger.info(`${CH_REMOVE_FILE_TYPE_ASSOC}.ok`, { ext: normalized });
 }
 
+// ---------------------------------------------------------------------------
+// Live Caption (a11y) settings handlers
+// ---------------------------------------------------------------------------
+
+function handleGetLiveCaption(): { enabled: boolean; language: string } {
+  mainLogger.info(CH_GET_LIVE_CAPTION);
+  const prefs = readPrefs();
+  const result = {
+    enabled: prefs.liveCaptionEnabled === true,
+    language: typeof prefs.liveCaptionLanguage === 'string' ? prefs.liveCaptionLanguage : 'en-US',
+  };
+  mainLogger.info(`${CH_GET_LIVE_CAPTION}.ok`, result);
+  return result;
+}
+
+function handleSetLiveCaption(
+  _event: Electron.IpcMainInvokeEvent,
+  patch: { enabled?: boolean; language?: string },
+): boolean {
+  if (typeof patch !== 'object' || patch === null) return false;
+  mainLogger.info(CH_SET_LIVE_CAPTION, { patch });
+  if (patch.enabled !== undefined) mergePrefs({ liveCaptionEnabled: Boolean(patch.enabled) });
+  if (typeof patch.language === 'string') mergePrefs({ liveCaptionLanguage: patch.language });
+  mainLogger.info(`${CH_SET_LIVE_CAPTION}.ok`);
+  return true;
+}
+
 function handleCloseWindow(): void {
   mainLogger.info(CH_CLOSE_WINDOW);
   const win = getSettingsWindow();
@@ -928,10 +959,12 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_GET_FILE_TYPE_ASSOC,      handleGetFileTypeAssociations);
   ipcMain.handle(CH_SET_FILE_TYPE_ASSOC,      handleSetFileTypeAssociation);
   ipcMain.handle(CH_REMOVE_FILE_TYPE_ASSOC,   handleRemoveFileTypeAssociation);
+  ipcMain.handle(CH_GET_LIVE_CAPTION,         handleGetLiveCaption);
+  ipcMain.handle(CH_SET_LIVE_CAPTION,         handleSetLiveCaption);
 
   refreshPrivacyHeaders();
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 34 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 36 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -974,6 +1007,8 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_GET_FILE_TYPE_ASSOC);
   ipcMain.removeHandler(CH_SET_FILE_TYPE_ASSOC);
   ipcMain.removeHandler(CH_REMOVE_FILE_TYPE_ASSOC);
+  ipcMain.removeHandler(CH_GET_LIVE_CAPTION);
+  ipcMain.removeHandler(CH_SET_LIVE_CAPTION);
 
   _accountStore  = null;
   _keychainStore = null;

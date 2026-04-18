@@ -36,9 +36,10 @@ const TAB_PASSWORDS    = 'passwords'        as const;
 const TAB_ZOOM         = 'site-zoom'        as const;
 const TAB_CONTENT      = 'content'          as const;
 const TAB_PERMISSIONS  = 'permissions'     as const;
-const TAB_ADDRESSES    = 'addresses'        as const;
-const TAB_PAYMENTS     = 'payments'         as const;
-const TAB_DOWNLOADS    = 'downloads'        as const;
+const TAB_ADDRESSES      = 'addresses'        as const;
+const TAB_PAYMENTS       = 'payments'         as const;
+const TAB_DOWNLOADS      = 'downloads'         as const;
+const TAB_ACCESSIBILITY  = 'accessibility'     as const;
 
 type TabId =
   | typeof TAB_API_KEY
@@ -55,6 +56,7 @@ type TabId =
   | typeof TAB_ADDRESSES
   | typeof TAB_PAYMENTS
   | typeof TAB_DOWNLOADS
+  | typeof TAB_ACCESSIBILITY
   | typeof TAB_DANGER;
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -69,10 +71,11 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: TAB_ZOOM,       label: 'Site Zoom' },
   { id: TAB_CONTENT,    label: 'Content' },
   { id: TAB_PERMISSIONS, label: 'Permissions' },
-  { id: TAB_ADDRESSES,   label: 'Addresses' },
-  { id: TAB_PAYMENTS,    label: 'Payments' },
-  { id: TAB_DOWNLOADS,   label: 'Downloads' },
-  { id: TAB_DANGER,     label: 'Danger Zone' },
+  { id: TAB_ADDRESSES,      label: 'Addresses' },
+  { id: TAB_PAYMENTS,       label: 'Payments' },
+  { id: TAB_DOWNLOADS,      label: 'Downloads' },
+  { id: TAB_ACCESSIBILITY,  label: 'Accessibility' },
+  { id: TAB_DANGER,         label: 'Danger Zone' },
 ];
 
 const THEME_ONBOARDING = 'onboarding';
@@ -170,6 +173,8 @@ declare global {
       setDntEnabled: (enabled: boolean) => Promise<void>;
       getGpcEnabled: () => Promise<boolean>;
       setGpcEnabled: (enabled: boolean) => Promise<void>;
+      getLiveCaption: () => Promise<{ enabled: boolean; language: string }>;
+      setLiveCaption: (patch: { enabled?: boolean; language?: string }) => Promise<boolean>;
       getContentCategoryDefaults: () => Promise<Record<string, string>>;
       setContentCategoryDefault: (category: string, state: string) => Promise<void>;
       getContentCategorySite: (origin: string) => Promise<Array<{ origin: string; category: string; state: string; updatedAt: number }>>;
@@ -2770,6 +2775,118 @@ function DownloadsTab(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// Accessibility tab
+// ---------------------------------------------------------------------------
+
+const LIVE_CAPTION_LANGUAGE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'en-GB', label: 'English (UK)' },
+  { value: 'de-DE', label: 'German' },
+  { value: 'fr-FR', label: 'French' },
+  { value: 'es-ES', label: 'Spanish' },
+  { value: 'ja-JP', label: 'Japanese' },
+];
+
+function AccessibilityTab(): React.ReactElement {
+  const toast = useToast();
+  const [liveCaptionEnabled, setLiveCaptionEnabled] = useState(false);
+  const [liveCaptionLanguage, setLiveCaptionLanguage] = useState('en-US');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void window.settingsAPI.getLiveCaption().then(({ enabled, language }) => {
+      setLiveCaptionEnabled(enabled);
+      setLiveCaptionLanguage(language);
+    }).catch(() => {
+      // ignore; leave defaults
+    }).finally(() => {
+      setLoading(false);
+    });
+  }, []);
+
+  async function handleLiveCaptionToggle(checked: boolean): Promise<void> {
+    setLiveCaptionEnabled(checked);
+    try {
+      await window.settingsAPI.setLiveCaption({ enabled: checked });
+      toast.show({
+        variant: 'success',
+        title: checked ? 'Live Caption enabled' : 'Live Caption disabled',
+      });
+    } catch (err) {
+      setLiveCaptionEnabled(!checked);
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update setting',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  async function handleLanguageChange(language: string): Promise<void> {
+    setLiveCaptionLanguage(language);
+    try {
+      await window.settingsAPI.setLiveCaption({ language });
+    } catch (err) {
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update language',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Accessibility</h2>
+      <p className="settings-section-desc">
+        Configure accessibility features to improve your browsing experience.
+      </p>
+
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">Live Caption</span>
+            <span className="settings-toggle-desc">
+              Automatically caption speech in audio and video
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={liveCaptionEnabled}
+              disabled={loading}
+              onChange={(e) => void handleLiveCaptionToggle(e.target.checked)}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+
+        {liveCaptionEnabled && (
+          <div className="settings-field" style={{ marginTop: 12 }}>
+            <label htmlFor="live-caption-language" className="settings-label">
+              Caption language
+            </label>
+            <select
+              id="live-caption-language"
+              className="settings-input"
+              value={liveCaptionLanguage}
+              disabled={loading}
+              onChange={(e) => void handleLanguageChange(e.target.value)}
+            >
+              {LIVE_CAPTION_LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Inner app (uses useToast — must be inside ToastProvider)
 // ---------------------------------------------------------------------------
 
@@ -2833,10 +2950,11 @@ function SettingsInner(): React.ReactElement {
     [TAB_ZOOM]:       <SiteZoomTab />,
     [TAB_PERMISSIONS]: <PermissionsTab />,
     [TAB_ADDRESSES]:   <AddressesTab />,
-    [TAB_PAYMENTS]:    <PaymentsTab />,
-    [TAB_DOWNLOADS]:   <DownloadsTab />,
-    [TAB_CONTENT]:    <ContentCategoriesTab />,
-    [TAB_DANGER]:     <DangerZoneTab />,
+    [TAB_PAYMENTS]:       <PaymentsTab />,
+    [TAB_DOWNLOADS]:      <DownloadsTab />,
+    [TAB_CONTENT]:        <ContentCategoriesTab />,
+    [TAB_ACCESSIBILITY]:  <AccessibilityTab />,
+    [TAB_DANGER]:         <DangerZoneTab />,
   };
 
   return (

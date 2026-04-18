@@ -247,6 +247,12 @@ export interface SettingsAPI {
   /** Clear the sync encryption passphrase */
   clearSyncPassphrase: () => Promise<void>;
 
+  /** Get Live Caption preferences (enabled state and language) */
+  getLiveCaption: () => Promise<{ enabled: boolean; language: string }>;
+
+  /** Set Live Caption preferences */
+  setLiveCaption: (patch: { enabled?: boolean; language?: string }) => Promise<boolean>;
+
   /** Get all global content category defaults */
   getContentCategoryDefaults: () => Promise<Record<ContentCategory, CategoryState>>;
 
@@ -503,6 +509,16 @@ const api: SettingsAPI = {
   setGpcEnabled: async (enabled: boolean): Promise<void> => {
     console.debug('[settings-preload] setGpcEnabled', { enabled });
     await ipcRenderer.invoke('settings:set-gpc-enabled', enabled);
+  },
+
+  getLiveCaption: async (): Promise<{ enabled: boolean; language: string }> => {
+    console.debug('[settings-preload] getLiveCaption');
+    return ipcRenderer.invoke('settings:get-live-caption') as Promise<{ enabled: boolean; language: string }>;
+  },
+
+  setLiveCaption: async (patch: { enabled?: boolean; language?: string }): Promise<boolean> => {
+    console.debug('[settings-preload] setLiveCaption', { patch });
+    return ipcRenderer.invoke('settings:set-live-caption', patch) as Promise<boolean>;
   },
 
   getContentCategoryDefaults: async (): Promise<Record<ContentCategory, CategoryState>> => {
