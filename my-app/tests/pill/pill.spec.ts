@@ -129,7 +129,7 @@ describe('PillWindowManager', () => {
     expect(BrowserWindow).toHaveBeenCalledWith(
       expect.objectContaining({
         width: 480,
-        height: 56,
+        height: 62,
         transparent: false,
         frame: false,
         alwaysOnTop: true,
