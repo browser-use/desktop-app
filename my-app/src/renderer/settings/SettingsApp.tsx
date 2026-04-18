@@ -2823,10 +2823,12 @@ function AccessibilityTab(): React.ReactElement {
   }
 
   async function handleLanguageChange(language: string): Promise<void> {
+    const previous = liveCaptionLanguage;
     setLiveCaptionLanguage(language);
     try {
       await window.settingsAPI.setLiveCaption({ language });
     } catch (err) {
+      setLiveCaptionLanguage(previous);
       toast.show({
         variant: 'error',
         title: 'Failed to update language',
