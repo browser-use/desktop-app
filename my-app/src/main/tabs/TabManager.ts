@@ -26,17 +26,20 @@ import { attachContextMenu } from '../contextMenu/ContextMenuController';
 import { getFormDetectorScript, FORM_DETECTOR_PREFIX } from '../passwords/formDetector';
 import { readPrefs } from '../settings/ipc';
 
-// Chrome's chrome://newtab is a local page — zero network, instant paint.
-// We mirror that with a dark-themed data: URL so a new tab opens instantly
-// instead of waiting on google.com. The body is intentionally empty; the
-// URL bar is auto-focused (see createTab) so the user can type right away.
-const NEW_TAB_URL =
-  'data:text/html;charset=utf-8,' +
-  encodeURIComponent(
-    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>New Tab</title>' +
-      '<style>html,body{margin:0;height:100vh;background:#0a0a0d}</style>' +
-      '</head><body></body></html>',
-  );
+// Forge VitePlugin globals for the new-tab page (injected at build time)
+declare const NEWTAB_VITE_DEV_SERVER_URL: string | undefined;
+declare const NEWTAB_VITE_NAME: string | undefined;
+
+function resolveNewTabUrl(): string {
+  if (typeof NEWTAB_VITE_DEV_SERVER_URL !== 'undefined' && NEWTAB_VITE_DEV_SERVER_URL) {
+    return NEWTAB_VITE_DEV_SERVER_URL + '/src/renderer/newtab/newtab.html';
+  }
+  const name = typeof NEWTAB_VITE_NAME !== 'undefined' ? NEWTAB_VITE_NAME : 'newtab';
+  return 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'newtab.html');
+}
+
+const NEW_TAB_URL = resolveNewTabUrl();
+const NEWTAB_PRELOAD = path.join(__dirname, 'newtab.js');
 // Must stay in sync with --chrome-height in shell.css (tab row 40 + toolbar 36).
 // The renderer can add extra height (e.g. a 32 px bookmarks bar) by calling
 // TabManager.setChromeOffset(offset); positionView() uses BASE + offset.
@@ -94,6 +97,7 @@ const CHROME_URL_RE = /^chrome:\/\/([a-z-]+)\/?$/i;
 
 // URLs that should not be recorded in browsing history
 const SKIP_HISTORY_RE = /^(data:|about:|chrome:|devtools:|view-source:)/i;
+const NEWTAB_URL_RE = /newtab\.html$/;
 
 export class TabManager {
   private win: BrowserWindow;
@@ -322,6 +326,9 @@ export class TabManager {
       nodeIntegration: false,
       sandbox: true,
     };
+    if (isUserInitiated) {
+      webPrefs.preload = NEWTAB_PRELOAD;
+    }
     if (this.partition) {
       webPrefs.partition = this.partition;
     }

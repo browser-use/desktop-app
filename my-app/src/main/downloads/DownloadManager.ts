@@ -54,6 +54,8 @@ const CH_OPEN_FILE = 'downloads:open-file';
 const CH_SHOW_IN_FOLDER = 'downloads:show-in-folder';
 const CH_SET_OPEN_WHEN_DONE = 'downloads:set-open-when-done';
 const CH_CLEAR_COMPLETED = 'downloads:clear-completed';
+const CH_REMOVE = 'downloads:remove';
+const CH_CLEAR_ALL = 'downloads:clear-all';
 const CH_GET_SHOW_ON_COMPLETE = 'downloads:get-show-on-complete';
 const CH_SET_SHOW_ON_COMPLETE = 'downloads:set-show-on-complete';
 
@@ -241,6 +243,14 @@ export class DownloadManager {
       this.clearCompleted();
     });
 
+    ipcMain.handle(CH_REMOVE, (_e, id: string) => {
+      this.removeFromList(id);
+    });
+
+    ipcMain.handle(CH_CLEAR_ALL, () => {
+      this.clearAll();
+    });
+
     ipcMain.handle(CH_GET_SHOW_ON_COMPLETE, () => {
       return this.getShowOnComplete();
     });
@@ -249,7 +259,7 @@ export class DownloadManager {
       this.setShowOnComplete(value);
     });
 
-    mainLogger.info('DownloadManager.ipc.registered', { channelCount: 10 });
+    mainLogger.info('DownloadManager.ipc.registered', { channelCount: 12 });
   }
 
   // ---------------------------------------------------------------------------
@@ -351,6 +361,35 @@ export class DownloadManager {
     this.broadcastState();
   }
 
+  private removeFromList(id: string): void {
+    const dl = this.downloads.get(id);
+    if (!dl) {
+      mainLogger.warn('DownloadManager.removeFromList.notFound', { id });
+      return;
+    }
+    const eItem = this.electronItems.get(id);
+    if (eItem) {
+      eItem.cancel();
+      this.electronItems.delete(id);
+    }
+    this.downloads.delete(id);
+    this.clearThrottle(id);
+    mainLogger.info('DownloadManager.removeFromList', { id, filename: dl.filename });
+    this.broadcastState();
+  }
+
+  private clearAll(): void {
+    for (const [id, eItem] of this.electronItems) {
+      eItem.cancel();
+      this.clearThrottle(id);
+    }
+    this.electronItems.clear();
+    const count = this.downloads.size;
+    this.downloads.clear();
+    mainLogger.info('DownloadManager.clearAll', { removed: count });
+    this.broadcastState();
+  }
+
   // ---------------------------------------------------------------------------
   // Settings: show downloads when done
   // ---------------------------------------------------------------------------
@@ -434,6 +473,8 @@ export class DownloadManager {
     ipcMain.removeHandler(CH_SHOW_IN_FOLDER);
     ipcMain.removeHandler(CH_SET_OPEN_WHEN_DONE);
     ipcMain.removeHandler(CH_CLEAR_COMPLETED);
+    ipcMain.removeHandler(CH_REMOVE);
+    ipcMain.removeHandler(CH_CLEAR_ALL);
     ipcMain.removeHandler(CH_GET_SHOW_ON_COMPLETE);
     ipcMain.removeHandler(CH_SET_SHOW_ON_COMPLETE);
     for (const timer of this.throttleTimers.values()) {

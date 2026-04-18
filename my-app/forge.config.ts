@@ -208,6 +208,12 @@ const config: ForgeConfig = {
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
+        {
+          // Issue #105: new tab page preload
+          entry: 'src/preload/newtab.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload',
+        },
       ],
       renderer: [
         {
@@ -259,6 +265,11 @@ const config: ForgeConfig = {
           // Issue #97: print preview renderer
           name: 'print_preview',
           config: 'vite.printPreview.config.ts',
+        },
+        {
+          // Issue #105: new tab page renderer
+          name: 'newtab',
+          config: 'vite.newtab.config.ts',
         },
       ],
     }),
