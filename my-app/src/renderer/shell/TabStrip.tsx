@@ -315,12 +315,16 @@ export function TabStrip({
     }
   }, []);
 
-  // Prune stale selections when tabs are removed.
+  // Prune stale selections and reset anchor index when tabs are removed.
   useEffect(() => {
     const currentIds = new Set(tabs.map((t) => t.id));
     setSelectedTabIds((prev) => {
       const next = new Set([...prev].filter((id) => currentIds.has(id)));
       return next.size === prev.size ? prev : next;
+    });
+    setLastClickedIdx((prev) => {
+      if (prev === null) return null;
+      return tabs[prev] ? prev : null;
     });
   }, [tabs]);
 
