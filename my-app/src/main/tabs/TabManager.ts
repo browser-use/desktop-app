@@ -111,6 +111,8 @@ declare const HISTORY_VITE_DEV_SERVER_URL: string | undefined;
 declare const HISTORY_VITE_NAME: string | undefined;
 declare const DOWNLOADS_VITE_DEV_SERVER_URL: string | undefined;
 declare const DOWNLOADS_VITE_NAME: string | undefined;
+declare const CHROME_PAGES_VITE_DEV_SERVER_URL: string | undefined;
+declare const CHROME_PAGES_VITE_NAME: string | undefined;
 
 const CHROME_URL_RE = /^chrome:\/\/([a-z-]+)\/?$/i;
 
@@ -739,11 +741,17 @@ export class TabManager {
   openInternalPage(page: string): void {
     mainLogger.info('TabManager.openInternalPage', { page });
 
+    // Pages served by the chrome_pages renderer (chrome.html) use the chrome.js preload
+    // and pass the page name as a hash fragment for client-side routing.
+    const CHROME_PAGES_PAGES = new Set([
+      'about', 'version', 'gpu', 'accessibility', 'sandbox', 'dino', 'inspect',
+    ]);
+
     const preloadMap: Record<string, string> = {
       history: 'history.js',
       downloads: 'downloads.js',
     };
-    const preloadFile = preloadMap[page] ?? 'history.js';
+    const preloadFile = CHROME_PAGES_PAGES.has(page) ? 'chrome.js' : (preloadMap[page] ?? 'history.js');
     const preloadPath = path.join(__dirname, preloadFile);
     mainLogger.debug('TabManager.openInternalPage.preload', { page, preloadFile, preloadPath });
 
@@ -781,6 +789,15 @@ export class TabManager {
         const name = typeof DOWNLOADS_VITE_NAME !== 'undefined' ? DOWNLOADS_VITE_NAME : 'downloads';
         url = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'downloads.html');
       }
+    } else if (CHROME_PAGES_PAGES.has(page)) {
+      let baseUrl: string;
+      if (typeof CHROME_PAGES_VITE_DEV_SERVER_URL !== 'undefined' && CHROME_PAGES_VITE_DEV_SERVER_URL) {
+        baseUrl = CHROME_PAGES_VITE_DEV_SERVER_URL + '/src/renderer/chrome/chrome.html';
+      } else {
+        const name = typeof CHROME_PAGES_VITE_NAME !== 'undefined' ? CHROME_PAGES_VITE_NAME : 'chrome_pages';
+        baseUrl = 'file://' + path.join(__dirname, '..', '..', 'renderer', name, 'chrome.html');
+      }
+      url = `${baseUrl}#${page}`;
     } else {
       mainLogger.warn('TabManager.openInternalPage.unknownPage', { page });
       return;
