@@ -104,6 +104,9 @@ declare const electronAPI: {
     setSidePanelPosition: (position: 'left' | 'right') => Promise<void>;
     getPlatform: () => Promise<string>;
   };
+  windowName: {
+    set: (name: string) => Promise<void>;
+  };
   share: {
     copyLink: () => Promise<boolean>;
     emailPage: () => Promise<boolean>;
@@ -143,6 +146,7 @@ declare const electronAPI: {
     downloadDone: (cb: (dl: DownloadItemDTO) => void) => () => void;
     downloadsState: (cb: (downloads: DownloadItemDTO[]) => void) => () => void;
     linkHover: (cb: (payload: { url: string }) => void) => () => void;
+    nameWindowDialog: (cb: () => void) => () => void;
   };
   permissions: {
     respond: (promptId: string, decision: string) => Promise<void>;
@@ -180,6 +184,9 @@ export function WindowChrome(): React.ReactElement {
 
   // Side panel state
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
+  // Issue #12 — Window naming dialog state
+  const [nameWindowDialogOpen, setNameWindowDialogOpen] = useState(false);
 
   // Share menu state
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
@@ -316,6 +323,11 @@ export function WindowChrome(): React.ReactElement {
       setFocusBookmarksBarTick((n) => n + 1);
     });
 
+    // Issue #12 — Window naming: main process signals renderer to open dialog
+    const unsubNameWindow = electronAPI.on.nameWindowDialog(() => {
+      setNameWindowDialogOpen(true);
+    });
+
     return () => {
       unsubTabsState();
       unsubTabUpdated();
@@ -329,6 +341,7 @@ export function WindowChrome(): React.ReactElement {
       unsubOpenDialog();
       unsubToggleBar();
       unsubFocusBar();
+      unsubNameWindow();
     };
   }, [bookmarksTree?.visibility]);
 
@@ -625,6 +638,127 @@ export function WindowChrome(): React.ReactElement {
       <PasswordPromptBar activeTabId={activeTabId} />
       <FindBar activeTabId={activeTabId} />
       <StatusBar url={hoveredUrl} />
+
+      {nameWindowDialogOpen && (
+        <NameWindowDialog
+          onClose={() => setNameWindowDialogOpen(false)}
+          onSave={(name) => {
+            void electronAPI.windowName.set(name);
+            setNameWindowDialogOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Issue #12 — Name Window dialog
+// ---------------------------------------------------------------------------
+function NameWindowDialog({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (name: string) => void;
+}): React.ReactElement {
+  const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') onClose();
+  };
+
+  return (
+    <div
+      className="name-window-dialog__overlay"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.4)',
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="name-window-dialog"
+        style={{
+          background: 'var(--surface-primary, #fff)',
+          borderRadius: 8,
+          padding: '20px 24px',
+          minWidth: 320,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.24)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}
+        onKeyDown={handleKeyDown}
+      >
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Name Window</div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Window name"
+            maxLength={200}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 4,
+              border: '1px solid var(--border-primary, #ccc)',
+              fontSize: 13,
+              outline: 'none',
+              background: 'var(--surface-secondary, #f5f5f5)',
+              color: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: '1px solid var(--border-primary, #ccc)',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 13,
+                color: 'inherit',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: 'none',
+                background: 'var(--accent-primary, #1a73e8)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              Name
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
