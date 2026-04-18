@@ -145,6 +145,8 @@ declare global {
       isBiometricAvailable: () => Promise<boolean>;
       getBiometricLock: () => Promise<boolean>;
       setBiometricLock: (enabled: boolean) => Promise<void>;
+      getHttpsFirst: () => Promise<boolean>;
+      setHttpsFirst: (enabled: boolean) => Promise<void>;
     };
   }
 }
@@ -741,6 +743,33 @@ interface PrivacyTabProps {
 
 function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.ReactElement {
   const toast = useToast();
+  const [httpsFirst, setHttpsFirst] = useState(false);
+  const [httpsFirstLoading, setHttpsFirstLoading] = useState(true);
+
+  useEffect(() => {
+    void window.settingsAPI.getHttpsFirst().then((val) => {
+      setHttpsFirst(val);
+      setHttpsFirstLoading(false);
+    });
+  }, []);
+
+  async function handleHttpsFirstToggle(checked: boolean): Promise<void> {
+    setHttpsFirst(checked);
+    try {
+      await window.settingsAPI.setHttpsFirst(checked);
+      toast.show({
+        variant: 'success',
+        title: checked ? 'HTTPS-First mode enabled' : 'HTTPS-First mode disabled',
+      });
+    } catch (err) {
+      setHttpsFirst(!checked);
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update setting',
+        message: (err as Error).message,
+      });
+    }
+  }
 
   return (
     <div className="settings-section">
@@ -748,6 +777,29 @@ function PrivacyTab({ openDialog, onDialogChange }: PrivacyTabProps): React.Reac
       <p className="settings-section-desc">
         Control what local browsing data is stored on this device.
       </p>
+
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">
+              Always use secure connections
+            </span>
+            <span className="settings-toggle-desc">
+              Automatically upgrade HTTP connections to HTTPS. When a site
+              does not support HTTPS, a warning is shown before continuing.
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={httpsFirst}
+              disabled={httpsFirstLoading}
+              onChange={(e) => void handleHttpsFirstToggle(e.target.checked)}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+      </Card>
 
       <Card variant="default" padding="md" className="settings-card">
         <div className="settings-privacy-row">

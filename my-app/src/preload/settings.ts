@@ -132,6 +132,12 @@ export interface SettingsAPI {
 
   /** Set whether biometric lock is enabled for password operations */
   setBiometricLock: (enabled: boolean) => Promise<void>;
+
+  /** Get whether HTTPS-First mode is enabled */
+  getHttpsFirst: () => Promise<boolean>;
+
+  /** Set whether HTTPS-First mode is enabled */
+  setHttpsFirst: (enabled: boolean) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +313,16 @@ const api: SettingsAPI = {
   setBiometricLock: async (enabled: boolean): Promise<void> => {
     console.debug('[settings-preload] setBiometricLock', { enabled });
     await ipcRenderer.invoke('settings:set-biometric-lock', enabled);
+  },
+
+  getHttpsFirst: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getHttpsFirst');
+    return ipcRenderer.invoke('settings:get-https-first') as Promise<boolean>;
+  },
+
+  setHttpsFirst: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setHttpsFirst', { enabled });
+    await ipcRenderer.invoke('settings:set-https-first', enabled);
   },
 };
 

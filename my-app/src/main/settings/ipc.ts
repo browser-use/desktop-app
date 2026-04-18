@@ -87,6 +87,8 @@ const CH_SET_DEFAULT_ZOOM    = 'settings:set-default-page-zoom';
 const CH_GET_BIOMETRIC_LOCK  = 'settings:get-biometric-lock';
 const CH_SET_BIOMETRIC_LOCK  = 'settings:set-biometric-lock';
 const CH_BIOMETRIC_AVAILABLE = 'settings:biometric-available';
+const CH_GET_HTTPS_FIRST     = 'settings:get-https-first';
+const CH_SET_HTTPS_FIRST     = 'settings:set-https-first';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -570,6 +572,23 @@ function handleBiometricAvailable(): boolean {
   return available;
 }
 
+function handleGetHttpsFirst(): boolean {
+  mainLogger.info(CH_GET_HTTPS_FIRST);
+  const prefs = readPrefs();
+  const enabled = prefs.httpsFirst === true;
+  mainLogger.info(`${CH_GET_HTTPS_FIRST}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetHttpsFirst(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('httpsFirst must be a boolean');
+  }
+  mainLogger.info(CH_SET_HTTPS_FIRST, { enabled });
+  mergePrefs({ httpsFirst: enabled });
+  mainLogger.info(`${CH_SET_HTTPS_FIRST}.ok`, { enabled });
+}
+
 function handleCloseWindow(): void {
   mainLogger.info(CH_CLOSE_WINDOW);
   const win = getSettingsWindow();
@@ -612,8 +631,10 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_GET_BIOMETRIC_LOCK,  handleGetBiometricLock);
   ipcMain.handle(CH_SET_BIOMETRIC_LOCK,  handleSetBiometricLock);
   ipcMain.handle(CH_BIOMETRIC_AVAILABLE, handleBiometricAvailable);
+  ipcMain.handle(CH_GET_HTTPS_FIRST,    handleGetHttpsFirst);
+  ipcMain.handle(CH_SET_HTTPS_FIRST,    handleSetHttpsFirst);
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 19 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 21 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -638,6 +659,8 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_GET_BIOMETRIC_LOCK);
   ipcMain.removeHandler(CH_SET_BIOMETRIC_LOCK);
   ipcMain.removeHandler(CH_BIOMETRIC_AVAILABLE);
+  ipcMain.removeHandler(CH_GET_HTTPS_FIRST);
+  ipcMain.removeHandler(CH_SET_HTTPS_FIRST);
 
   _accountStore  = null;
   _keychainStore = null;
