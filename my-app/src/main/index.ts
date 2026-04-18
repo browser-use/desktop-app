@@ -9,6 +9,7 @@
 
 import { config as loadDotEnv } from 'dotenv';
 import path from 'node:path';
+import fs from 'node:fs';
 
 // Load .env from the app root (my-app/.env) BEFORE any module reads
 // process.env. In production the key comes from the keychain; .env is the
@@ -1476,6 +1477,44 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           click: () => {
             mainLogger.debug('shortcuts.bookmarkManager');
             tabManager?.createTab('chrome://bookmarks');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Import Bookmarks…',
+          click: async () => {
+            mainLogger.debug('shortcuts.importBookmarks');
+            if (!shellWindow || !bookmarkStore) return;
+            const { canceled, filePaths } = await dialog.showOpenDialog(shellWindow, {
+              title: 'Import Bookmarks',
+              filters: [{ name: 'HTML Files', extensions: ['html', 'htm'] }],
+              properties: ['openFile'],
+            });
+            if (canceled || !filePaths[0]) return;
+            const html = fs.readFileSync(filePaths[0], 'utf-8');
+            const result = bookmarkStore.importNetscapeHtml(html);
+            shellWindow.webContents.send('bookmarks-updated', bookmarkStore.listTree());
+            mainLogger.info('shortcuts.importBookmarks', result);
+          },
+        },
+        {
+          label: 'Export Bookmarks…',
+          click: async () => {
+            mainLogger.debug('shortcuts.exportBookmarks');
+            if (!shellWindow || !bookmarkStore) return;
+            const defaultPath = path.join(
+              app.getPath('downloads'),
+              `bookmarks_${new Date().toISOString().slice(0, 10)}.html`,
+            );
+            const { canceled, filePath } = await dialog.showSaveDialog(shellWindow, {
+              title: 'Export Bookmarks',
+              defaultPath,
+              filters: [{ name: 'HTML Files', extensions: ['html', 'htm'] }],
+            });
+            if (canceled || !filePath) return;
+            const html = bookmarkStore.exportNetscapeHtml();
+            fs.writeFileSync(filePath, html, 'utf-8');
+            mainLogger.info('shortcuts.exportBookmarks', { filePath });
           },
         },
       ],
