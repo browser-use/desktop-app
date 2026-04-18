@@ -151,7 +151,6 @@ export function createPillWindow(): BrowserWindow {
 
   pillWindow.webContents.setZoomFactor(1);
   pillWindow.webContents.setVisualZoomLevelLimits(1, 1);
-
   pillWindow.webContents.once('did-finish-load', () => {
     log.info('pill.webContents.ready', {
       message: 'Pill renderer loaded and ready',

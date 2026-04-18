@@ -6,7 +6,7 @@
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
-    "start": "electron-forge start",
+    "start": "rm -rf node_modules/.vite && electron-forge start",
     "dev": "electron-forge start",
     "dev:settings": "SETTINGS_STANDALONE=1 electron-forge start",
     "package": "electron-forge package",
