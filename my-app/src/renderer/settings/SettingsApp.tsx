@@ -35,6 +35,7 @@ const TAB_PASSWORDS    = 'passwords'        as const;
 const TAB_ZOOM         = 'site-zoom'        as const;
 const TAB_CONTENT      = 'content'          as const;
 const TAB_PERMISSIONS  = 'permissions'     as const;
+const TAB_AD_PRIVACY   = 'ad-privacy'       as const;
 
 type TabId =
   | typeof TAB_API_KEY
@@ -47,6 +48,7 @@ type TabId =
   | typeof TAB_ZOOM
   | typeof TAB_CONTENT
   | typeof TAB_PERMISSIONS
+  | typeof TAB_AD_PRIVACY
   | typeof TAB_DANGER;
 
 const TABS: Array<{ id: TabId; label: string }> = [
@@ -60,6 +62,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: TAB_ZOOM,       label: 'Site Zoom' },
   { id: TAB_CONTENT,    label: 'Content' },
   { id: TAB_PERMISSIONS, label: 'Permissions' },
+  { id: TAB_AD_PRIVACY,  label: 'Ad privacy' },
   { id: TAB_DANGER,     label: 'Danger Zone' },
 ];
 
@@ -158,6 +161,14 @@ declare global {
       setDntEnabled: (enabled: boolean) => Promise<void>;
       getGpcEnabled: () => Promise<boolean>;
       setGpcEnabled: (enabled: boolean) => Promise<void>;
+      getTopicsEnabled: () => Promise<boolean>;
+      setTopicsEnabled: (enabled: boolean) => Promise<void>;
+      getProtectedAudienceEnabled: () => Promise<boolean>;
+      setProtectedAudienceEnabled: (enabled: boolean) => Promise<void>;
+      getAttributionReportingEnabled: () => Promise<boolean>;
+      setAttributionReportingEnabled: (enabled: boolean) => Promise<void>;
+      getFencedFramesEnabled: () => Promise<boolean>;
+      setFencedFramesEnabled: (enabled: boolean) => Promise<void>;
       getContentCategoryDefaults: () => Promise<Record<string, string>>;
       setContentCategoryDefault: (category: string, state: string) => Promise<void>;
       getContentCategorySite: (origin: string) => Promise<Array<{ origin: string; category: string; state: string; updatedAt: number }>>;
@@ -2032,6 +2043,134 @@ function DangerZoneTab(): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// Ad privacy tab — Privacy Sandbox toggles (issue #65)
+// ---------------------------------------------------------------------------
+
+const AD_PRIVACY_TOGGLES = [
+  {
+    key: 'topics'             as const,
+    label: 'Ad topics',
+    description:
+      'Allow sites to use the Topics API to suggest ads based on browsing interests. ' +
+      'Topics are derived locally on your device and shared with participating sites.',
+    getter: 'getTopicsEnabled'              as const,
+    setter: 'setTopicsEnabled'              as const,
+  },
+  {
+    key: 'protectedAudience'  as const,
+    label: 'Site-suggested ads',
+    description:
+      'Allow sites to use the Protected Audience API to show ads based on previous ' +
+      'site visits. Ad auctions run locally on your device without sharing browsing history.',
+    getter: 'getProtectedAudienceEnabled'   as const,
+    setter: 'setProtectedAudienceEnabled'   as const,
+  },
+  {
+    key: 'attributionReporting' as const,
+    label: 'Ad measurement',
+    description:
+      'Allow sites to use the Attribution Reporting API to measure ad effectiveness. ' +
+      'Reports are generated privately on your device; no cross-site data is shared.',
+    getter: 'getAttributionReportingEnabled' as const,
+    setter: 'setAttributionReportingEnabled' as const,
+  },
+  {
+    key: 'fencedFrames'       as const,
+    label: 'Fenced frames',
+    description:
+      'Allow sites to load ad content in isolated fenced frames that cannot communicate ' +
+      'with the surrounding page, protecting your browsing data from advertisers.',
+    getter: 'getFencedFramesEnabled'        as const,
+    setter: 'setFencedFramesEnabled'        as const,
+  },
+] as const;
+
+type AdPrivacyKey = typeof AD_PRIVACY_TOGGLES[number]['key'];
+
+function AdPrivacyTab(): React.ReactElement {
+  const toast = useToast();
+  const [values, setValues] = useState<Record<AdPrivacyKey, boolean>>({
+    topics: false,
+    protectedAudience: false,
+    attributionReporting: false,
+    fencedFrames: false,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void Promise.all(
+      AD_PRIVACY_TOGGLES.map((t) => window.settingsAPI[t.getter]()),
+    ).then(([topics, protectedAudience, attributionReporting, fencedFrames]) => {
+      setValues({ topics, protectedAudience, attributionReporting, fencedFrames });
+      setLoading(false);
+    }).catch(() => {
+      setLoading(false);
+    });
+  }, []);
+
+  async function handleToggle(key: AdPrivacyKey, checked: boolean): Promise<void> {
+    setValues((prev) => ({ ...prev, [key]: checked }));
+    const toggle = AD_PRIVACY_TOGGLES.find((t) => t.key === key);
+    if (!toggle) return;
+    try {
+      await window.settingsAPI[toggle.setter](checked);
+      toast.show({
+        variant: 'success',
+        title: checked ? `${toggle.label} enabled` : `${toggle.label} disabled`,
+      });
+    } catch (err) {
+      setValues((prev) => ({ ...prev, [key]: !checked }));
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update setting',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="settings-section">
+        <h2 className="settings-section-title">Ad privacy</h2>
+        <div className="settings-loading">
+          <Spinner size="md" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Ad privacy</h2>
+      <p className="settings-section-desc">
+        These settings control Privacy Sandbox APIs that let sites show relevant
+        ads without third-party tracking. All processing happens locally on your
+        device.
+      </p>
+
+      {AD_PRIVACY_TOGGLES.map((toggle) => (
+        <Card key={toggle.key} variant="default" padding="md" className="settings-card">
+          <div className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">{toggle.label}</span>
+              <span className="settings-toggle-desc">{toggle.description}</span>
+            </div>
+            <label className="settings-toggle">
+              <input
+                type="checkbox"
+                checked={values[toggle.key]}
+                onChange={(e) => void handleToggle(toggle.key, e.target.checked)}
+              />
+              <span className="settings-toggle-track" />
+            </label>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Inner app (uses useToast — must be inside ToastProvider)
 // ---------------------------------------------------------------------------
 
@@ -2093,6 +2232,7 @@ function SettingsInner(): React.ReactElement {
     [TAB_PRIVACY]:    <PrivacyTab openDialog={clearDataOpen} onDialogChange={setClearDataOpen} />,
     [TAB_ZOOM]:       <SiteZoomTab />,
     [TAB_PERMISSIONS]: <PermissionsTab />,
+    [TAB_AD_PRIVACY]:  <AdPrivacyTab />,
     [TAB_CONTENT]:    <ContentCategoriesTab />,
     [TAB_DANGER]:     <DangerZoneTab />,
   };

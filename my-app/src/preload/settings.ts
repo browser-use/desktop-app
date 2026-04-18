@@ -200,6 +200,30 @@ export interface SettingsAPI {
   /** Set whether Global Privacy Control header is enabled */
   setGpcEnabled: (enabled: boolean) => Promise<void>;
 
+  /** Get whether Topics API (ad topics) is enabled — Privacy Sandbox */
+  getTopicsEnabled: () => Promise<boolean>;
+
+  /** Set whether Topics API (ad topics) is enabled — Privacy Sandbox */
+  setTopicsEnabled: (enabled: boolean) => Promise<void>;
+
+  /** Get whether Protected Audience API (site-suggested ads) is enabled — Privacy Sandbox */
+  getProtectedAudienceEnabled: () => Promise<boolean>;
+
+  /** Set whether Protected Audience API (site-suggested ads) is enabled — Privacy Sandbox */
+  setProtectedAudienceEnabled: (enabled: boolean) => Promise<void>;
+
+  /** Get whether Attribution Reporting API (ad measurement) is enabled — Privacy Sandbox */
+  getAttributionReportingEnabled: () => Promise<boolean>;
+
+  /** Set whether Attribution Reporting API (ad measurement) is enabled — Privacy Sandbox */
+  setAttributionReportingEnabled: (enabled: boolean) => Promise<void>;
+
+  /** Get whether Fenced Frames are enabled — Privacy Sandbox */
+  getFencedFramesEnabled: () => Promise<boolean>;
+
+  /** Set whether Fenced Frames are enabled — Privacy Sandbox */
+  setFencedFramesEnabled: (enabled: boolean) => Promise<void>;
+
   /** Get all global content category defaults */
   getContentCategoryDefaults: () => Promise<Record<ContentCategory, CategoryState>>;
 
@@ -433,6 +457,46 @@ const api: SettingsAPI = {
   setGpcEnabled: async (enabled: boolean): Promise<void> => {
     console.debug('[settings-preload] setGpcEnabled', { enabled });
     await ipcRenderer.invoke('settings:set-gpc-enabled', enabled);
+  },
+
+  getTopicsEnabled: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getTopicsEnabled');
+    return ipcRenderer.invoke('settings:get-topics-enabled') as Promise<boolean>;
+  },
+
+  setTopicsEnabled: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setTopicsEnabled', { enabled });
+    await ipcRenderer.invoke('settings:set-topics-enabled', enabled);
+  },
+
+  getProtectedAudienceEnabled: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getProtectedAudienceEnabled');
+    return ipcRenderer.invoke('settings:get-protected-audience-enabled') as Promise<boolean>;
+  },
+
+  setProtectedAudienceEnabled: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setProtectedAudienceEnabled', { enabled });
+    await ipcRenderer.invoke('settings:set-protected-audience-enabled', enabled);
+  },
+
+  getAttributionReportingEnabled: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getAttributionReportingEnabled');
+    return ipcRenderer.invoke('settings:get-attribution-reporting-enabled') as Promise<boolean>;
+  },
+
+  setAttributionReportingEnabled: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setAttributionReportingEnabled', { enabled });
+    await ipcRenderer.invoke('settings:set-attribution-reporting-enabled', enabled);
+  },
+
+  getFencedFramesEnabled: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getFencedFramesEnabled');
+    return ipcRenderer.invoke('settings:get-fenced-frames-enabled') as Promise<boolean>;
+  },
+
+  setFencedFramesEnabled: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setFencedFramesEnabled', { enabled });
+    await ipcRenderer.invoke('settings:set-fenced-frames-enabled', enabled);
   },
 
   getContentCategoryDefaults: async (): Promise<Record<ContentCategory, CategoryState>> => {

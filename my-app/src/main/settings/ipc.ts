@@ -94,6 +94,16 @@ const CH_SET_DNT_ENABLED     = 'settings:set-dnt-enabled';
 const CH_GET_GPC_ENABLED     = 'settings:get-gpc-enabled';
 const CH_SET_GPC_ENABLED     = 'settings:set-gpc-enabled';
 
+// Privacy Sandbox channels
+const CH_GET_TOPICS_ENABLED              = 'settings:get-topics-enabled';
+const CH_SET_TOPICS_ENABLED              = 'settings:set-topics-enabled';
+const CH_GET_PROTECTED_AUDIENCE_ENABLED  = 'settings:get-protected-audience-enabled';
+const CH_SET_PROTECTED_AUDIENCE_ENABLED  = 'settings:set-protected-audience-enabled';
+const CH_GET_ATTRIBUTION_REPORTING       = 'settings:get-attribution-reporting-enabled';
+const CH_SET_ATTRIBUTION_REPORTING       = 'settings:set-attribution-reporting-enabled';
+const CH_GET_FENCED_FRAMES_ENABLED       = 'settings:get-fenced-frames-enabled';
+const CH_SET_FENCED_FRAMES_ENABLED       = 'settings:set-fenced-frames-enabled';
+
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
 // ---------------------------------------------------------------------------
@@ -630,6 +640,79 @@ function handleSetGpcEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boole
   mainLogger.info(`${CH_SET_GPC_ENABLED}.ok`, { enabled });
 }
 
+
+// ---------------------------------------------------------------------------
+// Privacy Sandbox handlers (Topics, Protected Audience, Attribution Reporting, Fenced Frames)
+// ---------------------------------------------------------------------------
+
+function handleGetTopicsEnabled(): boolean {
+  mainLogger.info(CH_GET_TOPICS_ENABLED);
+  const prefs = readPrefs();
+  const enabled = prefs.topicsEnabled === true;
+  mainLogger.info(`${CH_GET_TOPICS_ENABLED}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetTopicsEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('topicsEnabled must be a boolean');
+  }
+  mainLogger.info(CH_SET_TOPICS_ENABLED, { enabled });
+  mergePrefs({ topicsEnabled: enabled });
+  mainLogger.info(`${CH_SET_TOPICS_ENABLED}.ok`, { enabled });
+}
+
+function handleGetProtectedAudienceEnabled(): boolean {
+  mainLogger.info(CH_GET_PROTECTED_AUDIENCE_ENABLED);
+  const prefs = readPrefs();
+  const enabled = prefs.protectedAudienceEnabled === true;
+  mainLogger.info(`${CH_GET_PROTECTED_AUDIENCE_ENABLED}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetProtectedAudienceEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('protectedAudienceEnabled must be a boolean');
+  }
+  mainLogger.info(CH_SET_PROTECTED_AUDIENCE_ENABLED, { enabled });
+  mergePrefs({ protectedAudienceEnabled: enabled });
+  mainLogger.info(`${CH_SET_PROTECTED_AUDIENCE_ENABLED}.ok`, { enabled });
+}
+
+function handleGetAttributionReportingEnabled(): boolean {
+  mainLogger.info(CH_GET_ATTRIBUTION_REPORTING);
+  const prefs = readPrefs();
+  const enabled = prefs.attributionReportingEnabled === true;
+  mainLogger.info(`${CH_GET_ATTRIBUTION_REPORTING}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetAttributionReportingEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('attributionReportingEnabled must be a boolean');
+  }
+  mainLogger.info(CH_SET_ATTRIBUTION_REPORTING, { enabled });
+  mergePrefs({ attributionReportingEnabled: enabled });
+  mainLogger.info(`${CH_SET_ATTRIBUTION_REPORTING}.ok`, { enabled });
+}
+
+function handleGetFencedFramesEnabled(): boolean {
+  mainLogger.info(CH_GET_FENCED_FRAMES_ENABLED);
+  const prefs = readPrefs();
+  const enabled = prefs.fencedFramesEnabled === true;
+  mainLogger.info(`${CH_GET_FENCED_FRAMES_ENABLED}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetFencedFramesEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('fencedFramesEnabled must be a boolean');
+  }
+  mainLogger.info(CH_SET_FENCED_FRAMES_ENABLED, { enabled });
+  mergePrefs({ fencedFramesEnabled: enabled });
+  mainLogger.info(`${CH_SET_FENCED_FRAMES_ENABLED}.ok`, { enabled });
+}
+
 // ---------------------------------------------------------------------------
 // Privacy header injection (DNT + GPC)
 // ---------------------------------------------------------------------------
@@ -719,10 +802,18 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_SET_DNT_ENABLED,    handleSetDntEnabled);
   ipcMain.handle(CH_GET_GPC_ENABLED,    handleGetGpcEnabled);
   ipcMain.handle(CH_SET_GPC_ENABLED,    handleSetGpcEnabled);
+  ipcMain.handle(CH_GET_TOPICS_ENABLED,             handleGetTopicsEnabled);
+  ipcMain.handle(CH_SET_TOPICS_ENABLED,             handleSetTopicsEnabled);
+  ipcMain.handle(CH_GET_PROTECTED_AUDIENCE_ENABLED, handleGetProtectedAudienceEnabled);
+  ipcMain.handle(CH_SET_PROTECTED_AUDIENCE_ENABLED, handleSetProtectedAudienceEnabled);
+  ipcMain.handle(CH_GET_ATTRIBUTION_REPORTING,      handleGetAttributionReportingEnabled);
+  ipcMain.handle(CH_SET_ATTRIBUTION_REPORTING,      handleSetAttributionReportingEnabled);
+  ipcMain.handle(CH_GET_FENCED_FRAMES_ENABLED,      handleGetFencedFramesEnabled);
+  ipcMain.handle(CH_SET_FENCED_FRAMES_ENABLED,      handleSetFencedFramesEnabled);
 
   refreshPrivacyHeaders();
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 33 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -753,6 +844,14 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_SET_DNT_ENABLED);
   ipcMain.removeHandler(CH_GET_GPC_ENABLED);
   ipcMain.removeHandler(CH_SET_GPC_ENABLED);
+  ipcMain.removeHandler(CH_GET_TOPICS_ENABLED);
+  ipcMain.removeHandler(CH_SET_TOPICS_ENABLED);
+  ipcMain.removeHandler(CH_GET_PROTECTED_AUDIENCE_ENABLED);
+  ipcMain.removeHandler(CH_SET_PROTECTED_AUDIENCE_ENABLED);
+  ipcMain.removeHandler(CH_GET_ATTRIBUTION_REPORTING);
+  ipcMain.removeHandler(CH_SET_ATTRIBUTION_REPORTING);
+  ipcMain.removeHandler(CH_GET_FENCED_FRAMES_ENABLED);
+  ipcMain.removeHandler(CH_SET_FENCED_FRAMES_ENABLED);
 
   _accountStore  = null;
   _keychainStore = null;
