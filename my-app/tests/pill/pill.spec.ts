@@ -27,6 +27,8 @@ vi.mock('electron', () => {
       send: vi.fn(),
       once: vi.fn(),
       openDevTools: vi.fn(),
+      setZoomFactor: vi.fn(),
+      setVisualZoomLevelLimits: vi.fn(),
     },
     on: vi.fn(),
     once: vi.fn(),
@@ -88,6 +90,8 @@ interface MockBrowserWindow {
     send: Mock;
     once: Mock;
     openDevTools: Mock;
+    setZoomFactor: Mock;
+    setVisualZoomLevelLimits: Mock;
   };
   on: Mock;
   once: Mock;
