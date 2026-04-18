@@ -1057,10 +1057,28 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
           },
         },
         {
+          label: 'Reload (F5)',
+          accelerator: 'F5',
+          visible: false,
+          click: () => {
+            mainLogger.debug('shortcuts.reload.f5Shadow');
+            tabManager?.reloadActive();
+          },
+        },
+        {
           label: 'Force Reload This Page',
           accelerator: 'CommandOrControl+Shift+R',
           click: () => {
             mainLogger.debug('shortcuts.reloadHard');
+            tabManager?.reloadActiveIgnoringCache();
+          },
+        },
+        {
+          label: 'Force Reload (Shift+F5)',
+          accelerator: 'Shift+F5',
+          visible: false,
+          click: () => {
+            mainLogger.debug('shortcuts.reloadHard.shiftF5Shadow');
             tabManager?.reloadActiveIgnoringCache();
           },
         },
@@ -1132,6 +1150,15 @@ function buildMenuTemplate(): MenuItemConstructorOptions[] {
               visible: false,
               click: () => {
                 mainLogger.debug('shortcuts.devTools.shiftI');
+                tabManager?.toggleDevToolsForActive();
+              },
+            },
+            {
+              label: 'Developer Tools (F12)',
+              accelerator: 'F12',
+              visible: false,
+              click: () => {
+                mainLogger.debug('shortcuts.devTools.f12Shadow');
                 tabManager?.toggleDevToolsForActive();
               },
             },
