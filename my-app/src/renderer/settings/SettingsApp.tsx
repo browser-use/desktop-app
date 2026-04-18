@@ -33,6 +33,7 @@ const TAB_PROFILES     = 'profiles'    as const;
 const TAB_PRIVACY      = 'privacy'     as const;
 const TAB_PASSWORDS    = 'passwords'   as const;
 const TAB_ZOOM         = 'site-zoom'   as const;
+const TAB_COOKIES      = 'cookies'     as const;
 
 type TabId =
   | typeof TAB_API_KEY
@@ -44,6 +45,7 @@ type TabId =
   | typeof TAB_PRIVACY
   | typeof TAB_PASSWORDS
   | typeof TAB_ZOOM
+  | typeof TAB_COOKIES
   | typeof TAB_PASSWORDS
   | typeof TAB_DANGER;
 
@@ -56,6 +58,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: TAB_PROFILES,   label: 'Profiles' },
   { id: TAB_PRIVACY,    label: 'Privacy and security' },
   { id: TAB_ZOOM,       label: 'Site Zoom' },
+  { id: TAB_COOKIES,    label: 'Cookies and site data' },
   { id: TAB_DANGER,     label: 'Danger Zone' },
 ];
 
@@ -154,6 +157,13 @@ declare global {
       setDntEnabled: (enabled: boolean) => Promise<void>;
       getGpcEnabled: () => Promise<boolean>;
       setGpcEnabled: (enabled: boolean) => Promise<void>;
+      getThirdPartyCookies: () => Promise<'allow-all' | 'block-third-party' | 'block-third-party-incognito'>;
+      setThirdPartyCookies: (policy: 'allow-all' | 'block-third-party' | 'block-third-party-incognito') => Promise<void>;
+      getClearCookiesOnClose: () => Promise<boolean>;
+      setClearCookiesOnClose: (enabled: boolean) => Promise<void>;
+      getPerSiteDeleteOnExit: () => Promise<string[]>;
+      addPerSiteDeleteOnExit: (origin: string) => Promise<void>;
+      removePerSiteDeleteOnExit: (origin: string) => Promise<void>;
     };
   }
 }
@@ -1525,6 +1535,255 @@ function PasswordsTab(): React.ReactElement {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// Cookies and site data tab
+// ---------------------------------------------------------------------------
+
+const THIRD_PARTY_COOKIE_OPTIONS: Array<{
+  value: 'allow-all' | 'block-third-party' | 'block-third-party-incognito';
+  label: string;
+  desc: string;
+}> = [
+  {
+    value: 'allow-all',
+    label: 'Allow all cookies',
+    desc: 'Sites can set and read cookies, including third-party cookies.',
+  },
+  {
+    value: 'block-third-party',
+    label: 'Block third-party cookies',
+    desc: 'Third-party cookies are blocked. This may affect sign-in on some sites.',
+  },
+  {
+    value: 'block-third-party-incognito',
+    label: 'Block third-party cookies in incognito',
+    desc: 'Third-party cookies are only blocked in incognito sessions.',
+  },
+];
+
+function CookiesTab(): React.ReactElement {
+  const toast = useToast();
+  const [thirdParty, setThirdParty] = useState<'allow-all' | 'block-third-party' | 'block-third-party-incognito'>('allow-all');
+  const [clearOnClose, setClearOnClose] = useState(false);
+  const [perSiteSites, setPerSiteSites] = useState<string[]>([]);
+  const [newSiteInput, setNewSiteInput] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void Promise.all([
+      window.settingsAPI.getThirdPartyCookies(),
+      window.settingsAPI.getClearCookiesOnClose(),
+      window.settingsAPI.getPerSiteDeleteOnExit(),
+    ]).then(([policy, clear, sites]) => {
+      setThirdParty(policy);
+      setClearOnClose(clear);
+      setPerSiteSites(sites);
+    }).catch(() => {
+      // defaults already set
+    }).finally(() => {
+      setLoading(false);
+    });
+  }, []);
+
+  async function handleThirdPartyChange(
+    value: 'allow-all' | 'block-third-party' | 'block-third-party-incognito',
+  ): Promise<void> {
+    setThirdParty(value);
+    try {
+      await window.settingsAPI.setThirdPartyCookies(value);
+      toast.show({ variant: 'success', title: 'Cookie policy updated' });
+    } catch (err) {
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update cookie policy',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  async function handleClearOnCloseToggle(checked: boolean): Promise<void> {
+    setClearOnClose(checked);
+    try {
+      await window.settingsAPI.setClearCookiesOnClose(checked);
+      toast.show({
+        variant: 'success',
+        title: checked
+          ? 'Cookies will be cleared when all windows close'
+          : 'Cookies will be kept when windows close',
+      });
+    } catch (err) {
+      setClearOnClose(!checked);
+      toast.show({
+        variant: 'error',
+        title: 'Failed to update setting',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  async function handleAddSite(): Promise<void> {
+    const site = newSiteInput.trim();
+    if (!site) return;
+    try {
+      await window.settingsAPI.addPerSiteDeleteOnExit(site);
+      setPerSiteSites((prev) => prev.includes(site) ? prev : [...prev, site]);
+      setNewSiteInput('');
+      toast.show({ variant: 'success', title: `Added ${site} to delete-on-exit list` });
+    } catch (err) {
+      toast.show({
+        variant: 'error',
+        title: 'Failed to add site',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  async function handleRemoveSite(origin: string): Promise<void> {
+    try {
+      await window.settingsAPI.removePerSiteDeleteOnExit(origin);
+      setPerSiteSites((prev) => prev.filter((o) => o !== origin));
+      toast.show({ variant: 'success', title: `Removed ${origin}` });
+    } catch (err) {
+      toast.show({
+        variant: 'error',
+        title: 'Failed to remove site',
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="settings-section">
+        <h2 className="settings-section-title">Cookies and site data</h2>
+        <div className="settings-loading">
+          <Spinner size="md" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-section">
+      <h2 className="settings-section-title">Cookies and site data</h2>
+      <p className="settings-section-desc">
+        Control how cookies are stored and when site data is deleted.
+      </p>
+
+      {/* Third-party cookie policy */}
+      <Card variant="default" padding="md" className="settings-card">
+        <fieldset className="settings-fieldset">
+          <legend className="settings-label">Third-party cookies</legend>
+          <p className="settings-field-hint">
+            Third-party cookies come from sites other than the one you are visiting.
+            CHIPS partitioned cookies (with the <code>Partitioned</code> attribute) are
+            always permitted regardless of this setting.
+          </p>
+          {THIRD_PARTY_COOKIE_OPTIONS.map((opt) => (
+            <label key={opt.value} className="settings-radio-row">
+              <input
+                type="radio"
+                name="third-party-cookies"
+                value={opt.value}
+                checked={thirdParty === opt.value}
+                onChange={() => void handleThirdPartyChange(opt.value)}
+              />
+              <span className="settings-radio-content">
+                <span className="settings-radio-label">{opt.label}</span>
+                <span className="settings-radio-desc">{opt.desc}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      </Card>
+
+      {/* Clear on close */}
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-info">
+            <span className="settings-toggle-label">
+              Clear cookies and site data when you close all windows
+            </span>
+            <span className="settings-toggle-desc">
+              All cookies and site data will be deleted each time you quit the browser.
+              You will be signed out of most sites.
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={clearOnClose}
+              onChange={(e) => void handleClearOnCloseToggle(e.target.checked)}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+      </Card>
+
+      {/* Per-site delete on exit */}
+      <Card variant="default" padding="md" className="settings-card">
+        <div className="settings-field">
+          <span className="settings-label">Delete data on exit for specific sites</span>
+          <p className="settings-field-hint">
+            Cookies and site data for these origins are deleted each time you close all windows,
+            even if "Clear cookies and site data when you close all windows" is off.
+          </p>
+        </div>
+
+        <div className="settings-input-row" style={{ marginBottom: 12 }}>
+          <input
+            className="settings-input"
+            type="text"
+            value={newSiteInput}
+            onChange={(e) => setNewSiteInput(e.target.value)}
+            placeholder="https://example.com"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleAddSite();
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleAddSite()}
+            disabled={!newSiteInput.trim()}
+          >
+            Add
+          </Button>
+        </div>
+
+        {perSiteSites.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--color-fg-tertiary)' }}>
+            No sites added.
+          </p>
+        ) : (
+          <div>
+            {perSiteSites.map((origin, idx) => (
+              <div
+                key={origin}
+                className={`settings-scope-row ${idx < perSiteSites.length - 1 ? 'settings-scope-row--bordered' : ''}`}
+              >
+                <div className="settings-scope-info">
+                  <span className="settings-scope-label">{origin}</span>
+                </div>
+                <div className="settings-scope-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleRemoveSite(origin)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Danger Zone tab
 // ---------------------------------------------------------------------------
@@ -1680,6 +1939,7 @@ function SettingsInner(): React.ReactElement {
     [TAB_PROFILES]:   <ProfilesTab />,
     [TAB_PRIVACY]:    <PrivacyTab openDialog={clearDataOpen} onDialogChange={setClearDataOpen} />,
     [TAB_ZOOM]:       <SiteZoomTab />,
+    [TAB_COOKIES]:    <CookiesTab />,
     [TAB_DANGER]:     <DangerZoneTab />,
   };
 

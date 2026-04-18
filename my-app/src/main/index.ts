@@ -40,7 +40,7 @@ import { handleHlSubmit, handleHlCancel, teardown as teardownHl } from './hlPill
 import { getEngine, setEngine, type EngineId } from './hl/engine';
 // Track 5 — Settings
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
-import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDialogFromMenu } from './settings/ipc';
+import { registerSettingsHandlers, unregisterSettingsHandlers, openClearDataDialogFromMenu, clearCookiesOnQuitIfEnabled } from './settings/ipc';
 // Wave1 P3 — Bookmarks
 import { BookmarkStore } from './bookmarks/BookmarkStore';
 import { registerBookmarkHandlers, unregisterBookmarkHandlers } from './bookmarks/ipc';
@@ -599,6 +599,7 @@ app.whenReady().then(async () => {
       historyStore?.flushSync();
       permissionStore?.flushSync();
     }
+    await clearCookiesOnQuitIfEnabled();
     await teardownHl();
   });
 

@@ -161,6 +161,26 @@ export interface SettingsAPI {
 
   /** Set whether Global Privacy Control header is enabled */
   setGpcEnabled: (enabled: boolean) => Promise<void>;
+  /** Get third-party cookie policy */
+  getThirdPartyCookies: () => Promise<'allow-all' | 'block-third-party' | 'block-third-party-incognito'>;
+
+  /** Set third-party cookie policy */
+  setThirdPartyCookies: (policy: 'allow-all' | 'block-third-party' | 'block-third-party-incognito') => Promise<void>;
+
+  /** Get whether cookies are cleared when all windows close */
+  getClearCookiesOnClose: () => Promise<boolean>;
+
+  /** Set whether cookies are cleared when all windows close */
+  setClearCookiesOnClose: (enabled: boolean) => Promise<void>;
+
+  /** Get the list of origins with per-site delete-on-exit */
+  getPerSiteDeleteOnExit: () => Promise<string[]>;
+
+  /** Add an origin to the per-site delete-on-exit list */
+  addPerSiteDeleteOnExit: (origin: string) => Promise<void>;
+
+  /** Remove an origin from the per-site delete-on-exit list */
+  removePerSiteDeleteOnExit: (origin: string) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,6 +391,40 @@ const api: SettingsAPI = {
   setGpcEnabled: async (enabled: boolean): Promise<void> => {
     console.debug('[settings-preload] setGpcEnabled', { enabled });
     await ipcRenderer.invoke('settings:set-gpc-enabled', enabled);
+  },
+  getThirdPartyCookies: async (): Promise<'allow-all' | 'block-third-party' | 'block-third-party-incognito'> => {
+    console.debug('[settings-preload] getThirdPartyCookies');
+    return ipcRenderer.invoke('settings:get-third-party-cookies') as Promise<'allow-all' | 'block-third-party' | 'block-third-party-incognito'>;
+  },
+
+  setThirdPartyCookies: async (policy: 'allow-all' | 'block-third-party' | 'block-third-party-incognito'): Promise<void> => {
+    console.debug('[settings-preload] setThirdPartyCookies', { policy });
+    await ipcRenderer.invoke('settings:set-third-party-cookies', policy);
+  },
+
+  getClearCookiesOnClose: async (): Promise<boolean> => {
+    console.debug('[settings-preload] getClearCookiesOnClose');
+    return ipcRenderer.invoke('settings:get-clear-cookies-on-close') as Promise<boolean>;
+  },
+
+  setClearCookiesOnClose: async (enabled: boolean): Promise<void> => {
+    console.debug('[settings-preload] setClearCookiesOnClose', { enabled });
+    await ipcRenderer.invoke('settings:set-clear-cookies-on-close', enabled);
+  },
+
+  getPerSiteDeleteOnExit: async (): Promise<string[]> => {
+    console.debug('[settings-preload] getPerSiteDeleteOnExit');
+    return ipcRenderer.invoke('settings:get-per-site-delete-on-exit') as Promise<string[]>;
+  },
+
+  addPerSiteDeleteOnExit: async (origin: string): Promise<void> => {
+    console.debug('[settings-preload] addPerSiteDeleteOnExit', { origin });
+    await ipcRenderer.invoke('settings:add-per-site-delete-on-exit', origin);
+  },
+
+  removePerSiteDeleteOnExit: async (origin: string): Promise<void> => {
+    console.debug('[settings-preload] removePerSiteDeleteOnExit', { origin });
+    await ipcRenderer.invoke('settings:remove-per-site-delete-on-exit', origin);
   },
 };
 

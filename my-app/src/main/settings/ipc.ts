@@ -66,6 +66,16 @@ const GOOGLE_SCOPE_LIST = [
 
 type ScopeName = typeof GOOGLE_SCOPE_LIST[number]['scope'];
 
+// Allowed values for third-party cookie policy (mirrors Chrome's cookie control)
+const ALLOWED_THIRD_PARTY_COOKIE_POLICIES = [
+  'allow-all',
+  'block-third-party',
+  'block-third-party-incognito',
+] as const;
+export type ThirdPartyCookiePolicy = typeof ALLOWED_THIRD_PARTY_COOKIE_POLICIES[number];
+
+const DEFAULT_THIRD_PARTY_COOKIE_POLICY: ThirdPartyCookiePolicy = 'allow-all';
+
 // IPC channels
 const CH_SAVE_API_KEY      = 'settings:save-api-key';
 const CH_LOAD_API_KEY      = 'settings:load-api-key';
@@ -93,6 +103,13 @@ const CH_GET_DNT_ENABLED     = 'settings:get-dnt-enabled';
 const CH_SET_DNT_ENABLED     = 'settings:set-dnt-enabled';
 const CH_GET_GPC_ENABLED     = 'settings:get-gpc-enabled';
 const CH_SET_GPC_ENABLED     = 'settings:set-gpc-enabled';
+const CH_GET_THIRD_PARTY_COOKIES    = 'settings:get-third-party-cookies';
+const CH_SET_THIRD_PARTY_COOKIES    = 'settings:set-third-party-cookies';
+const CH_GET_CLEAR_COOKIES_ON_CLOSE = 'settings:get-clear-cookies-on-close';
+const CH_SET_CLEAR_COOKIES_ON_CLOSE = 'settings:set-clear-cookies-on-close';
+const CH_GET_PER_SITE_DELETE_ON_EXIT    = 'settings:get-per-site-delete-on-exit';
+const CH_ADD_PER_SITE_DELETE_ON_EXIT    = 'settings:add-per-site-delete-on-exit';
+const CH_REMOVE_PER_SITE_DELETE_ON_EXIT = 'settings:remove-per-site-delete-on-exit';
 
 // ---------------------------------------------------------------------------
 // Module-level deps (set by registerSettingsHandlers)
@@ -631,6 +648,77 @@ function handleSetGpcEnabled(_event: Electron.IpcMainInvokeEvent, enabled: boole
 }
 
 // ---------------------------------------------------------------------------
+// Cookie settings handlers
+// ---------------------------------------------------------------------------
+
+function handleGetThirdPartyCookies(): ThirdPartyCookiePolicy {
+  mainLogger.info(CH_GET_THIRD_PARTY_COOKIES);
+  const prefs = readPrefs();
+  const policy = (prefs.thirdPartyCookies as ThirdPartyCookiePolicy | undefined) ?? DEFAULT_THIRD_PARTY_COOKIE_POLICY;
+  mainLogger.info(`${CH_GET_THIRD_PARTY_COOKIES}.ok`, { policy });
+  return policy;
+}
+
+function handleSetThirdPartyCookies(_event: Electron.IpcMainInvokeEvent, policy: string): void {
+  const validated = assertOneOf(policy, 'thirdPartyCookies', ALLOWED_THIRD_PARTY_COOKIE_POLICIES);
+  mainLogger.info(CH_SET_THIRD_PARTY_COOKIES, { policy: validated });
+  mergePrefs({ thirdPartyCookies: validated });
+  mainLogger.info(`${CH_SET_THIRD_PARTY_COOKIES}.ok`, { policy: validated });
+}
+
+function handleGetClearCookiesOnClose(): boolean {
+  mainLogger.info(CH_GET_CLEAR_COOKIES_ON_CLOSE);
+  const prefs = readPrefs();
+  const enabled = prefs.clearCookiesOnClose === true;
+  mainLogger.info(`${CH_GET_CLEAR_COOKIES_ON_CLOSE}.ok`, { enabled });
+  return enabled;
+}
+
+function handleSetClearCookiesOnClose(_event: Electron.IpcMainInvokeEvent, enabled: boolean): void {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('clearCookiesOnClose must be a boolean');
+  }
+  mainLogger.info(CH_SET_CLEAR_COOKIES_ON_CLOSE, { enabled });
+  mergePrefs({ clearCookiesOnClose: enabled });
+  mainLogger.info(`${CH_SET_CLEAR_COOKIES_ON_CLOSE}.ok`, { enabled });
+}
+
+function handleGetPerSiteDeleteOnExit(): string[] {
+  mainLogger.info(CH_GET_PER_SITE_DELETE_ON_EXIT);
+  const prefs = readPrefs();
+  const sites = Array.isArray(prefs.perSiteDeleteOnExit) ? (prefs.perSiteDeleteOnExit as string[]) : [];
+  mainLogger.info(`${CH_GET_PER_SITE_DELETE_ON_EXIT}.ok`, { count: sites.length });
+  return sites;
+}
+
+function handleAddPerSiteDeleteOnExit(_event: Electron.IpcMainInvokeEvent, origin: string): void {
+  const validated = assertString(origin, 'origin', 512);
+  mainLogger.info(CH_ADD_PER_SITE_DELETE_ON_EXIT, { origin: validated });
+  const prefs = readPrefs();
+  const existing: string[] = Array.isArray(prefs.perSiteDeleteOnExit)
+    ? (prefs.perSiteDeleteOnExit as string[])
+    : [];
+  if (!existing.includes(validated)) {
+    mergePrefs({ perSiteDeleteOnExit: [...existing, validated] });
+    mainLogger.info(`${CH_ADD_PER_SITE_DELETE_ON_EXIT}.ok`, { origin: validated, total: existing.length + 1 });
+  } else {
+    mainLogger.info(`${CH_ADD_PER_SITE_DELETE_ON_EXIT}.alreadyExists`, { origin: validated });
+  }
+}
+
+function handleRemovePerSiteDeleteOnExit(_event: Electron.IpcMainInvokeEvent, origin: string): void {
+  const validated = assertString(origin, 'origin', 512);
+  mainLogger.info(CH_REMOVE_PER_SITE_DELETE_ON_EXIT, { origin: validated });
+  const prefs = readPrefs();
+  const existing: string[] = Array.isArray(prefs.perSiteDeleteOnExit)
+    ? (prefs.perSiteDeleteOnExit as string[])
+    : [];
+  const updated = existing.filter((o) => o !== validated);
+  mergePrefs({ perSiteDeleteOnExit: updated });
+  mainLogger.info(`${CH_REMOVE_PER_SITE_DELETE_ON_EXIT}.ok`, { origin: validated, remaining: updated.length });
+}
+
+// ---------------------------------------------------------------------------
 // Privacy header injection (DNT + GPC)
 // ---------------------------------------------------------------------------
 
@@ -669,6 +757,48 @@ export function refreshPrivacyHeaders(): void {
   });
 
   mainLogger.info('privacy.refreshHeaders.installed');
+}
+
+/**
+ * Called on before-quit. If clearCookiesOnClose is enabled, clears all cookies
+ * and per-site delete-on-exit data from the default session.
+ */
+export async function clearCookiesOnQuitIfEnabled(): Promise<void> {
+  const prefs = readPrefs();
+  const clearOnClose = prefs.clearCookiesOnClose === true;
+  const perSiteSites: string[] = Array.isArray(prefs.perSiteDeleteOnExit)
+    ? (prefs.perSiteDeleteOnExit as string[])
+    : [];
+
+  if (clearOnClose) {
+    mainLogger.info('cookies.clearOnClose.start');
+    try {
+      await session.defaultSession.clearStorageData({ storages: ['cookies'] });
+      mainLogger.info('cookies.clearOnClose.done');
+    } catch (err) {
+      mainLogger.error('cookies.clearOnClose.failed', { error: (err as Error).message });
+    }
+  }
+
+  // Per-site delete-on-exit: clear cookies and storage for each registered origin
+  if (perSiteSites.length > 0) {
+    mainLogger.info('cookies.perSiteDeleteOnExit.start', { count: perSiteSites.length });
+    for (const origin of perSiteSites) {
+      try {
+        await session.defaultSession.clearStorageData({
+          origin,
+          storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers'],
+        });
+        mainLogger.info('cookies.perSiteDeleteOnExit.cleared', { origin });
+      } catch (err) {
+        mainLogger.error('cookies.perSiteDeleteOnExit.failed', {
+          origin,
+          error: (err as Error).message,
+        });
+      }
+    }
+    mainLogger.info('cookies.perSiteDeleteOnExit.done', { count: perSiteSites.length });
+  }
 }
 
 function handleCloseWindow(): void {
@@ -719,10 +849,17 @@ export function registerSettingsHandlers(opts: RegisterSettingsHandlersOptions):
   ipcMain.handle(CH_SET_DNT_ENABLED,    handleSetDntEnabled);
   ipcMain.handle(CH_GET_GPC_ENABLED,    handleGetGpcEnabled);
   ipcMain.handle(CH_SET_GPC_ENABLED,    handleSetGpcEnabled);
+  ipcMain.handle(CH_GET_THIRD_PARTY_COOKIES,    handleGetThirdPartyCookies);
+  ipcMain.handle(CH_SET_THIRD_PARTY_COOKIES,    handleSetThirdPartyCookies);
+  ipcMain.handle(CH_GET_CLEAR_COOKIES_ON_CLOSE, handleGetClearCookiesOnClose);
+  ipcMain.handle(CH_SET_CLEAR_COOKIES_ON_CLOSE, handleSetClearCookiesOnClose);
+  ipcMain.handle(CH_GET_PER_SITE_DELETE_ON_EXIT,    handleGetPerSiteDeleteOnExit);
+  ipcMain.handle(CH_ADD_PER_SITE_DELETE_ON_EXIT,    handleAddPerSiteDeleteOnExit);
+  ipcMain.handle(CH_REMOVE_PER_SITE_DELETE_ON_EXIT, handleRemovePerSiteDeleteOnExit);
 
   refreshPrivacyHeaders();
 
-  mainLogger.info('settings.ipc.register.ok', { channelCount: 25 });
+  mainLogger.info('settings.ipc.register.ok', { channelCount: 32 });
 }
 
 export function unregisterSettingsHandlers(): void {
@@ -753,6 +890,13 @@ export function unregisterSettingsHandlers(): void {
   ipcMain.removeHandler(CH_SET_DNT_ENABLED);
   ipcMain.removeHandler(CH_GET_GPC_ENABLED);
   ipcMain.removeHandler(CH_SET_GPC_ENABLED);
+  ipcMain.removeHandler(CH_GET_THIRD_PARTY_COOKIES);
+  ipcMain.removeHandler(CH_SET_THIRD_PARTY_COOKIES);
+  ipcMain.removeHandler(CH_GET_CLEAR_COOKIES_ON_CLOSE);
+  ipcMain.removeHandler(CH_SET_CLEAR_COOKIES_ON_CLOSE);
+  ipcMain.removeHandler(CH_GET_PER_SITE_DELETE_ON_EXIT);
+  ipcMain.removeHandler(CH_ADD_PER_SITE_DELETE_ON_EXIT);
+  ipcMain.removeHandler(CH_REMOVE_PER_SITE_DELETE_ON_EXIT);
 
   _accountStore  = null;
   _keychainStore = null;
