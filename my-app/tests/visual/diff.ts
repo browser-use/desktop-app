@@ -643,6 +643,10 @@ function checkOnboardingStructure(capturePath: string, stateName: string): strin
       issues.push(`Window too small (${png.width}×${png.height}) — may be a crash or minimal window`);
     }
 
+    // Sample top-left corner for background luminance (used in checks below)
+    const bgSample = sampleRegionRgb(png, 0, 0, 100, 100);
+    const bgLuminance = 0.2126 * bgSample.r + 0.7152 * bgSample.g + 0.0722 * bgSample.b;
+
     // 2. Sample the step indicator region (top-center, ~50px from top)
     //    Expect a lighter colored region (step dots are colored)
     const stepIndicatorRegion = sampleRegionRgb(

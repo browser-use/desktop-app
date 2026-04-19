@@ -21,6 +21,7 @@ import { AccountStore } from './AccountStore';
 import { OAuthClient } from './OAuthClient';
 import { runOAuthFlow } from '../oauth';
 import type { GoogleOAuthScope, AccountInfo } from '../../shared/types';
+import type { ProfileStore } from '../profiles/ProfileStore';
 
 // Structural type matching what the onboarding preload sends.
 // Also re-exported as `OnboardingCompletePayload` so earlier consumers
@@ -38,6 +39,7 @@ export interface OnboardingHandlerDeps {
   onboardingWindow: BrowserWindow;
   /** Factory that creates (or returns existing) shell window after onboarding */
   openShellWindow: () => BrowserWindow;
+  profileStore?: ProfileStore;
 }
 
 export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
