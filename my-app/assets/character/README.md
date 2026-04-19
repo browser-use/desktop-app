@@ -1,11 +1,5 @@
 # Character Assets
 
-## mascot.default.svg
-Placeholder anthropomorphic blob mascot. Simple rounded silhouette, eyes, subtle smile.
-Body color: `#7fb3d0` (blue-grey). See `tokens.ts` `ONBOARDING_COLORS.mascotBody`.
-
-Replace with a Lottie animation file (`mascot.anim.lottie`) in v0.2.
-
 ## Required font files (not bundled in session)
 
 Place font `.woff2` files in `my-app/public/fonts/` before building.
@@ -27,8 +21,3 @@ Place font `.woff2` files in `my-app/public/fonts/` before building.
 - **JetBrains Mono**: https://www.jetbrains.com/lp/mono/ — OFL license, free
 
 Until font files are present, the system-ui / ui-monospace fallbacks render cleanly.
-
-## v0.2 roadmap
-- `mascot.anim.lottie` — idle float + blink loop + loading spin variants
-- `mascot.variants/` — color/character variants (purple, green, orange, pink, teal) matching the bottom row in the onboarding screenshot
-- `mascot.loading.svg` — alternate pose for agent-working state

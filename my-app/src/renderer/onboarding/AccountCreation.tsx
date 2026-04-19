@@ -1,17 +1,16 @@
 /**
- * AccountCreation — Screen 3 of onboarding.
+ * AccountCreation — Screen 2 of onboarding.
  *
  * Google OAuth sign-in only. Linear-inspired styling.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StepIndicator } from './StepIndicator';
-import { CharacterMascot } from './CharacterMascot';
 import { GoogleScopesModal } from './GoogleScopesModal';
 import type { GoogleOAuthScope } from '../../shared/types';
 
-const TOTAL_STEPS = 5;
-const CURRENT_STEP = 3;
+const TOTAL_STEPS = 4;
+const CURRENT_STEP = 2;
 
 interface AccountCreationProps {
   onBack: () => void;
@@ -27,6 +26,14 @@ export function AccountCreation({ onBack, onComplete: _onComplete, onScopesSelec
   const [showScopesModal, setShowScopesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onBack();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onBack]);
 
   function handleGoogleClick(): void {
     setShowScopesModal(true);
@@ -136,7 +143,6 @@ export function AccountCreation({ onBack, onComplete: _onComplete, onScopesSelec
         </div>
 
         <div className="onboarding-panel-right">
-          <CharacterMascot state={isLoading ? 'loading' : 'idle'} width={180} height={200} />
         </div>
       </div>
 

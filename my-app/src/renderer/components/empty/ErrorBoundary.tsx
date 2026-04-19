@@ -1,20 +1,16 @@
 /**
- * ErrorBoundary — React error boundary with mascot error state.
+ * ErrorBoundary — React error boundary.
  *
- * Shows the mascot-error SVG + "Something broke" + a reload button.
+ * Shows "Something broke" + a reload button.
  * Uses CSS classes from empty-states.css.
  * No !important, no Inter font, no sparkles icon.
  */
 
 import React, { Component, ErrorInfo } from 'react';
-import errorUrl from '../../../../assets/brand/mascot/mascot-error.svg';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const MASCOT_WIDTH   = 96;
-const MASCOT_HEIGHT  = 108;
 
 const HEADING_COPY   = 'Something broke'                                  as const;
 const BODY_COPY      = 'An unexpected error occurred. You can try reloading.' as const;
@@ -75,17 +71,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return (
       <div className="empty-state" data-variant="error" role="alert" aria-label={HEADING_COPY}>
-        {/* Mascot error state — shake animation (one-shot via CSS) */}
-        <div className="empty-state__mascot mascot-anim-error" aria-hidden="true">
-          <img
-            src={errorUrl}
-            alt=""
-            width={MASCOT_WIDTH}
-            height={MASCOT_HEIGHT}
-            draggable={false}
-          />
-        </div>
-
         <p className="empty-state__heading">{HEADING_COPY}</p>
         <p className="empty-state__body">{BODY_COPY}</p>
 

@@ -9,7 +9,6 @@
  *   - Renders "Get Started" button
  *   - "Get Started" calls onNext callback
  *   - Shows agent name when provided; shows placeholder when undefined
- *   - Mascot is present (img or svg with accessible alt)
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -23,10 +22,6 @@ vi.mock('../../../src/renderer/design/theme.onboarding.css', () => ({}));
 vi.mock('../../../src/renderer/components/base/components.css', () => ({}));
 vi.mock('../../../src/renderer/onboarding/onboarding.css', () => ({}));
 
-// Stub the CharacterMascot so we don't need SVG parsing in jsdom
-vi.mock('../../../src/renderer/onboarding/CharacterMascot', () => ({
-  CharacterMascot: () => <div data-testid="mascot" aria-label="Companion mascot" />,
-}));
 
 vi.mock('../../../src/renderer/onboarding/StepIndicator', () => ({
   StepIndicator: ({ step, total }: { step: number; total: number }) => (
@@ -65,11 +60,6 @@ describe('Welcome screen', () => {
   it('renders the step indicator', () => {
     render(<Welcome onNext={vi.fn()} agentName={undefined} />);
     expect(screen.getByTestId('step-indicator')).toBeTruthy();
-  });
-
-  it('renders the mascot', () => {
-    render(<Welcome onNext={vi.fn()} agentName={undefined} />);
-    expect(screen.getByTestId('mascot')).toBeTruthy();
   });
 
   it('renders Get Started button', () => {

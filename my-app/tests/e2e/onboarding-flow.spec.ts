@@ -19,7 +19,6 @@ import { launchApp, teardownApp, AppHandle, evalInMain } from '../setup/electron
 // Selectors
 // ---------------------------------------------------------------------------
 const STEP_INDICATOR_SELECTOR = '[data-testid="step-indicator"]';
-const MASCOT_SELECTOR = '[data-testid="character-mascot"]';
 const CAPABILITY_PILL_SELECTOR = '[data-testid="capability-pill"]';
 const AGENT_NAME_INPUT_SELECTOR = '[data-testid="agent-name-input"]';
 const CONTINUE_GOOGLE_SELECTOR = '[data-testid="continue-with-google"]';
@@ -60,13 +59,9 @@ test.describe('Onboarding Flow', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Welcome screen renders mascot and capability pills
+  // Welcome screen renders capability pills
   // -------------------------------------------------------------------------
-  test('welcome screen shows mascot and at least 3 capability pills', async () => {
-    const mascot = app.firstWindow.locator(MASCOT_SELECTOR);
-    await mascot.waitFor({ state: 'visible', timeout: 5_000 });
-    expect(await mascot.isVisible()).toBe(true);
-
+  test('welcome screen shows at least 3 capability pills', async () => {
     const pillCount = await app.firstWindow.locator(CAPABILITY_PILL_SELECTOR).count();
     expect(pillCount).toBeGreaterThanOrEqual(3);
     console.log(`[onboarding] Capability pill count: ${pillCount}`);

@@ -5,7 +5,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { StepIndicator } from './StepIndicator';
-import { CharacterMascot } from './CharacterMascot';
 import { KeyHint } from '../components/base';
 
 const TOTAL_STEPS = 5;
@@ -135,7 +134,6 @@ export function NamingFlow({ onNext, onBack }: NamingFlowProps): React.ReactElem
       </div>
 
       <div className="onboarding-panel-right">
-        <CharacterMascot state="idle" width={180} height={200} />
       </div>
     </div>
   );

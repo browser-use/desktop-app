@@ -11,7 +11,6 @@
  * Rules: zero !important, zero Inter references, zero left-outline emphasis.
  *
  * Constants (structural, not design tokens):
- *   MASCOT_FLOAT_DURATION   3s ease-in-out infinite
  *   OFFLINE_BANNER_BG       warning at 15% alpha — see why-not-a-token below
  *   OFFLINE_BANNER_BORDER   warning at 35% alpha — see why-not-a-token below
  *   RELOAD_BTN_HEIGHT       34px
@@ -38,12 +37,6 @@
 .empty-state--compact {
   gap: 8px;
   padding: 16px;
-}
-
-/* Mascot wrapper — inherits animation class from theme.onboarding.css */
-.empty-state__mascot {
-  margin-bottom: 4px;
-  will-change: transform;
 }
 
 .empty-state__heading {
@@ -174,10 +167,6 @@
 @media (prefers-reduced-motion: reduce) {
   .empty-state {
     animation: none;
-  }
-  .empty-state__mascot {
-    animation: none;
-    transform: none;
   }
   .offline-banner {
     animation: none;

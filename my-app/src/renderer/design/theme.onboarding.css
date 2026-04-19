@@ -39,9 +39,9 @@
   --color-accent-default: var(--accent-base);
   --color-accent-hover:   var(--accent-hover);
   --color-accent-dim:     var(--accent-dim);
-  --color-accent-muted:   rgba(200, 241, 53, 0.10);
-  --color-accent-glow:    rgba(200, 241, 53, 0.15);
-  --color-accent-subtle:  rgba(200, 241, 53, 0.08);
+  --color-accent-muted:   rgba(109, 129, 150, 0.10);
+  --color-accent-glow:    rgba(109, 129, 150, 0.15);
+  --color-accent-subtle:  rgba(109, 129, 150, 0.08);
 
   /* -- Status -- */
   --color-status-success: var(--success);
@@ -53,12 +53,6 @@
   /* -- Capability list (monochromatic — no rainbow) -- */
   --color-capability-fg:  var(--color-fg-secondary);
   --color-capability-icon: var(--color-fg-tertiary);
-
-  /* -- Mascot palette -- */
-  --color-mascot-body:      #7fb3d0;
-  --color-mascot-shadow:    #5a9abf;
-  --color-mascot-eye:       #1a1a2e;
-  --color-mascot-highlight: #b0d4e8;
 
   /* -- Modal surface -- */
   --color-modal-bg:     #18181b;
@@ -102,9 +96,9 @@
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.60);
   --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.70);
 
-  --glow-accent-sm: 0 0 12px rgba(200, 241, 53, 0.08);
-  --glow-accent-md: 0 0 24px rgba(200, 241, 53, 0.12);
-  --glow-accent-lg: 0 0 40px rgba(200, 241, 53, 0.18);
+  --glow-accent-sm: 0 0 12px rgba(109, 129, 150, 0.08);
+  --glow-accent-md: 0 0 24px rgba(109, 129, 150, 0.12);
+  --glow-accent-lg: 0 0 40px rgba(109, 129, 150, 0.18);
   --glow-accent:    var(--glow-accent-sm);
 
   /* -- Z-index layers -- */
@@ -288,78 +282,6 @@
 [data-theme="onboarding"] .cta-button:active {
   transform: translateY(0);
   box-shadow: none;
-}
-
-/* ---------------------------------------------------------------------------
-   Mascot stage
---------------------------------------------------------------------------- */
-
-[data-theme="onboarding"] .mascot-stage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-8);
-}
-
-[data-theme="onboarding"] .mascot-wrapper {
-  will-change: transform;
-  opacity: 0.9;
-}
-
-[data-theme="onboarding"] .mascot-anim-idle {
-  animation: mascot-float 4s ease-in-out infinite;
-}
-
-[data-theme="onboarding"] .mascot-anim-thinking {
-  animation: mascot-float 1.2s ease-in-out infinite;
-}
-
-[data-theme="onboarding"] .mascot-anim-celebrating {
-  animation: mascot-celebrate 0.5s var(--ease-out) forwards;
-}
-
-[data-theme="onboarding"] .mascot-anim-error {
-  animation: mascot-shake 0.3s var(--ease-out) forwards;
-}
-
-[data-theme="onboarding"] .mascot-wrapper[data-state="loading"] {
-  animation: mascot-float 1.2s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-theme="onboarding"] .mascot-anim-idle,
-  [data-theme="onboarding"] .mascot-anim-thinking,
-  [data-theme="onboarding"] .mascot-anim-celebrating,
-  [data-theme="onboarding"] .mascot-anim-error,
-  [data-theme="onboarding"] .mascot-wrapper[data-state="loading"] {
-    animation: none;
-    transform: none;
-  }
-}
-
-[data-theme="onboarding"] .mascot-variant-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-6);
-  padding: var(--space-8);
-}
-
-[data-theme="onboarding"] .mascot-variant-thumb {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  opacity: 0.5;
-  transition:
-    opacity var(--duration-normal) var(--ease-out),
-    transform var(--duration-normal) var(--ease-out);
-}
-
-[data-theme="onboarding"] .mascot-variant-thumb:hover,
-[data-theme="onboarding"] .mascot-variant-thumb[data-selected="true"] {
-  opacity: 1;
-  transform: scale(1.08);
 }
 
 /* ---------------------------------------------------------------------------

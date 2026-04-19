@@ -32,10 +32,10 @@
   --slate-11: #8a8f98;
   --slate-12: #f0f0f2;
 
-  /* Accent primitives — neon yellow-green, ONE accent colour */
-  --accent-base:  #c8f135;
-  --accent-dim:   #b8e020;
-  --accent-hover: #d4f74e;
+  /* Accent primitives — muted blue-grey, ONE accent colour */
+  --accent-base:  #6D8196;
+  --accent-dim:   #5C7085;
+  --accent-hover: #7E92A7;
 
   /* Status primitives */
   --danger:  #f87171;
@@ -69,8 +69,8 @@
   --color-accent-default: var(--accent-base);
   --color-accent-hover:   var(--accent-hover);
   --color-accent-dim:     var(--accent-dim);
-  --color-accent-muted:   rgba(200, 241, 53, 0.10);
-  --color-accent-glow:    rgba(200, 241, 53, 0.18);
+  --color-accent-muted:   rgba(109, 129, 150, 0.10);
+  --color-accent-glow:    rgba(109, 129, 150, 0.18);
 
   /* Status */
   --color-status-danger:  var(--danger);
@@ -162,9 +162,9 @@
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.55);
   --shadow-xl: 0 16px 64px rgba(0, 0, 0, 0.65);
 
-  --glow-accent-sm: 0 0 8px rgba(200, 241, 53, 0.12);
-  --glow-accent-md: 0 0 16px rgba(200, 241, 53, 0.20);
-  --glow-accent-lg: 0 0 32px rgba(200, 241, 53, 0.30);
+  --glow-accent-sm: 0 0 8px rgba(109, 129, 150, 0.12);
+  --glow-accent-md: 0 0 16px rgba(109, 129, 150, 0.20);
+  --glow-accent-lg: 0 0 32px rgba(109, 129, 150, 0.30);
   /* convenience alias — default glow used by most components */
   --glow-accent:    var(--glow-accent-sm);
 
@@ -492,34 +492,6 @@ ol {
 @keyframes pulse-glow {
   0%, 100% { box-shadow: var(--glow-accent-sm); }
   50%       { box-shadow: var(--glow-accent-md); }
-}
-
-@keyframes mascot-float {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-6px); }
-}
-
-@keyframes mascot-blink {
-  0%, 90%, 100% { transform: scaleY(1); }
-  95%            { transform: scaleY(0.1); }
-}
-
-@keyframes mascot-celebrate {
-  0%   { transform: scale(1)    translateY(0); }
-  30%  { transform: scale(1.12) translateY(-8px); }
-  60%  { transform: scale(0.96) translateY(2px); }
-  80%  { transform: scale(1.04) translateY(-3px); }
-  100% { transform: scale(1)    translateY(0); }
-}
-
-@keyframes mascot-shake {
-  0%   { transform: translateX(0); }
-  15%  { transform: translateX(-7px); }
-  35%  { transform: translateX(7px); }
-  55%  { transform: translateX(-5px); }
-  75%  { transform: translateX(4px); }
-  90%  { transform: translateX(-2px); }
-  100% { transform: translateX(0); }
 }
 
 /* Animation utility classes */

@@ -3,17 +3,15 @@
  *
  * Linear-inspired: clean layout, accent CTA pill, no playful elements.
  * Left panel: wordmark, subhead, capabilities, CTA
- * Right panel: mascot
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StepIndicator } from './StepIndicator';
 import { CapabilitiesGrid } from './CapabilitiesGrid';
-import { CharacterMascot } from './CharacterMascot';
 import { KeyHint } from '../components/base';
 import wordmarkDarkUrl from '../../../assets/brand/wordmarks/wordmark-dark.svg';
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 const CURRENT_STEP = 1;
 const WORDMARK_WIDTH = 200;
 
@@ -23,6 +21,14 @@ interface WelcomeProps {
 }
 
 export function Welcome({ onNext }: WelcomeProps): React.ReactElement {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Enter") onNext();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onNext]);
+
   return (
     <div className="onboarding-root onboarding-fade-in">
       <div
@@ -41,19 +47,19 @@ export function Welcome({ onNext }: WelcomeProps): React.ReactElement {
 
       <div className="onboarding-panel-left">
         <div>
-          <h1 className="onboarding-headline sr-only" aria-label="Agentic Browser">
-            Agentic Browser
+          <h1 className="onboarding-headline sr-only" aria-label="The Browser">
+            The Browser
           </h1>
           <img
             src={wordmarkDarkUrl}
-            alt="Agentic Browser"
+            alt="The Browser"
             width={WORDMARK_WIDTH}
             aria-hidden="true"
             draggable={false}
             style={{ display: 'block', marginBottom: 20, opacity: 0.9 }}
           />
           <p className="onboarding-subhead">
-            A browser agent that acts on your behalf.
+            Your browser, reimagined.
           </p>
         </div>
 
@@ -78,9 +84,6 @@ export function Welcome({ onNext }: WelcomeProps): React.ReactElement {
         </div>
       </div>
 
-      <div className="onboarding-panel-right">
-        <CharacterMascot state="idle" width={180} height={200} />
-      </div>
     </div>
   );
 }

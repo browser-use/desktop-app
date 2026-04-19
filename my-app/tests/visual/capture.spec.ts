@@ -366,7 +366,7 @@ test('capture: onboarding-welcome', async () => {
       timeout: UI_TIMEOUT_MS,
     });
 
-    await screenshot(page, 'onboarding-welcome', 'Screen 1 — Welcome with mascot and capability pills');
+    await screenshot(page, 'onboarding-welcome', 'Screen 1 — Welcome with capability pills');
   } catch (err) {
     logWarn('State 1 failed', { error: (err as Error).message });
     recordCapture({

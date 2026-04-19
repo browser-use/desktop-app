@@ -8,22 +8,6 @@ This manifest lists every design asset available for Figma import. Assets are NO
 
 Source root: `my-app/assets/brand/`
 
-### Mascot Poses
-
-| Asset Name | Source Path | Figma Component Name | Usage |
-|---|---|---|---|
-| Mascot — Idle | `assets/brand/mascot/mascot-idle.svg` | `Brand/Mascot/Idle` | Default state, gentle float animation |
-| Mascot — Thinking | `assets/brand/mascot/mascot-thinking.svg` | `Brand/Mascot/Thinking` | Agent task running |
-| Mascot — Celebrating | `assets/brand/mascot/mascot-celebrating.svg` | `Brand/Mascot/Celebrating` | Task complete |
-| Mascot — Error | `assets/brand/mascot/mascot-error.svg` | `Brand/Mascot/Error` | Task failed |
-| Mascot — Offline | `assets/brand/mascot/mascot-offline.svg` | `Brand/Mascot/Offline` | Daemon unavailable |
-
-Mascot color tokens (for re-coloring in Figma):
-- Body fill: `#7fb3d0` (`onboarding.colors.mascot.body`)
-- Shadow: `#5a9abf` (`onboarding.colors.mascot.shadow`)
-- Eye: `#1a1a2e` (`onboarding.colors.mascot.eye`)
-- Highlight: `#b0d4e8` (`onboarding.colors.mascot.highlight`)
-
 ### Wordmarks
 
 | Asset Name | Source Path | Figma Component Name | Background |

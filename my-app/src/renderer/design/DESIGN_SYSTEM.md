@@ -1,4 +1,4 @@
-# Agentic Browser — Design System Reference
+# The Browser — Design System Reference
 
 Single source of truth for all renderer surfaces. Generated from `tokens.ts`, `fonts.ts`, `theme.shell.css`, and `theme.onboarding.css`.
 
@@ -10,7 +10,7 @@ The app ships two distinct themes applied via `data-theme` on `<html>`:
 
 | Theme | `data-theme` value | Character |
 |---|---|---|
-| Shell | `shell` | Linear + Obsidian dark. Dense, keyboard-first, neon-accent, no decorative shadows. |
+| Shell | `shell` | Linear + Obsidian dark. Dense, keyboard-first, muted-accent, no decorative shadows. |
 | Onboarding | `onboarding` | Warm dark. Character-forward, rounded, generous padding, pastel capability pills. |
 
 Switch at runtime:
@@ -106,15 +106,15 @@ Font files belong in `public/fonts/<family>/<file>.woff2`. See `fonts.ts` for ex
 | `borderDefault` | `--color-border-default` | `#282830` | Input borders, card outlines |
 | `borderStrong` | `--color-border-strong` | `#3a3a44` | Emphasized separators |
 
-#### Accent (neon yellow-green — one accent, sharp)
+#### Accent (muted blue-grey — one accent, sharp)
 
 | Token | CSS var | Value | Use |
 |---|---|---|---|
-| `accentDefault` | `--color-accent-default` | `#c8f135` | Primary CTA, active state indicator |
-| `accentHover` | `--color-accent-hover` | `#d4f74e` | Hover state of accent elements |
-| `accentActive` | `--color-accent-active` | `#b8e020` | Pressed/active state |
-| `accentSubtle` | `--color-accent-subtle` | `rgba(200,241,53,0.10)` | Selected row backgrounds |
-| `accentGlow` | `--color-accent-glow` | `rgba(200,241,53,0.18)` | Glow ring on focused inputs, pill |
+| `accentDefault` | `--color-accent-default` | `#6D8196` | Primary CTA, active state indicator |
+| `accentHover` | `--color-accent-hover` | `#7E92A7` | Hover state of accent elements |
+| `accentActive` | `--color-accent-active` | `#5C7085` | Pressed/active state |
+| `accentSubtle` | `--color-accent-subtle` | `rgba(109,129,150,0.10)` | Selected row backgrounds |
+| `accentGlow` | `--color-accent-glow` | `rgba(109,129,150,0.18)` | Glow ring on focused inputs, pill |
 
 #### Status
 
@@ -165,15 +165,6 @@ Font files belong in `public/fonts/<family>/<file>.woff2`. See `fonts.ts` for ex
 | Emails | `pillEmails` | `#60a5fa` | `pillEmailsBg` | `rgba(96,165,250,0.18)` |
 | Scraping | `pillScraping` | `#f87171` | `pillScrapingBg` | `rgba(248,113,113,0.18)` |
 | More | `pillMore` | `#fb923c` | `pillMoreBg` | `rgba(251,146,60,0.18)` |
-
-#### Mascot Colors
-
-| Token | Hex | Use |
-|---|---|---|
-| `mascotBody` | `#7fb3d0` | Blue-grey mascot fill |
-| `mascotBodyShadow` | `#5a9abf` | Shadow underside |
-| `mascotEye` | `#1a1a2e` | Eye fill |
-| `mascotHighlight` | `#b0d4e8` | Specular highlight |
 
 #### Google Service Colors
 
@@ -239,7 +230,7 @@ All values in px. CSS vars: `--spacing-{key}` (not yet in CSS files — apply in
 | `normal` | `--duration-normal` | 150 | Button states, input focus rings |
 | `moderate` | `--duration-moderate` | 220 | Sidebar expand/collapse, dropdowns |
 | `slow` | `--duration-slow` | 350 | Page transitions, modal enter/exit |
-| `crawl` | `--duration-crawl` | 500 | Pulse animations, mascot idle loops |
+| `crawl` | `--duration-crawl` | 500 | Pulse animations |
 
 ### Easing Curves
 
@@ -248,12 +239,12 @@ All values in px. CSS vars: `--spacing-{key}` (not yet in CSS files — apply in
 | `standard` | `--ease-standard` | `cubic-bezier(0.2, 0, 0, 1)` | Default — fast out, authoritative |
 | `decelerate` | `--ease-decelerate` | `cubic-bezier(0, 0, 0.2, 1)` | Element enters screen — starts fast, settles |
 | `accelerate` | `--ease-accelerate` | `cubic-bezier(0.4, 0, 1, 1)` | Element leaves screen — starts slow, exits fast |
-| `spring` | `--ease-spring` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | Playful overshoot — mascot entrance, success state |
+| `spring` | `--ease-spring` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | Playful overshoot — success state |
 
 ### Animation Principles
 
 - **Shell**: glow pulses only. No translate/scale animations on functional UI. `agent-active` class pulses `box-shadow` on the accent glow. Status dots pulse on `busy`.
-- **Onboarding**: spring easing on mascot entrance, decelerate on step transitions, standard on all interactive feedback.
+- **Onboarding**: decelerate on step transitions, standard on all interactive feedback.
 - **Respect `prefers-reduced-motion`**: wrap all keyframe animations in `@media (prefers-reduced-motion: no-preference)`.
 
 ---
@@ -264,7 +255,7 @@ The Shell theme uses **zero decorative shadows** — glow only.
 
 | Token | CSS var | Value | Use |
 |---|---|---|---|
-| `glow-accent` | `--glow-accent` | `0 0 12px rgba(200,241,53,0.18)` | Pill border, focused URL bar |
+| `glow-accent` | `--glow-accent` | `0 0 12px rgba(109,129,150,0.18)` | Pill border, focused URL bar |
 | `focusRing` | (semantic) | `0 0 0 2px var(--color-accent-default)` | Keyboard focus ring on interactive elements |
 | `shadowSm` | (onboarding only) | `0 1px 3px rgba(0,0,0,0.4)` | Card elevation |
 | `shadowMd` | (onboarding only) | `0 4px 12px rgba(0,0,0,0.5)` | Modal elevation |
@@ -329,10 +320,10 @@ Monospace font (`--font-mono`). Shows glow on `:focus-within`. Do not use `--fon
 These rules are hard constraints. Any code that violates them will be rejected in review.
 
 - **No Inter font.** The app uses Geist (UI) and Berkeley Mono (mono). Inter is banned. Never add it as a fallback, import, or `font-family` value.
-- **No sparkles icon.** The app has no sparkle/stars decorative element. The mascot is the personality surface — not icons.
+- **No sparkles icon.** The app has no sparkle/stars decorative element.
 - **No `!important`.** All specificity is managed via `[data-theme]` attribute selectors. `!important` is a sign of specificity debt and will be reverted.
 - **No left outline / left border emphasis.** Do not use `border-left` as a visual emphasis pattern (the "vibe coding" tell). Use background color, text weight, or icon state for active/selected emphasis.
-- **No approximated numbers.** Token values are exact: `#c8f135` not `#c9f135`, `80ms` not `~80ms`, `cubic-bezier(0.2, 0, 0, 1)` not `ease-out`. Always copy from `tokens.ts` or the CSS variables.
+- **No approximated numbers.** Token values are exact: `#6D8196` not `#c9f135`, `80ms` not `~80ms`, `cubic-bezier(0.2, 0, 0, 1)` not `ease-out`. Always copy from `tokens.ts` or the CSS variables.
 - **No inline `style` overrides that duplicate a CSS var.** If a CSS var exists for the value, use the var. Inline styles are only for truly dynamic values (e.g. computed widths from JS).
 - **No shadow in Shell theme.** `--shadow-sm/md/lg` are all `none` in the Shell theme. Elevation in the shell is expressed via background color steps (`bgBase` → `bgElevated` → `bgOverlay`), not shadows.
 

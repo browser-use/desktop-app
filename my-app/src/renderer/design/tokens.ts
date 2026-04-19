@@ -36,9 +36,9 @@ export type SlateKey = keyof typeof SLATE;
 // Accent primitives — neon yellow-green (ONE accent colour)
 // ---------------------------------------------------------------------------
 export const ACCENT = {
-  base:  '#c8f135',   // --accent-base
-  dim:   '#b8e020',   // --accent-dim  (pressed/active — darker)
-  hover: '#d4f74e',   // --accent-hover
+  base:  '#6D8196',   // --accent-base
+  dim:   '#5C7085',   // --accent-dim  (pressed/active — darker)
+  hover: '#7E92A7',   // --accent-hover
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -74,11 +74,11 @@ export const SHELL_COLORS = {
   borderStrong:  SLATE[9],  // #3a3a44
 
   // Accent
-  accentDefault: ACCENT.base,   // #c8f135
-  accentHover:   ACCENT.hover,  // #d4f74e
-  accentActive:  ACCENT.dim,    // #b8e020
-  accentSubtle:  'rgba(200, 241, 53, 0.10)',
-  accentGlow:    'rgba(200, 241, 53, 0.18)',
+  accentDefault: ACCENT.base,   // #6D8196
+  accentHover:   ACCENT.hover,  // #7E92A7
+  accentActive:  ACCENT.dim,    // #5C7085
+  accentSubtle:  'rgba(109, 129, 150, 0.10)',
+  accentGlow:    'rgba(109, 129, 150, 0.18)',
 
   // Status
   statusSuccess: STATUS.success,  // #4ade80
@@ -124,8 +124,8 @@ export const ONBOARDING_COLORS = {
   accentDefault: ACCENT.base,
   accentHover:   ACCENT.hover,
   accentActive:  ACCENT.dim,
-  accentSubtle:  'rgba(200, 241, 53, 0.12)',
-  accentGlow:    'rgba(200, 241, 53, 0.20)',
+  accentSubtle:  'rgba(109, 129, 150, 0.12)',
+  accentGlow:    'rgba(109, 129, 150, 0.20)',
 
   // Status
   statusSuccess: STATUS.success,
@@ -147,11 +147,6 @@ export const ONBOARDING_COLORS = {
   pillMore:        '#fb923c',
   pillMoreBg:      'rgba(251, 146, 60, 0.18)',
 
-  // Mascot body — blue-grey character
-  mascotBody:      '#7fb3d0',
-  mascotBodyShadow: '#5a9abf',
-  mascotEye:       '#1a1a2e',
-  mascotHighlight: '#b0d4e8',
 
   // Modal
   modalBg:     '#22222a',
@@ -289,9 +284,9 @@ export const SHADOWS = {
 } as const;
 
 export const GLOWS = {
-  accentSm: '0 0 8px rgba(200, 241, 53, 0.12)',
-  accentMd: '0 0 16px rgba(200, 241, 53, 0.20)',
-  accentLg: '0 0 32px rgba(200, 241, 53, 0.30)',
+  accentSm: '0 0 8px rgba(109, 129, 150, 0.12)',
+  accentMd: '0 0 16px rgba(109, 129, 150, 0.20)',
+  accentLg: '0 0 32px rgba(109, 129, 150, 0.30)',
 } as const;
 
 // ---------------------------------------------------------------------------
