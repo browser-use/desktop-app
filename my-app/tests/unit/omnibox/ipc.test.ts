@@ -118,7 +118,7 @@ describe('omnibox/ipc.ts', () => {
       shortcutsStore: shortcutsStore as unknown as ShortcutsStore,
       historyStore: historyStore as unknown as HistoryStore,
       bookmarkStore: bookmarkStore as unknown as BookmarkStore,
-      getOpenTabs,
+      getOpenTabs: getOpenTabs as unknown as () => Array<{ title: string; url: string }>,
     });
   });
 
