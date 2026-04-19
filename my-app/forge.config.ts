@@ -272,11 +272,6 @@ const config: ForgeConfig = {
           name: 'bookmarks',
           config: 'vite.bookmarks.config.mts',
         },
-        {
-          // Issue #31: bookmarks manager renderer
-          name: 'bookmarks',
-          config: 'vite.bookmarks.config.ts',
-        },
         // Issue #37: downloads internal page renderer — disabled in CI until
         // the missing vite.downloads.config.ts + src/renderer/downloads/
         // scaffold lands on main. Without this guard electron-forge fails the
