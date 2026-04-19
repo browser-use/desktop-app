@@ -638,6 +638,10 @@ function checkOnboardingStructure(capturePath: string, stateName: string): strin
   try {
     const png = loadPng(capturePath);
 
+    // Sample background region for luminance comparisons
+    const bgSampleOb = sampleRegionRgb(png, 0, 0, 100, 100);
+    const bgLuminance = 0.2126 * bgSampleOb.r + 0.7152 * bgSampleOb.g + 0.0722 * bgSampleOb.b;
+
     // 1. Image should have reasonable dimensions (not tiny = crash)
     if (png.width < 400 || png.height < 300) {
       issues.push(`Window too small (${png.width}×${png.height}) — may be a crash or minimal window`);
