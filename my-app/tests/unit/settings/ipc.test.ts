@@ -27,7 +27,7 @@ const { loggerSpy } = vi.hoisted(() => ({
 vi.mock('../../../src/main/logger', () => ({ mainLogger: loggerSpy }));
 
 const { mockReadFileSync, mockWriteFileSync, mockMkdirSync, mockExistsSync } = vi.hoisted(() => ({
-  mockReadFileSync: vi.fn(() => { throw new Error('ENOENT'); }),
+  mockReadFileSync: vi.fn((): string => { throw new Error('ENOENT'); }),
   mockWriteFileSync: vi.fn(),
   mockMkdirSync: vi.fn(),
   mockExistsSync: vi.fn(() => false),
