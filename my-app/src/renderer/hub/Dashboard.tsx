@@ -116,30 +116,29 @@ export function Dashboard({ sessions, onSwitchToGrid }: DashboardProps): React.R
   return (
     <div className="dashboard">
       <div className="dashboard__stats">
-        <div className="dashboard__stat-card">
+        <div className="dashboard__stat dashboard__stat--live">
           <span className="dashboard__stat-label">Running</span>
           <span className="dashboard__stat-value">
             <span className="dashboard__stat-dot dashboard__stat-dot--running" />
             {runningCount}
           </span>
-          <span className="dashboard__stat-live">LIVE</span>
         </div>
-        <div className="dashboard__stat-card">
+        <div className="dashboard__stat">
           <span className="dashboard__stat-label">Stuck</span>
           <span className="dashboard__stat-value">
             <span className="dashboard__stat-dot dashboard__stat-dot--stuck" />
             {stuckCount}
           </span>
         </div>
-        <div className="dashboard__stat-card">
+        <div className="dashboard__stat">
           <span className="dashboard__stat-label">Completed</span>
           <span className="dashboard__stat-value">{stoppedCount}</span>
         </div>
-        <div className="dashboard__stat-card">
+        <div className="dashboard__stat">
           <span className="dashboard__stat-label">Today</span>
           <span className="dashboard__stat-value">{MOCK_STATS.sessionsToday}</span>
         </div>
-        <div className="dashboard__stat-card">
+        <div className="dashboard__stat">
           <span className="dashboard__stat-label">Tokens used</span>
           <span className="dashboard__stat-value">{formatNumber(MOCK_STATS.totalTokens)}</span>
         </div>

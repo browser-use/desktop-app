@@ -41,6 +41,23 @@ The user's job is simple: spin off tasks and know if they're done or not. If som
 - Verbose metadata — keep it minimal
 - Implementation details of how the agent works — just show results
 
+### Don't re-explain what's already obvious
+Never add redundant indicators. If a status dot is green and pulsing, don't also add a "LIVE" badge — the visual already communicates it. If the column header says "Running," don't repeat it in the cell. Every label, icon, and indicator must earn its place by adding information the user doesn't already have from context. Redundancy makes the UI look template-generated.
+
+### Every task gets its own browser
+Each agent session spawns an isolated Chromium context (separate cookies, storage, history). No shared state between agents. No collision with the user's personal browsing. This is the entire reason the app exists — agents need their own browsers.
+
+### The user must be able to see and touch the browser
+Users need full observability and control over agent browsers. These are not background processes hidden behind a log stream. The user should be able to:
+- **Watch** the agent's browser working in real time (one click from the pane)
+- **Take over** the browser to intervene (solve a captcha, log in, click something)
+- **Switch back** to the output stream view seamlessly
+
+These transitions must be fluid and one-click — no modals, no confirmation dialogs, no multi-step process. The pane itself toggles between output view and browser view. When the user is watching the browser, they should feel like they're looking through a window, not operating a remote desktop tool.
+
+### Surface control, don't bury it
+Every action the user might need during an agent run (watch browser, intervene, stop, restart) should be visible in the pane chrome — not hidden in menus or behind keyboard shortcuts. One click away, always.
+
 ## Design language
 
 ### Inspiration

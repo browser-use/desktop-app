@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AgentPane } from './AgentPane';
 import { ListView } from './ListView';
 import { Dashboard } from './Dashboard';
-import { TaskInput } from './TaskInput';
+import { CommandBar } from './CommandBar';
 import { MOCK_SESSIONS } from './mock-data';
 import type { AgentSession, OutputEntry } from './types';
 
@@ -55,6 +55,18 @@ function DashboardIcon(): React.ReactElement {
 export function HubApp(): React.ReactElement {
   const [sessions, setSessions] = useState<AgentSession[]>(MOCK_SESSIONS);
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+  const [cmdBarOpen, setCmdBarOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCmdBarOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const handleCreateSession = useCallback((prompt: string) => {
     const id = `session-${++sessionCounter}`;
@@ -188,16 +200,18 @@ export function HubApp(): React.ReactElement {
       <header className="hub-toolbar">
         <div className="hub-toolbar__left">
           <span className="hub-toolbar__title">Agent Hub</span>
-          {sessions.length > 0 && (
-            <span className="hub-toolbar__count">
-              {sessions.filter((s) => s.status === 'running').length} running
-              <span className="hub-toolbar__count-sep" />
-              {sessions.length} total
-            </span>
-          )}
         </div>
-        {sessions.length > 0 && (
-          <div className="hub-toolbar__right">
+        <div className="hub-toolbar__right">
+          <button
+            className="hub-toolbar__new-btn"
+            onClick={() => setCmdBarOpen(true)}
+            aria-label="New agent"
+            title="New agent"
+          >
+            <PlusIcon />
+            <span className="hub-toolbar__new-label">New agent</span>
+          </button>
+          {sessions.length > 0 && (
             <div className="hub-toolbar__view-toggle" role="radiogroup" aria-label="View mode">
               <button
                 className={`hub-toolbar__view-btn${viewMode === 'dashboard' ? ' hub-toolbar__view-btn--active' : ''}`}
@@ -224,8 +238,8 @@ export function HubApp(): React.ReactElement {
                 <ListIcon />
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {hasNoSessions ? (
@@ -248,7 +262,11 @@ export function HubApp(): React.ReactElement {
         <ListView sessions={sessions} onSelectSession={handleSelectSession} />
       )}
 
-      <TaskInput onSubmit={handleCreateSession} />
+      <CommandBar
+        open={cmdBarOpen}
+        onClose={() => setCmdBarOpen(false)}
+        onSubmit={handleCreateSession}
+      />
     </div>
   );
 }

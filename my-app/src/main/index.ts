@@ -47,6 +47,7 @@ import { getEngine, setEngine, type EngineId } from './hl/engine';
 import { forwardAgentEvent } from './pill';
 // Session management
 import { SessionManager } from './sessions/SessionManager';
+import { BrowserPool } from './sessions/BrowserPool';
 // Settings window (no browser-feature IPC handlers)
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
 // Auto-updater
@@ -106,6 +107,7 @@ let shellWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 
 const sessionManager = new SessionManager();
+const browserPool = new BrowserPool();
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({
   clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com',
@@ -127,18 +129,8 @@ function openShellAndWire(): BrowserWindow {
     mainLogger.warn('main.hotkey', { msg: 'Cmd+K hotkey registration failed — another app may own it' });
   }
 
-  // Attach Cmd+K intercept on shell window's own webContents
-  shellWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return;
-    if (input.key !== 'k' && input.key !== 'K') return;
-    const cmdOrCtrl = process.platform === 'darwin' ? input.meta : input.control;
-    if (!cmdOrCtrl) return;
-    if (input.shift || input.alt) return;
-    if (process.platform === 'darwin' && input.control) return;
-    event.preventDefault();
-    mainLogger.debug('main.shellBeforeInput.cmdK');
-    togglePill();
-  });
+  // Cmd+K is handled by the hub renderer's own keydown listener (CommandBar).
+  // No before-input-event intercept needed — let the key pass through to the DOM.
 
   buildApplicationMenu();
 
@@ -502,11 +494,9 @@ function buildApplicationMenu(): void {
       label: 'Agent',
       submenu: [
         {
-          label: 'Toggle Agent Pill',
-          accelerator: 'CommandOrControl+K',
+          label: 'New Agent',
           click: () => {
-            mainLogger.debug('menu.togglePill');
-            togglePill();
+            mainLogger.debug('menu.newAgent');
           },
         },
       ],

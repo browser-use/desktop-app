@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { STATUS_LABEL, OUTPUT_TYPE_LABEL } from './constants';
+import { ContentRenderer, getPreview } from './ContentRenderer';
 import type { AgentSession, OutputEntry } from './types';
 
 function formatElapsed(createdAt: number): string {
@@ -77,9 +78,9 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
   const [collapsed, setCollapsed] = useState(entry.type === 'thinking');
   const canCollapse = entry.type === 'thinking' || entry.type === 'tool_result';
 
-  const label = entry.tool
-    ? `${OUTPUT_TYPE_LABEL[entry.type]} — ${entry.tool}`
-    : OUTPUT_TYPE_LABEL[entry.type] ?? entry.type;
+  const typeLabel = OUTPUT_TYPE_LABEL[entry.type] ?? entry.type;
+  const label = entry.tool ? `${typeLabel} — ${entry.tool}` : typeLabel;
+  const preview = collapsed ? getPreview(entry.content) : null;
 
   return (
     <div className={`entry entry--${entry.type}`}>
@@ -92,7 +93,10 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
         onKeyDown={canCollapse ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCollapsed((c) => !c); } } : undefined}
       >
         <span className="entry__icon">{entryIcon(entry.type)}</span>
-        <span className="entry__label">{label}</span>
+        <span className="entry__label">
+          {label}
+          {preview && <span className="entry__preview"> — {preview}</span>}
+        </span>
         {entry.duration != null && (
           <span className="entry__dur">{formatDuration(entry.duration)}</span>
         )}
@@ -107,7 +111,7 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
       </div>
       {!collapsed && (
         <div className="entry__body">
-          <pre className="entry__pre">{entry.content}</pre>
+          <ContentRenderer content={entry.content} type={entry.type} />
         </div>
       )}
     </div>
