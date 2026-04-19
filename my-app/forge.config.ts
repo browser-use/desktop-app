@@ -145,157 +145,45 @@ const config: ForgeConfig = {
     new VitePlugin({
       build: [
         {
-          // Track A: nested main entry point
+          // Main process entry point
           entry: 'src/main/index.ts',
           config: 'vite.main.config.ts',
           target: 'main',
         },
         {
-          // Track A: shell preload
+          // Shell preload
           entry: 'src/preload/shell.ts',
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
         {
-          // Track B: pill preload
+          // Pill preload
           entry: 'src/preload/pill.ts',
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
         {
-          // Track C: onboarding preload
+          // Onboarding preload
           entry: 'src/preload/onboarding.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Track 5: settings preload
-          entry: 'src/preload/settings.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #45: profile picker preload
-          entry: 'src/preload/profilePicker.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #71: extensions preload
-          entry: 'src/preload/extensions.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #40: history internal page preload
-          entry: 'src/preload/history.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #31: bookmarks manager preload
-          entry: 'src/preload/bookmarks.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #37: downloads internal page preload
-          entry: 'src/preload/downloads.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #26: chrome:// internal pages preload
-          entry: 'src/preload/chrome.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #97: print preview preload
-          entry: 'src/preload/printPreview.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        // Issue #105: new tab page preload — disabled until
-        // src/preload/newtab.ts lands alongside the newtab renderer.
-        {
-          entry: 'src/preload/newtab.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload',
-        },
-        {
-          // Issue #77: devtools panel preload
-          entry: 'src/preload/devtools.ts',
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
       ],
       renderer: [
         {
-          // Track A: shell renderer (src/renderer/shell/shell.html)
+          // Shell renderer (src/renderer/shell/shell.html)
           name: 'shell',
           config: 'vite.renderer.config.mts',
         },
         {
-          // Track B: pill renderer (src/renderer/pill/pill.html)
+          // Pill renderer (src/renderer/pill/pill.html)
           name: 'pill',
           config: 'vite.pill.config.mts',
         },
         {
-          // Track C: onboarding renderer (src/renderer/onboarding/onboarding.html)
+          // Onboarding renderer (src/renderer/onboarding/onboarding.html)
           name: 'onboarding',
           config: 'vite.onboarding.config.mts',
-        },
-        {
-          // Track 5: settings renderer (src/renderer/settings/settings.html)
-          name: 'settings',
-          config: 'vite.settings.config.mts',
-        },
-        {
-          // Issue #45: profile picker renderer
-          name: 'profile_picker',
-          config: 'vite.profilePicker.config.mts',
-        },
-        {
-          // Issue #71: extensions renderer
-          name: 'extensions',
-          config: 'vite.extensions.config.mts',
-        },
-        {
-          // Issue #40: history internal page renderer
-          name: 'history',
-          config: 'vite.history.config.mts',
-        },
-        {
-          // Issue #31: bookmarks manager renderer
-          name: 'bookmarks',
-          config: 'vite.bookmarks.config.mts',
-        },
-        {
-          // Issue #37: downloads internal page renderer
-          name: 'downloads',
-          config: 'vite.downloads.config.mts',
-        },
-        {
-          // Issue #26: chrome:// internal pages renderer
-          name: 'chrome_pages',
-          config: 'vite.chrome.config.mts',
-        },
-        {
-          // Issue #97: print preview renderer
-          name: 'print_preview',
-          config: 'vite.printPreview.config.mts',
-        },
-        // Issue #105: new tab page renderer — disabled until
-        // vite.newtab.config.ts lands.
-        {
-          name: 'newtab',
-          config: 'vite.newtab.config.mts',
-        },
-        {
-          // Issue #77: devtools panel renderer
-          name: 'devtools_panel',
-          config: 'vite.devtools.config.mts',
         },
       ],
     }),

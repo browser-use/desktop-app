@@ -18,10 +18,12 @@ import { mainLogger } from '../logger';
 import type { AccountStore } from './AccountStore';
 import { getSyncEnabled } from './AccountStore';
 import type { KeychainStore } from './KeychainStore';
-import type { BookmarkStore } from '../bookmarks/BookmarkStore';
-import type { HistoryStore } from '../history/HistoryStore';
-import type { PasswordStore } from '../passwords/PasswordStore';
-import type { AutofillStore } from '../autofill/AutofillStore';
+
+// TODO: browser store modules deleted in nuclear pivot — stub minimal interfaces
+interface BookmarkStore { deleteAll(): void; flushSync(): void; }
+interface HistoryStore  { clearAll(): void; flushSync(): void; }
+interface PasswordStore { deleteAllPasswords(): void; flushSync(): void; }
+interface AutofillStore { deleteAll(): void; flushSync(): void; }
 
 // ---------------------------------------------------------------------------
 // Constants

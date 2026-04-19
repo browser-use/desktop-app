@@ -18,15 +18,22 @@ import type { AccountStore } from '../identity/AccountStore';
 import type { KeychainStore } from '../identity/KeychainStore';
 import { getSettingsWindow, openSettingsWindow } from './SettingsWindow';
 import { assertString, assertOneOf } from '../ipc-validators';
-import {
-  clearBrowsingData,
-  DATA_TYPES,
-  type DataType,
-  type ClearDataResult,
-} from '../privacy/ClearDataController';
-import { isBiometricAvailable } from '../passwords/BiometricAuth';
-import type { PasswordStore } from '../passwords/PasswordStore';
-import type { DownloadManager } from '../downloads/DownloadManager';
+// TODO: privacy/ClearDataController, passwords/*, downloads/* deleted in nuclear pivot
+// Stub types and no-op implementations to satisfy remaining references.
+type DataType = string;
+type ClearDataResult = { cleared: string[]; errors: string[] };
+const DATA_TYPES: readonly DataType[] = [];
+async function clearBrowsingData(_opts: {
+  types: DataType[];
+  timeRangeMs: number;
+  passwordStore?: unknown;
+  downloadManager?: unknown;
+}): Promise<ClearDataResult> {
+  return { cleared: [], errors: ['Browser data clearing not available in agent hub'] };
+}
+function isBiometricAvailable(): boolean { return false; }
+type PasswordStore = null;
+type DownloadManager = null;
 import {
   performFactoryReset,
   type FactoryResetStores,
