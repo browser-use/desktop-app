@@ -519,31 +519,47 @@ export function URLBar({
   return (
     <div className={`url-bar url-bar--${security}`}>
       {/* Security icon */}
-      <span className="url-bar__security" aria-label={security}>
-        {security === 'secure' && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.6" />
-            <path
-              d="M4 5V3.5a2 2 0 0 1 4 0V5"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              fill="none"
-            />
-          </svg>
+      <div className="url-bar__security-wrap">
+        <button
+          ref={securityRef}
+          type="button"
+          className="url-bar__security"
+          aria-label={security === 'secure' ? 'Connection is secure' : security === 'insecure' ? 'Connection is not secure' : 'Page info'}
+          onClick={handleSecurityClick}
+          tabIndex={-1}
+        >
+          {security === 'secure' && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <rect x="2" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.6" />
+              <path
+                d="M4 5V3.5a2 2 0 0 1 4 0V5"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                fill="none"
+              />
+            </svg>
+          )}
+          {security === 'insecure' && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path
+                d="M6 2L10.5 10H1.5L6 2Z"
+                stroke="#e5534b"
+                strokeWidth="1.2"
+                fill="none"
+              />
+              <line x1="6" y1="5.5" x2="6" y2="7.5" stroke="#e5534b" strokeWidth="1.2" />
+              <circle cx="6" cy="9" r="0.5" fill="#e5534b" />
+            </svg>
+          )}
+        </button>
+        {pageInfoOpen && (
+          <PageInfoPopover
+            security={security}
+            pageInfo={pageInfo}
+            onClose={() => setPageInfoOpen(false)}
+          />
         )}
-        {security === 'insecure' && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path
-              d="M6 2L10.5 10H1.5L6 2Z"
-              stroke="#e5534b"
-              strokeWidth="1.2"
-              fill="none"
-            />
-            <line x1="6" y1="5.5" x2="6" y2="7.5" stroke="#e5534b" strokeWidth="1.2" />
-            <circle cx="6" cy="9" r="0.5" fill="#e5534b" />
-          </svg>
-        )}
-      </span>
+      </div>
 
       {/* URL input */}
       <input
