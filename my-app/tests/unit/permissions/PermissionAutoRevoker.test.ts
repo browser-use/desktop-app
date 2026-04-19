@@ -47,7 +47,7 @@ function makeRecord(
 }
 
 function makeHistoryEntry(url: string, visitTime: number): HistoryEntry {
-  return { id: url, url, title: url, visitTime, visitCount: 1, typedCount: 0, lastVisitTime: visitTime };
+  return { id: url, url, title: url, visitTime, favicon: null };
 }
 
 function makeRevoker(
