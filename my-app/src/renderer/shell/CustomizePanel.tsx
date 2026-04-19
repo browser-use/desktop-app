@@ -30,7 +30,7 @@ const PRESET_BACKGROUNDS: string[] = [
 ];
 
 const ACCENT_PRESETS: string[] = [
-  '#c8f135', '#1A73E8', '#8AB4F8', '#1E8E3E',
+  '#6D8196', '#1A73E8', '#8AB4F8', '#1E8E3E',
   '#81C995', '#F29900', '#FDD663', '#D93025',
   '#F28B82', '#A142F4', '#D7AEFB', '#FF6D00',
   '#EC407A', '#00BCD4', '#78909C', '#FFFFFF',

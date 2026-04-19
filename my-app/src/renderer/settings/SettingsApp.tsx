@@ -619,7 +619,7 @@ function AppearanceTab(): React.ReactElement {
               <span
                 className="settings-swatch"
                 aria-hidden="true"
-                style={{ background: 'linear-gradient(135deg, #1a1a1f 50%, #c8f135 50%)' }}
+                style={{ background: 'linear-gradient(135deg, #1a1a1f 50%, #6D8196 50%)' }}
               />
             </span>
           </label>

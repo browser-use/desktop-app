@@ -45,7 +45,7 @@ const DEFAULTS: NtpCustomization = {
   backgroundColor: '#202124',
   backgroundImageDataUrl: '',
 
-  accentColor: '#c8f135',
+  accentColor: '#6D8196',
   colorScheme: 'system',
 
   shortcutMode: 'most-visited',

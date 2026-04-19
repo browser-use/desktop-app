@@ -30,14 +30,14 @@
  *
  * PILL_BG_GLASS        — semi-transparent dark glass: rgba(20, 20, 22, 0.92)
  * PILL_BORDER_IDLE     — white at 8% alpha: rgba(255, 255, 255, 0.08)
- * PILL_BORDER_FOCUS    — accent at 35% alpha: rgba(200, 241, 53, 0.35)
- * PILL_BORDER_STREAM   — accent at 28% alpha: rgba(200, 241, 53, 0.28)
+ * PILL_BORDER_FOCUS    — accent at 35% alpha: rgba(109, 129, 150, 0.35)
+ * PILL_BORDER_STREAM   — accent at 28% alpha: rgba(109, 129, 150, 0.28)
  * PILL_INSET_HIGHLIGHT — white at 4% alpha inset: rgba(255, 255, 255, 0.04)
  * PILL_SHADOW_DROP     — 12px 48px deep drop: rgba(0, 0, 0, 0.5)
  * PILL_SHADOW_STREAM   — slightly denser drop: rgba(0, 0, 0, 0.55)
- * PILL_PROGRESS_TRACK  — accent at 12% alpha: rgba(200, 241, 53, 0.12)
- * PILL_ACCENT_FULL     — accent at 70% alpha: rgba(200, 241, 53, 0.7)
- * PILL_ACCENT_DIM      — accent at 28% alpha: rgba(200, 241, 53, 0.28)
+ * PILL_PROGRESS_TRACK  — accent at 12% alpha: rgba(109, 129, 150, 0.12)
+ * PILL_ACCENT_FULL     — accent at 70% alpha: rgba(109, 129, 150, 0.7)
+ * PILL_ACCENT_DIM      — accent at 28% alpha: rgba(109, 129, 150, 0.28)
  * PILL_KBD_BG          — white at 6% alpha: rgba(255, 255, 255, 0.06)
  * PILL_KBD_BORDER      — white at 10% alpha: rgba(255, 255, 255, 0.10)
  * PILL_DIVIDER         — white at 7% alpha: rgba(255, 255, 255, 0.07)
@@ -182,7 +182,7 @@ body {
      It sits between --color-accent-default (100%) and --color-accent-muted (10-12%)
      and communicates "ready but not active". A dedicated token would be correct
      but this is pill-internal. */
-  background-color: rgba(200, 241, 53, 0.70);
+  background-color: rgba(109, 129, 150, 0.70);
   transition: background-color var(--duration-normal, 180ms) var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
 }
 
@@ -200,13 +200,13 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pill-container[data-state="streaming"] .pill-dot {
     animation: none;
-    background-color: rgba(200, 241, 53, 0.70);
+    background-color: rgba(109, 129, 150, 0.70);
   }
 }
 
 @keyframes pill-dot-pulse {
-  from { background-color: rgba(200, 241, 53, 0.70); }
-  to   { background-color: rgba(200, 241, 53, 0.28); }
+  from { background-color: rgba(109, 129, 150, 0.70); }
+  to   { background-color: rgba(109, 129, 150, 0.28); }
 }
 
 /* Result icon — replaces dot in done/error states */
@@ -254,7 +254,7 @@ body {
   font-weight: var(--font-weight-regular, 400);
   line-height: 1.4;
   color: var(--color-fg-primary, #f0f0f2);
-  caret-color: var(--color-accent-default, #c8f135);
+  caret-color: var(--color-accent-default, #6D8196);
 }
 
 .pill-input:focus-visible {
@@ -332,7 +332,7 @@ body {
   /* why-not-a-token: accent at 12% alpha is the progress track fill — a very
      dim tinted track behind the moving accent bar. Same rationale as other
      pill glass constants. */
-  background-color: rgba(200, 241, 53, 0.12);
+  background-color: rgba(109, 129, 150, 0.12);
   overflow: hidden;
   opacity: 0;
   transition: opacity 200ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
@@ -350,7 +350,7 @@ body {
   width: 40%;
   height: 100%;
   border-radius: 1px;
-  background-color: var(--color-accent-default, #c8f135);
+  background-color: var(--color-accent-default, #6D8196);
   animation: pill-progress-slide 1.4s var(--ease-in-out, cubic-bezier(0.4, 0, 0.6, 1)) infinite;
 }
 
@@ -578,7 +578,7 @@ body {
 .pill-spinner {
   width: 12px;
   height: 12px;
-  color: var(--color-accent-default, #c8f135);
+  color: var(--color-accent-default, #6D8196);
   opacity: 0.8;
 }
 
@@ -654,7 +654,7 @@ body {
 }
 
 .pill-palette-row--agent .pill-palette-icon {
-  color: var(--color-accent-default, #c8f135);
+  color: var(--color-accent-default, #6D8196);
 }
 
 .pill-palette-current-dot {
@@ -662,7 +662,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-accent-default, #c8f135);
+  background: var(--color-accent-default, #6D8196);
 }
 
 .pill-palette-title {
@@ -774,13 +774,13 @@ body {
 
 .pill-stream-tool-name {
   font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
-  color: var(--color-accent-default, #c8f135);
+  color: var(--color-accent-default, #6D8196);
   font-size: 12px;
 }
 
 .pill-stream-tool-status {
   font-family: var(--font-mono, 'Berkeley Mono', ui-monospace, monospace);
-  color: var(--color-accent-default, #c8f135);
+  color: var(--color-accent-default, #6D8196);
   flex-shrink: 0;
 }
 

@@ -35,13 +35,13 @@
   --color-border-strong:  var(--slate-9); /* #3a3a44 */
 
   /* -- Accent overrides -- */
-  --color-accent-default: var(--accent-base);   /* #c8f135 */
-  --color-accent-hover:   var(--accent-hover);  /* #d4f74e */
-  --color-accent-dim:     var(--accent-dim);    /* #b8e020 */
-  --color-accent-muted:   rgba(200, 241, 53, 0.10);
-  --color-accent-glow:    rgba(200, 241, 53, 0.18);
+  --color-accent-default: var(--accent-base);   /* #6D8196 */
+  --color-accent-hover:   var(--accent-hover);  /* #7E92A7 */
+  --color-accent-dim:     var(--accent-dim);    /* #5C7085 */
+  --color-accent-muted:   rgba(109, 129, 150, 0.10);
+  --color-accent-glow:    rgba(109, 129, 150, 0.18);
   /* backward-compat alias for older component code */
-  --color-accent-subtle:  rgba(200, 241, 53, 0.10);
+  --color-accent-subtle:  rgba(109, 129, 150, 0.10);
 
   /* -- Status overrides -- */
   --color-status-success: var(--success); /* #4ade80 */
@@ -94,9 +94,9 @@
   --shadow-lg: none;
   --shadow-xl: none;
 
-  --glow-accent-sm: 0 0 8px rgba(200, 241, 53, 0.12);
-  --glow-accent-md: 0 0 16px rgba(200, 241, 53, 0.20);
-  --glow-accent-lg: 0 0 32px rgba(200, 241, 53, 0.30);
+  --glow-accent-sm: 0 0 8px rgba(109, 129, 150, 0.12);
+  --glow-accent-md: 0 0 16px rgba(109, 129, 150, 0.20);
+  --glow-accent-lg: 0 0 32px rgba(109, 129, 150, 0.30);
   --glow-accent:    var(--glow-accent-sm);
 
   /* -- Z-index layers -- */

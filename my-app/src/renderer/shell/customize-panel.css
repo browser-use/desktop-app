@@ -149,7 +149,7 @@
 
 .customize-panel__option-btn--active {
   border-color: var(--color-accent-default);
-  background: rgba(200, 241, 53, 0.06);
+  background: rgba(109, 129, 150, 0.06);
 }
 
 .customize-panel__option-swatch {
