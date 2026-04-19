@@ -1,0 +1,148 @@
+/**
+ * PopupLayerContext — global popup management for z-ordering and ESC dismissal.
+ *
+ * Solves: Electron WebContentsView (native layer) paints above all shell DOM,
+ * hiding popups that extend below the 91px chrome boundary. This context
+ * coordinates hiding the WebContentsView when any overlay popup is open
+ * and manages a stack-based ESC key dismissal system.
+ *
+ * Popup types:
+ *   dropdown — overlay popup (profile menu, omnibox, zoom, etc.)
+ *              Hides WebContentsView while open so popup is visible.
+ *   modal   — full-screen overlay (bookmark dialog, tab search, etc.)
+ *              Hides WebContentsView while open.
+ *   bar     — inline info bar (permission, password, device picker)
+ *              Pushes WebContentsView down via setChromeHeight.
+ */
+
+import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react';
+
+declare const electronAPI: {
+  shell: {
+    setChromeHeight: (height: number) => Promise<void>;
+    setContentVisible: (visible: boolean) => Promise<void>;
+  };
+};
+
+const BASE_CHROME_HEIGHT = 91;
+const BOOKMARKS_BAR_HEIGHT = 32;
+
+interface PopupEntry {
+  id: string;
+  type: 'dropdown' | 'modal' | 'bar';
+  height: number;
+  onDismiss: () => void;
+  escDismiss: boolean;
+}
+
+interface PopupLayerContextValue {
+  register: (entry: PopupEntry) => void;
+  unregister: (id: string) => void;
+}
+
+const PopupLayerContext = createContext<PopupLayerContextValue | null>(null);
+
+interface PopupLayerProviderProps {
+  children: React.ReactNode;
+  bookmarksBarVisible: boolean;
+}
+
+export function PopupLayerProvider({ children, bookmarksBarVisible }: PopupLayerProviderProps): React.ReactElement {
+  const stackRef = useRef<PopupEntry[]>([]);
+  const contentVisibleRef = useRef(true);
+  const bookmarksBarVisibleRef = useRef(bookmarksBarVisible);
+  bookmarksBarVisibleRef.current = bookmarksBarVisible;
+
+  const syncLayer = useCallback(() => {
+    const stack = stackRef.current;
+    const hasOverlay = stack.some(p => p.type === 'dropdown' || p.type === 'modal');
+
+    if (hasOverlay && contentVisibleRef.current) {
+      electronAPI.shell.setContentVisible(false);
+      contentVisibleRef.current = false;
+    } else if (!hasOverlay && !contentVisibleRef.current) {
+      electronAPI.shell.setContentVisible(true);
+      contentVisibleRef.current = true;
+    }
+
+    const barHeight = stack
+      .filter(p => p.type === 'bar')
+      .reduce((sum, p) => sum + p.height, 0);
+    const total = BASE_CHROME_HEIGHT
+      + (bookmarksBarVisibleRef.current ? BOOKMARKS_BAR_HEIGHT : 0)
+      + barHeight;
+    electronAPI.shell.setChromeHeight(total);
+  }, []);
+
+  const register = useCallback((entry: PopupEntry) => {
+    stackRef.current = [...stackRef.current.filter(e => e.id !== entry.id), entry];
+    syncLayer();
+  }, [syncLayer]);
+
+  const unregister = useCallback((id: string) => {
+    stackRef.current = stackRef.current.filter(e => e.id !== id);
+    syncLayer();
+  }, [syncLayer]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const stack = stackRef.current;
+      if (stack.length === 0) return;
+      const top = stack[stack.length - 1];
+      if (top.escDismiss) {
+        e.preventDefault();
+        e.stopPropagation();
+        top.onDismiss();
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
+
+  useEffect(() => {
+    syncLayer();
+  }, [bookmarksBarVisible, syncLayer]);
+
+  return (
+    <PopupLayerContext.Provider value={{ register, unregister }}>
+      {children}
+    </PopupLayerContext.Provider>
+  );
+}
+
+interface UsePopupLayerConfig {
+  id: string;
+  type: 'dropdown' | 'modal' | 'bar';
+  height?: number;
+  onDismiss: () => void;
+  escDismiss?: boolean;
+  isOpen: boolean;
+}
+
+export function usePopupLayer(config: UsePopupLayerConfig): void {
+  const ctx = useContext(PopupLayerContext);
+  if (!ctx) throw new Error('usePopupLayer requires PopupLayerProvider');
+
+  const onDismissRef = useRef(config.onDismiss);
+  onDismissRef.current = config.onDismiss;
+
+  const stableOnDismiss = useCallback(() => {
+    onDismissRef.current();
+  }, []);
+
+  useEffect(() => {
+    if (config.isOpen) {
+      ctx.register({
+        id: config.id,
+        type: config.type,
+        height: config.height ?? 0,
+        onDismiss: stableOnDismiss,
+        escDismiss: config.escDismiss ?? true,
+      });
+    } else {
+      ctx.unregister(config.id);
+    }
+    return () => ctx.unregister(config.id);
+  }, [config.isOpen, config.id, config.type, config.height, config.escDismiss, stableOnDismiss, ctx]);
+}

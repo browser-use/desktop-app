@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PopupLayerProvider } from './PopupLayerContext';
 import { TabStrip } from './TabStrip';
 import { NavButtons } from './NavButtons';
 import { URLBar } from './URLBar';
@@ -40,7 +41,6 @@ import type { DownloadItemDTO } from '../../main/downloads/DownloadManager';
 // Layout constants — keep in sync with shell.css.
 const BASE_CHROME_HEIGHT = 91;
 const BOOKMARKS_BAR_HEIGHT = 32;
-const DROPDOWN_OVERFLOW_HEIGHT = 300;
 // Any tab URL starting with this scheme is a new-tab placeholder; the
 // bookmarks bar treats those as "NTP" for the 'ntp-only' visibility mode.
 const NTP_URL_RE = /^(data:|about:blank$)/i;
@@ -104,6 +104,7 @@ declare const electronAPI: {
   };
   shell: {
     setChromeHeight: (height: number) => Promise<void>;
+    setContentVisible: (visible: boolean) => Promise<void>;
     setSidePanelWidth: (width: number) => Promise<void>;
     setSidePanelPosition: (position: 'left' | 'right') => Promise<void>;
     getPlatform: () => Promise<string>;
@@ -186,7 +187,6 @@ export function WindowChrome(): React.ReactElement {
   const [tabSearchOpen, setTabSearchOpen] = useState(false);
   const [hoveredUrl, setHoveredUrl] = useState('');
   const [zoomPercent, setZoomPercent] = useState(100);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // Bookmarks state
   const [bookmarksTree, setBookmarksTree] = useState<PersistedBookmarks | null>(null);
@@ -288,13 +288,6 @@ export function WindowChrome(): React.ReactElement {
       console.warn('[WindowChrome] downloads:get-show-on-complete handler not ready yet');
     });
   }, []);
-
-  // Push total chrome height to main whenever bar visibility or dropdown changes
-  // so the WebContentsView repositions correctly.
-  useEffect(() => {
-    const total = BASE_CHROME_HEIGHT + (barVisible ? BOOKMARKS_BAR_HEIGHT : 0) + (dropdownOpen ? DROPDOWN_OVERFLOW_HEIGHT : 0);
-    electronAPI.shell.setChromeHeight(total);
-  }, [barVisible, dropdownOpen]);
 
   // ---------------------------------------------------------------------------
   // IPC event subscriptions
@@ -656,6 +649,7 @@ export function WindowChrome(): React.ReactElement {
   // Render
   // ---------------------------------------------------------------------------
   return (
+    <PopupLayerProvider bookmarksBarVisible={barVisible}>
     <div className={['window-chrome', isFullscreen ? 'window-chrome--fullscreen' : ''].filter(Boolean).join(' ')}>
       {/* Tab strip row */}
       <div className="window-chrome__tab-row">
@@ -754,7 +748,7 @@ export function WindowChrome(): React.ReactElement {
           onClick={handleSidePanelToggle}
         />
 
-        <ProfileMenu onDropdownChange={setDropdownOpen} />
+        <ProfileMenu />
         <AppMenuButton />
       </div>
 
@@ -854,6 +848,7 @@ export function WindowChrome(): React.ReactElement {
         </div>
       )}
     </div>
+    </PopupLayerProvider>
   );
 }
 
