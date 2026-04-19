@@ -29,7 +29,7 @@ import type { AgentEvent } from '../shared/types';
 import { AccountStore, getSyncEnabled } from './identity/AccountStore';
 import { OAuthClient } from './identity/OAuthClient';
 import { KeychainStore } from './identity/KeychainStore';
-import { registerProtocol, initOAuthHandler } from './oauth';
+import { initOAuthHandler } from './oauth';
 import { createOnboardingWindow } from './identity/onboardingWindow';
 import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './identity/onboardingHandlers';
 import { performSignOut, turnOffSync } from './identity/SignOutController';
@@ -174,9 +174,6 @@ mainLogger.info('main.startup', {
   forceOnboarding: process.env.AGB_FORCE_ONBOARDING === '1',
 });
 
-// Register custom protocol scheme for OAuth callback
-// Must be called before app.whenReady() on macOS
-registerProtocol();
 
 // Handle Windows Squirrel installer events
 if (started) {

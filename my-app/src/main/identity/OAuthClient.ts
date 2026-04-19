@@ -1,22 +1,26 @@
 /**
- * OAuthClient — Google OAuth 2.0 + PKCE (RFC 7636) flow.
+ * OAuthClient — Google OAuth 2.0 + PKCE (RFC 7636) flow using loopback redirect.
  *
  * Flow:
- *   1. startAuthFlow(scopes) → generates PKCE, state UUID, opens system browser
- *   2. Main process receives open-url event (agentic-browser://oauth/callback?code=…&state=…)
- *   3. handleCallback({ code, state }) → verifies state, exchanges code for tokens
+ *   1. startAuthFlow(scopes) → spins up a local HTTP server on a random port,
+ *      builds redirect_uri as http://127.0.0.1:<port>, opens system browser
+ *   2. Google redirects back to the loopback server with code + state
+ *   3. Server verifies state, exchanges code for tokens, shuts down
  *   4. Returns { access_token, refresh_token, expires_at, scopes, email }
+ *
+ * This is Google's recommended approach for desktop OAuth clients.
+ * See: https://developers.google.com/identity/protocols/oauth2/native-app
  *
  * Security:
  *   - PKCE: code_verifier is random 64-byte base64url; challenge = SHA-256 of verifier
  *   - State: random UUID verified on callback (CSRF protection)
- *   - Tokens are NEVER logged; only scrubbed metadata (scope count, expires_at) is logged
- *
- * D2 logging: OAuthClient logs every state transition at debug/info level.
- *   Secrets (code, access_token, refresh_token) are NEVER included in log context.
+ *   - Loopback server binds to 127.0.0.1 only (no network exposure)
+ *   - Server shuts down immediately after receiving the callback
+ *   - Tokens are NEVER logged; only scrubbed metadata is logged
  */
 
 import crypto from 'crypto';
+import http from 'node:http';
 import https from 'node:https';
 import { shell } from 'electron';
 import { mainLogger } from '../logger';
@@ -26,21 +30,13 @@ import type { GoogleOAuthScope } from '../../shared/types';
 // Constants
 // ---------------------------------------------------------------------------
 
-export const KEYCHAIN_SERVICE = 'com.agenticbrowser.oauth';
-
-const DEV = process.env.NODE_ENV !== 'production' || process.env.AGENTIC_DEV === '1';
-
-/**
- * Custom protocol scheme. Dev uses a distinct sub-scheme to avoid clashing
- * with a signed prod installation that already owns the base scheme.
- */
-export const PROTOCOL_SCHEME = DEV ? 'agentic-browser-dev' : 'agentic-browser';
-export const REDIRECT_URI = `${PROTOCOL_SCHEME}://oauth/callback`;
+export const KEYCHAIN_SERVICE = 'com.thebrowser.oauth';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
-/** Always-included base scopes for identity (user email + openid). */
 const BASE_SCOPES = ['openid', 'email', 'profile'];
+
+const LOOPBACK_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
 // Scope map: UI service names → Google OAuth scope strings
@@ -73,13 +69,7 @@ export interface PKCEPair {
   codeChallenge: string;
 }
 
-/**
- * Generate a PKCE code_verifier (64 random bytes → base64url, trimmed to 86 chars)
- * and code_challenge (SHA-256 of verifier → base64url).
- * RFC 7636 §4.1: verifier length must be 43–128 chars, unreserved chars only.
- */
 export function generatePKCE(): PKCEPair {
-  // 64 random bytes → 86-char base64url string (all unreserved chars)
   const codeVerifier = crypto
     .randomBytes(64)
     .toString('base64url')
@@ -91,45 +81,6 @@ export function generatePKCE(): PKCEPair {
     .digest('base64url');
 
   return { codeVerifier, codeChallenge };
-}
-
-// ---------------------------------------------------------------------------
-// Auth URL builder (exported for testing)
-// ---------------------------------------------------------------------------
-
-export interface BuildAuthUrlOptions {
-  clientId: string;
-  scopes: GoogleOAuthScope[];
-  state: string;
-  codeChallenge: string;
-}
-
-export interface AuthUrlResult {
-  url: string;
-}
-
-/**
- * Construct the Google OAuth 2.0 authorisation URL.
- * Always prepends BASE_SCOPES (openid, email, profile) to the requested scopes.
- */
-export function buildAuthUrl(opts: BuildAuthUrlOptions): AuthUrlResult {
-  const allScopes = [...BASE_SCOPES, ...opts.scopes];
-  const scopeString = allScopes.join(' ');
-
-  const params = new URLSearchParams({
-    client_id: opts.clientId,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    scope: scopeString,
-    state: opts.state,
-    code_challenge: opts.codeChallenge,
-    code_challenge_method: 'S256',
-    access_type: 'offline',
-    prompt: 'consent',
-  });
-
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return { url };
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +97,24 @@ export interface TokenResult {
 }
 
 // ---------------------------------------------------------------------------
+// Success/error HTML pages served to the user's browser after redirect
+// ---------------------------------------------------------------------------
+
+const SUCCESS_HTML = `<!DOCTYPE html>
+<html><head><title>Sign-in Complete</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a1f;color:#f0f0f2}
+.card{text-align:center;padding:48px;border-radius:16px;background:#252530}
+h1{font-size:24px;margin:0 0 8px}p{color:#8a8f98;margin:0}</style></head>
+<body><div class="card"><h1>Sign-in complete</h1><p>You can close this tab and return to The Browser.</p></div></body></html>`;
+
+const ERROR_HTML = (msg: string) => `<!DOCTYPE html>
+<html><head><title>Sign-in Error</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a1f;color:#f0f0f2}
+.card{text-align:center;padding:48px;border-radius:16px;background:#252530}
+h1{font-size:24px;margin:0 0 8px;color:#ff6b6b}p{color:#8a8f98;margin:0}</style></head>
+<body><div class="card"><h1>Sign-in failed</h1><p>${msg}</p></div></body></html>`;
+
+// ---------------------------------------------------------------------------
 // OAuthClient class
 // ---------------------------------------------------------------------------
 
@@ -154,16 +123,9 @@ export interface OAuthClientOptions {
   clientSecret?: string;
 }
 
-interface PendingFlow {
-  state: string;
-  codeVerifier: string;
-  scopes: GoogleOAuthScope[];
-}
-
 export class OAuthClient {
   private readonly clientId: string;
   private readonly clientSecret: string;
-  private pendingFlow: PendingFlow | null = null;
 
   constructor(opts: OAuthClientOptions) {
     this.clientId = opts.clientId || process.env.GOOGLE_CLIENT_ID || '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com';
@@ -171,129 +133,80 @@ export class OAuthClient {
   }
 
   /**
-   * Start the OAuth flow:
-   *   1. Generate PKCE pair
-   *   2. Generate random state UUID (CSRF)
-   *   3. Build auth URL
-   *   4. Open system browser
-   *
-   * Returns the generated state (for testing/verification).
+   * Run the full OAuth flow end-to-end:
+   *   1. Start loopback HTTP server on a random port
+   *   2. Open system browser to Google consent screen
+   *   3. Wait for redirect callback with auth code
+   *   4. Exchange code for tokens
+   *   5. Shut down server and return tokens
    */
-  async startAuthFlow(scopes: GoogleOAuthScope[]): Promise<string> {
-    mainLogger.info('OAuthClient.startAuthFlow', {
-      scopeCount: scopes.length,
-      scheme: PROTOCOL_SCHEME,
-    });
+  async startAuthFlow(scopes: GoogleOAuthScope[]): Promise<TokenResult> {
+    mainLogger.info('OAuthClient.startAuthFlow', { scopeCount: scopes.length });
 
     const { codeVerifier, codeChallenge } = generatePKCE();
     const state = crypto.randomUUID();
 
-    this.pendingFlow = { state, codeVerifier, scopes };
+    const { port, waitForCallback, shutdown } = await this._startLoopbackServer(state);
+    const redirectUri = `http://127.0.0.1:${port}`;
 
-    const { url } = buildAuthUrl({
-      clientId: this.clientId,
-      scopes,
+    mainLogger.info('OAuthClient.startAuthFlow.loopbackReady', { port, redirectUri });
+
+    const allScopes = [...BASE_SCOPES, ...scopes];
+    const params = new URLSearchParams({
+      client_id: this.clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: allScopes.join(' '),
       state,
-      codeChallenge,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      access_type: 'offline',
+      prompt: 'consent',
     });
 
-    mainLogger.debug('OAuthClient.startAuthFlow.openingBrowser', {
-      redirectUri: REDIRECT_URI,
-      scopeCount: scopes.length,
-      // url is logged without query params to avoid leaking challenge/state to casual log readers
-      urlBase: 'https://accounts.google.com/o/oauth2/v2/auth',
-    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    await shell.openExternal(authUrl);
+    mainLogger.info('OAuthClient.startAuthFlow.browserOpened');
 
-    await shell.openExternal(url);
+    try {
+      const { code } = await waitForCallback;
 
-    mainLogger.info('OAuthClient.startAuthFlow.browserOpened', {
-      state: '[REDACTED — CSRF token]',
-      scopeCount: scopes.length,
-    });
+      mainLogger.info('OAuthClient.startAuthFlow.codeReceived');
+      const tokens = await this._exchangeCode(code, codeVerifier, redirectUri);
 
-    return state;
-  }
-
-  /**
-   * Handle the OAuth callback from the custom protocol handler.
-   * Verifies state, exchanges code for tokens.
-   */
-  async handleCallback(params: { code: string; state: string }): Promise<TokenResult> {
-    mainLogger.info('OAuthClient.handleCallback', {
-      hasCode: !!params.code,
-      hasState: !!params.state,
-    });
-
-    if (!this.pendingFlow) {
-      mainLogger.error('OAuthClient.handleCallback.noFlow', {
-        error: 'No pending OAuth flow — handleCallback called without startAuthFlow',
+      mainLogger.info('OAuthClient.startAuthFlow.tokensReceived', {
+        email: tokens.email,
+        hasRefreshToken: !!tokens.refresh_token,
+        expiresAt: tokens.expires_at,
       });
-      throw new Error('No OAuth flow in progress');
+
+      return { ...tokens, scopes };
+    } finally {
+      shutdown();
     }
-
-    if (params.state !== this.pendingFlow.state) {
-      mainLogger.error('OAuthClient.handleCallback.stateMismatch', {
-        error: 'OAuth state parameter mismatch — possible CSRF attack',
-        expectedLength: this.pendingFlow.state.length,
-        receivedLength: params.state.length,
-      });
-      this.pendingFlow = null;
-      throw new Error('OAuth state mismatch — possible CSRF attack');
-    }
-
-    mainLogger.debug('OAuthClient.handleCallback.stateVerified', {
-      scopeCount: this.pendingFlow.scopes.length,
-    });
-
-    const { codeVerifier, scopes } = this.pendingFlow;
-    this.pendingFlow = null;
-
-    mainLogger.info('OAuthClient.handleCallback.exchangingCode', {
-      redirectUri: REDIRECT_URI,
-    });
-
-    const tokenData = await this._exchangeCode(params.code, codeVerifier);
-
-    mainLogger.info('OAuthClient.handleCallback.tokenReceived', {
-      hasRefreshToken: !!tokenData.refresh_token,
-      expiresAt: tokenData.expires_at,
-      scopeCount: scopes.length,
-      // access_token and refresh_token are NEVER logged
-    });
-
-    return {
-      ...tokenData,
-      scopes,
-    };
   }
 
   /**
    * Refresh an access token using the stored refresh token.
    */
   async refreshToken(refreshToken: string, scopes: GoogleOAuthScope[]): Promise<TokenResult> {
-    mainLogger.info('OAuthClient.refreshToken', {
-      scopeCount: scopes.length,
-    });
+    mainLogger.info('OAuthClient.refreshToken', { scopeCount: scopes.length });
 
     const body = new URLSearchParams({
       client_id: this.clientId,
-      client_secret: this.clientSecret,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     });
+    if (this.clientSecret) body.set('client_secret', this.clientSecret);
 
     const data = await this._post(TOKEN_ENDPOINT, body.toString());
-
     const expires_at = Date.now() + (data.expires_in as number) * 1000;
 
-    mainLogger.info('OAuthClient.refreshToken.complete', {
-      expiresAt: expires_at,
-      scopeCount: scopes.length,
-    });
+    mainLogger.info('OAuthClient.refreshToken.complete', { expiresAt: expires_at });
 
     return {
       access_token: data.access_token as string,
-      refresh_token: refreshToken, // refresh_token not always returned on refresh
+      refresh_token: refreshToken,
       expires_at,
       scopes,
       email: data.email as string ?? '',
@@ -301,23 +214,114 @@ export class OAuthClient {
   }
 
   // -------------------------------------------------------------------------
-  // Private helpers
+  // Loopback server
   // -------------------------------------------------------------------------
 
-  private async _exchangeCode(code: string, codeVerifier: string): Promise<TokenResult> {
+  private _startLoopbackServer(expectedState: string): Promise<{
+    port: number;
+    waitForCallback: Promise<{ code: string }>;
+    shutdown: () => void;
+  }> {
+    return new Promise((resolveSetup, rejectSetup) => {
+      const server = http.createServer();
+      let settled = false;
+
+      let resolveCallback: (value: { code: string }) => void;
+      let rejectCallback: (reason: Error) => void;
+
+      const waitForCallback = new Promise<{ code: string }>((res, rej) => {
+        resolveCallback = res;
+        rejectCallback = rej;
+      });
+
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          rejectCallback(new Error('OAuth timed out — no callback received within 2 minutes'));
+          server.close();
+        }
+      }, LOOPBACK_TIMEOUT_MS);
+
+      const shutdown = () => {
+        clearTimeout(timeout);
+        server.close();
+      };
+
+      server.on('request', (req, res) => {
+        if (settled) {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(SUCCESS_HTML);
+          return;
+        }
+
+        const url = new URL(req.url ?? '/', `http://127.0.0.1`);
+
+        const error = url.searchParams.get('error');
+        if (error) {
+          settled = true;
+          mainLogger.warn('OAuthClient.loopback.oauthError', { error });
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(ERROR_HTML('Google sign-in was cancelled or denied.'));
+          rejectCallback(new Error(`OAuth error: ${error}`));
+          return;
+        }
+
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+
+        if (!code || !state) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(ERROR_HTML('Missing authorization code.'));
+          return;
+        }
+
+        if (state !== expectedState) {
+          settled = true;
+          mainLogger.error('OAuthClient.loopback.stateMismatch');
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end(ERROR_HTML('Security check failed — please try again.'));
+          rejectCallback(new Error('OAuth state mismatch — possible CSRF attack'));
+          return;
+        }
+
+        settled = true;
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(SUCCESS_HTML);
+        resolveCallback({ code });
+      });
+
+      server.listen(0, '127.0.0.1', () => {
+        const addr = server.address();
+        if (!addr || typeof addr === 'string') {
+          rejectSetup(new Error('Failed to bind loopback server'));
+          return;
+        }
+        resolveSetup({ port: addr.port, waitForCallback, shutdown });
+      });
+
+      server.on('error', (err) => {
+        rejectSetup(err);
+      });
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Token exchange
+  // -------------------------------------------------------------------------
+
+  private async _exchangeCode(code: string, codeVerifier: string, redirectUri: string): Promise<TokenResult> {
     const body = new URLSearchParams({
       client_id: this.clientId,
-      client_secret: this.clientSecret,
       code,
       code_verifier: codeVerifier,
       grant_type: 'authorization_code',
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
     });
+    if (this.clientSecret) body.set('client_secret', this.clientSecret);
 
     const data = await this._post(TOKEN_ENDPOINT, body.toString());
     const expires_at = Date.now() + (data.expires_in as number) * 1000;
 
-    // Decode id_token to extract email (JWT middle segment, no signature check needed here)
     let email = '';
     let display_name: string | undefined;
     try {
@@ -366,7 +370,6 @@ export class OAuthClient {
               mainLogger.error('OAuthClient._post.httpError', {
                 statusCode: res.statusCode,
                 errorCode: parsed.error,
-                // error_description may contain PII — log code only
               });
               reject(new Error(`OAuth token endpoint returned ${res.statusCode}: ${String(parsed.error)}`));
             } else {

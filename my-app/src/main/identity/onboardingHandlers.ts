@@ -19,6 +19,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { mainLogger } from '../logger';
 import { AccountStore } from './AccountStore';
 import { OAuthClient } from './OAuthClient';
+import { runOAuthFlow } from '../oauth';
 import type { GoogleOAuthScope, AccountInfo } from '../../shared/types';
 
 // Structural type matching what the onboarding preload sends.
@@ -85,21 +86,12 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
   // onboarding:start-oauth
   // -------------------------------------------------------------------------
 
-  ipcMain.handle('onboarding:start-oauth', async (_event, scopes: GoogleOAuthScope[]) => {
+  ipcMain.handle('onboarding:start-oauth', (_event, scopes: GoogleOAuthScope[]) => {
     mainLogger.info('onboardingHandlers.startOAuth', {
       scopeCount: scopes.length,
     });
 
-    try {
-      await oauthClient.startAuthFlow(scopes);
-      mainLogger.info('onboardingHandlers.startOAuth.browserOpened');
-    } catch (err) {
-      mainLogger.error('onboardingHandlers.startOAuth.failed', {
-        error: (err as Error).message,
-        stack: (err as Error).stack,
-      });
-      throw err;
-    }
+    void runOAuthFlow(scopes);
   });
 
   // -------------------------------------------------------------------------
