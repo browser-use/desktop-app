@@ -47,7 +47,7 @@ export type DownloadItemDTO = Omit<DownloadItem, never>;
 const DANGEROUS_EXTS = new Set(['.exe', '.msi', '.bat', '.cmd', '.scr', '.pif', '.com', '.jar', '.vbs', '.ps1', '.psm1']);
 const SUSPICIOUS_EXTS = new Set(['.dmg', '.pkg', '.deb', '.rpm', '.sh', '.bash', '.zsh', '.app', '.crx', '.xpi']);
 
-function classifyDownload(url: string, referrer: string, filename: string): 'dangerous' | 'suspicious' | 'insecure' | null {
+export function classifyDownload(url: string, referrer: string, filename: string): 'dangerous' | 'suspicious' | 'insecure' | null {
   const ext = path.extname(filename).toLowerCase();
   // Extension checks take precedence over transport — a dangerous .exe over HTTP is still dangerous.
   if (DANGEROUS_EXTS.has(ext)) return 'dangerous';
