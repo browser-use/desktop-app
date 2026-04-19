@@ -198,13 +198,12 @@ const config: ForgeConfig = {
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
-        // Issue #37: downloads internal page preload — disabled in CI until
-        // src/preload/downloads.ts lands alongside the downloads renderer.
-        // {
-        //   entry: 'src/preload/downloads.ts',
-        //   config: 'vite.preload.config.ts',
-        //   target: 'preload',
-        // },
+        {
+          // Issue #37: downloads internal page preload
+          entry: 'src/preload/downloads.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload',
+        },
         {
           // Issue #26: chrome:// internal pages preload
           entry: 'src/preload/chrome.ts',
@@ -272,14 +271,11 @@ const config: ForgeConfig = {
           name: 'bookmarks',
           config: 'vite.bookmarks.config.mts',
         },
-        // Issue #37: downloads internal page renderer — disabled in CI until
-        // the missing vite.downloads.config.ts + src/renderer/downloads/
-        // scaffold lands on main. Without this guard electron-forge fails the
-        // production build. Restore once the files exist.
-        // {
-        //   name: 'downloads',
-        //   config: 'vite.downloads.config.mts',
-        // },
+        {
+          // Issue #37: downloads internal page renderer
+          name: 'downloads',
+          config: 'vite.downloads.config.mts',
+        },
         {
           // Issue #26: chrome:// internal pages renderer
           name: 'chrome_pages',
