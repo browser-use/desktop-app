@@ -16,7 +16,7 @@ import path from 'node:path';
 
 // No Electron mock needed — SessionStore accepts dataDir directly.
 
-import { SessionStore } from '../../../src/main/tabs/SessionStore';
+import { SessionStore, type PersistedSession } from '../../../src/main/tabs/SessionStore';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,7 +33,7 @@ function newStore(dir = tmpDir): SessionStore {
   return new SessionStore(dir);
 }
 
-const EMPTY_SESSION = { version: 1, tabs: [], activeTabId: null };
+const EMPTY_SESSION: PersistedSession = { version: 1, tabs: [], activeTabId: null };
 
 // ---------------------------------------------------------------------------
 // Tests
