@@ -69,7 +69,10 @@ function makeWindow(destroyed = false) {
   };
 }
 
-const SCOPES: GoogleOAuthScope[] = ['email', 'profile'] as GoogleOAuthScope[];
+const SCOPES: GoogleOAuthScope[] = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/calendar',
+];
 
 const MOCK_TOKENS = {
   email: 'user@example.com',
