@@ -58,8 +58,7 @@ function newStore(dir = tmpDir): AutofillStore {
 }
 
 const ADDR_FIELDS = {
-  firstName: 'John',
-  lastName: 'Doe',
+  fullName: 'John Doe',
   email: 'john@example.com',
   phone: '555-1234',
   company: '',
@@ -67,7 +66,7 @@ const ADDR_FIELDS = {
   addressLine2: '',
   city: 'Springfield',
   state: 'IL',
-  zip: '62701',
+  postalCode: '62701',
   country: 'US',
 };
 
@@ -147,7 +146,7 @@ describe('AutofillStore', () => {
       const store = newStore();
       const addr = store.saveAddress(ADDR_FIELDS);
       expect(addr.id).toBe('test-id-1');
-      expect(addr.firstName).toBe('John');
+      expect(addr.fullName).toBe('John Doe');
       expect(typeof addr.createdAt).toBe('number');
       expect(typeof addr.updatedAt).toBe('number');
     });
@@ -155,7 +154,7 @@ describe('AutofillStore', () => {
     it('listAddresses returns all saved addresses', () => {
       const store = newStore();
       store.saveAddress(ADDR_FIELDS);
-      store.saveAddress({ ...ADDR_FIELDS, firstName: 'Jane' });
+      store.saveAddress({ ...ADDR_FIELDS, fullName: 'Jane' });
       const list = store.listAddresses();
       expect(list).toHaveLength(2);
     });
@@ -171,7 +170,7 @@ describe('AutofillStore', () => {
     it('getAddress returns the correct address by id', () => {
       const store = newStore();
       const addr = store.saveAddress(ADDR_FIELDS);
-      expect(store.getAddress(addr.id)?.firstName).toBe('John');
+      expect(store.getAddress(addr.id)?.fullName).toBe('John Doe');
     });
 
     it('getAddress returns null for unknown id', () => {
@@ -184,7 +183,7 @@ describe('AutofillStore', () => {
       const ok = store.updateAddress(addr.id, { city: 'Chicago' });
       expect(ok).toBe(true);
       expect(store.getAddress(addr.id)?.city).toBe('Chicago');
-      expect(store.getAddress(addr.id)?.firstName).toBe('John'); // unchanged
+      expect(store.getAddress(addr.id)?.fullName).toBe('John Doe'); // unchanged
     });
 
     it('updateAddress returns false for unknown id', () => {
@@ -284,7 +283,7 @@ describe('AutofillStore', () => {
 
       const reloaded = newStore();
       expect(reloaded.listAddresses()).toHaveLength(1);
-      expect(reloaded.listAddresses()[0].firstName).toBe('John');
+      expect(reloaded.listAddresses()[0].fullName).toBe('John Doe');
     });
 
     it('starts fresh when file does not exist', () => {
