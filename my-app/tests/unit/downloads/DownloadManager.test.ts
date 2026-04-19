@@ -58,6 +58,7 @@ vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(() => '/tmp'),
     dock: { setBadge: vi.fn() },
+    setBadgeCount: vi.fn(),
   },
   BrowserWindow: vi.fn(),
 }));
