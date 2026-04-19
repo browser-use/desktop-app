@@ -130,8 +130,8 @@ describe('bookmarks/ipc.ts', () => {
     getAllTabs = vi.fn(() => [] as Array<{ name: string; url: string }>);
     registerBookmarkHandlers({
       store: store as unknown as BookmarkStore,
-      getShellWindow: getShellWindow as unknown as () => ReturnType<typeof makeWindow> | null,
-      getAllTabs,
+      getShellWindow: getShellWindow as unknown as () => import('electron').BrowserWindow | null,
+      getAllTabs: getAllTabs as unknown as () => Array<{ name: string; url: string }>,
     });
   });
 
@@ -165,7 +165,7 @@ describe('bookmarks/ipc.ts', () => {
 
   describe('bookmarks:list', () => {
     it('returns store.listTree()', async () => {
-      const tree = { roots: [{ id: 'r1', children: [] }] };
+      const tree = { roots: [{ id: 'r1', children: [] as unknown[] }] };
       (store.listTree as ReturnType<typeof vi.fn>).mockReturnValue(tree);
       const result = await invokeHandler('bookmarks:list');
       expect(result).toBe(tree);
