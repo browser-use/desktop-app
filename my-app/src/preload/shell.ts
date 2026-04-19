@@ -331,6 +331,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     toggleCaretBrowsing: (): Promise<boolean> =>
       ipcRenderer.invoke('shell:toggle-caret-browsing'),
+
+    setOverlay: (active: boolean): void => {
+      ipcRenderer.send('shell:set-overlay', active);
+    },
   },
 
 

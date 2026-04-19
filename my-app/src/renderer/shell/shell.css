@@ -62,11 +62,17 @@
 }
 
 html,
-body,
+body {
+  height: 100%;
+  width: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
 #root {
   height: 100%;
   width: 100%;
-  background: var(--color-bg-base);
+  background: transparent;
   color: var(--color-fg-primary);
   font-family: var(--font-ui);
   font-size: 13px;

@@ -1,18 +1,17 @@
 /**
  * PopupLayerContext — global popup management for z-ordering and ESC dismissal.
  *
- * Solves: Electron WebContentsView (native layer) paints above all shell DOM,
- * hiding popups that extend below the 91px chrome boundary. This context
- * coordinates hiding the WebContentsView when any overlay popup is open
- * and manages a stack-based ESC key dismissal system.
+ * The shell is a WebContentsView that sits on top of tab views with a
+ * transparent background, so popups naturally render over page content.
+ * No WebContentsView visibility toggling is needed.
  *
  * Popup types:
  *   dropdown — overlay popup (profile menu, omnibox, zoom, etc.)
- *              Hides WebContentsView while open so popup is visible.
+ *              Renders naturally above tab content via z-order.
  *   modal   — full-screen overlay (bookmark dialog, tab search, etc.)
- *              Hides WebContentsView while open.
+ *              Renders naturally above tab content via z-order.
  *   bar     — inline info bar (permission, password, device picker)
- *              Pushes WebContentsView down via setChromeHeight.
+ *              Pushes tab content down via setChromeHeight.
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useRef } from 'react';
@@ -20,7 +19,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef } from
 declare const electronAPI: {
   shell: {
     setChromeHeight: (height: number) => Promise<void>;
-    setContentVisible: (visible: boolean) => Promise<void>;
+    setOverlay: (active: boolean) => void;
   };
 };
 
@@ -49,20 +48,18 @@ interface PopupLayerProviderProps {
 
 export function PopupLayerProvider({ children, bookmarksBarVisible }: PopupLayerProviderProps): React.ReactElement {
   const stackRef = useRef<PopupEntry[]>([]);
-  const contentVisibleRef = useRef(true);
   const bookmarksBarVisibleRef = useRef(bookmarksBarVisible);
   bookmarksBarVisibleRef.current = bookmarksBarVisible;
+
+  const overlayActiveRef = useRef(false);
 
   const syncLayer = useCallback(() => {
     const stack = stackRef.current;
     const hasOverlay = stack.some(p => p.type === 'dropdown' || p.type === 'modal');
 
-    if (hasOverlay && contentVisibleRef.current) {
-      electronAPI.shell.setContentVisible(false);
-      contentVisibleRef.current = false;
-    } else if (!hasOverlay && !contentVisibleRef.current) {
-      electronAPI.shell.setContentVisible(true);
-      contentVisibleRef.current = true;
+    if (hasOverlay !== overlayActiveRef.current) {
+      overlayActiveRef.current = hasOverlay;
+      electronAPI.shell.setOverlay(hasOverlay);
     }
 
     const barHeight = stack
