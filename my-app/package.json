@@ -1,6 +1,6 @@
 {
   "name": "my-app",
-  "productName": "my-app",
+  "productName": "The Browser",
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
@@ -25,7 +25,8 @@
     "visual:diff": "ts-node --project tsconfig.json tests/visual/diff.ts",
     "visual:qa": "npm run visual:capture && npm run visual:diff",
     "qa:review": "open tests/visual/review.html",
-    "qa": "npm run lint && npm run typecheck && npm run test"
+    "qa": "npm run lint && npm run typecheck && npm run test",
+    "start:reset-onboarding": "node scripts/reset-onboarding.mjs"
   },
   "keywords": [],
   "author": {

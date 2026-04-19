@@ -72,7 +72,7 @@ const config: ForgeConfig = {
     // `productName` was removed from ForgePackagerOptions in newer
     // @electron/packager; the field is now `name`. The runtime semantics
     // are identical: the bundled .app/.exe will be named after this.
-    name: 'Agentic Browser',
+    name: 'The Browser',
 
     // extraResource: files/dirs copied verbatim into Contents/Resources/.
     // agent_daemon ends up at: Contents/Resources/agent_daemon

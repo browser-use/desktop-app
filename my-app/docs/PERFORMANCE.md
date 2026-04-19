@@ -1,4 +1,4 @@
-# Agentic Browser — Performance Audit
+# The Browser — Performance Audit
 
 **Date:** 2026-04-17  
 **Branch:** `feat/agent-wiring` (54 commits ahead of base `29d3edf`)  

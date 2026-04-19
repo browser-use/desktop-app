@@ -1,4 +1,4 @@
-# Agentic Browser — Security Review
+# The Browser — Security Review
 
 **Date:** 2026-04-17 (iter 17)
 **Branch:** `feat/agent-wiring`

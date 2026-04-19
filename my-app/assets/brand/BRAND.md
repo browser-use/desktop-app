@@ -1,4 +1,4 @@
-# Brand System — Agentic Browser
+# Brand System — The Browser
 
 **Version:** 1.0  
 **Date:** 2026-04-17  
@@ -8,11 +8,9 @@
 
 ## 1. Brand Essence
 
-Agentic Browser is a companion, not a tool. The visual system reflects that duality:
+The Browser is a companion, not a tool. The visual system reflects that duality:
 - The **shell** is precise, dense, keyboard-first — a workspace that gets out of your way (Linear aesthetic)
-- The **onboarding + mascot** is warm, rounded, character-forward — an introduction to a creature that works with you
-
-The ONE memorable thing: **the mascot is the emotional anchor**. Every other design decision orbits it.
+- The **onboarding** is warm and approachable — an introduction to an agent that works with you
 
 ---
 
@@ -35,9 +33,6 @@ The ONE memorable thing: **the mascot is the emotional anchor**. Every other des
 | Token | Value | Usage |
 |---|---|---|
 | `--color-bg-base` | `#1a1a1f` | Warm near-black |
-| `--color-mascot-body` | `#7fb3d0` | Character body — blue-grey |
-| `--color-mascot-shadow` | `#5a9abf` | Undershadow |
-| `--color-mascot-highlight` | `#b0d4e8` | Sheen/highlight |
 
 ### Brand Accent Colors (hero/marketing moments only)
 
@@ -46,7 +41,6 @@ The ONE memorable thing: **the mascot is the emotional anchor**. Every other des
 | `BRAND_NEON` | `#c8f135` | Primary — neon yellow-green |
 | `BRAND_WARM_DARK` | `#1a1a1f` | Onboarding base |
 | `BRAND_DEEP_DARK` | `#0a0a0d` | Shell base |
-| `BRAND_BLUE_GRAY` | `#7fb3d0` | Mascot body |
 | `BRAND_CORAL` | `#ff6b4a` | Error/celebrating accent |
 | `BRAND_SLATE` | `#8a8f98` | Subdued secondary |
 
@@ -80,9 +74,9 @@ The ONE memorable thing: **the mascot is the emotional anchor**. Every other des
 
 ## 4. Iconography Rules
 
-1. **No sparkles** (✨, 💫, ⭐ variants) — the brand communicates through the mascot, not generic positivity icons
+1. **No sparkles** (✨, 💫, ⭐ variants) — avoid generic positivity icons
 2. **No filled icons unless semantic** — prefer stroked icons at 1.5px stroke weight
-3. **Stroke caps:** `round` — consistent with the mascot's rounded character
+3. **Stroke caps:** `round` — consistent with the app's rounded visual language
 4. **Icon sizes:** 12px (compact), 16px (default), 20px (feature icon), 24px (empty states)
 5. **Color:** icons inherit `currentColor` — they adapt to their context (fg-secondary default, accent on hover/active)
 6. **Custom glyphs:** see `glyphs/sprite.svg` for the brand-voice icon set
@@ -99,7 +93,6 @@ The ONE memorable thing: **the mascot is the emotional anchor**. Every other des
 5. **Reduced motion respected:** all SMIL animations + CSS `@keyframes` check `prefers-reduced-motion`
 
 ### Key Animations
-- **Mascot idle float:** 3s ease-in-out infinite sinusoidal float (4px vertical range)
 - **Agent thinking:** rotating dots that phase-shift based on step index, not generic spinners
 - **Task progress orb:** organic swirl driven by progress %, handwritten SVG path math
 - **CDP pulse:** heartbeat interval tied to actual daemon health check interval
@@ -125,8 +118,7 @@ Do not use `BRAND_*` tokens for shell UI — those use `SHELL_COLORS` + `ONBOARD
 
 - **Source:** `icons/app-icon-1024.svg` — 1024×1024 SVG
 - **Compiled:** `icons/app-icon.icns` — macOS icon bundle (via `iconutil`)
-- **Design:** The mascot's face (blue-grey rounded square, eyes, smile) centered on a warm-dark `#1a1a1f` background with a subtle neon `#c8f135` accent ring
-- **Rationale:** Recognizable at 16px (just two eyes), distinctive at 512px (full character face)
+- **Design:** Wordmark centered on a warm-dark `#1a1a1f` background with a subtle neon `#c8f135` accent ring
 
 ---
 
@@ -139,17 +131,3 @@ All architectural + UX diagrams are hand-authored SVGs. No mermaid renderer, no 
 | `diagrams/agent-flow.svg` | Daemon → CDP → Tab relationship |
 | `diagrams/cdp-bridge.svg` | Main process ↔ daemon Unix socket bridge |
 | `diagrams/pill-states.svg` | Pill state machine (idle → streaming → done/error) |
-
----
-
-## 9. Mascot Poses
-
-| Pose | File | Usage |
-|---|---|---|
-| `idle` | `mascot/mascot-idle.svg` | Default state, gentle float animation |
-| `thinking` | `mascot/mascot-thinking.svg` | Agent task running, thinking bubble |
-| `celebrating` | `mascot/mascot-celebrating.svg` | Task complete, arms raised |
-| `error` | `mascot/mascot-error.svg` | Task failed, concern expression |
-| `offline` | `mascot/mascot-offline.svg` | Daemon unavailable, sleeping |
-
-Used via `<Mascot pose="thinking" />` React component.

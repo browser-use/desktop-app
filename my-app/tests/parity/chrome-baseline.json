@@ -1,6 +1,6 @@
 {
   "_comment": "Stub baseline. Real console-error capture from stock Chrome happens in integration phase.",
-  "_methodology": "For each URL, launch stock Chrome via Playwright, navigate, collect console messages of level 'error' over a 30s window, store here. Then run-parity.ts diffs against Agentic Browser captures.",
+  "_methodology": "For each URL, launch stock Chrome via Playwright, navigate, collect console messages of level 'error' over a 30s window, store here. Then run-parity.ts diffs against The Browser captures.",
   "_capture_command": "npx ts-node tests/parity/run-parity.ts --capture-baseline",
   "https://github.com": [],
   "https://google.com": [],

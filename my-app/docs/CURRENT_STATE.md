@@ -1,4 +1,4 @@
-# Agentic Browser — Current State
+# The Browser — Current State
 
 **Generated:** 2026-04-17 (iter 12 QA sweep)
 **Branch:** `feat/agent-wiring`

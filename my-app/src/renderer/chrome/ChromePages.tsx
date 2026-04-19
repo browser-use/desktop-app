@@ -80,7 +80,7 @@ function AboutPage(): React.ReactElement {
   return (
     <div className="cp">
       <h1 className="cp__title">Chrome URLs</h1>
-      <p className="cp__subtitle">List of internal pages available in Agentic Browser</p>
+      <p className="cp__subtitle">List of internal pages available in The Browser</p>
       <div className="cp__list">
         {CHROME_PAGES.map((p) => (
           <button
@@ -274,7 +274,7 @@ function DinoPage(): React.ReactElement {
     <div className="cp cp--dino">
       <div className="dino__container">
         <h1 className="cp__title">No internet</h1>
-        <p className="cp__subtitle">The dinosaur game is not yet available in Agentic Browser.</p>
+        <p className="cp__subtitle">The dinosaur game is not yet available in The Browser.</p>
         <div className="dino__art">
           <pre className="dino__ascii">{`
             __
@@ -503,7 +503,7 @@ function StubPage({ name }: { name: string }): React.ReactElement {
       <h1 className="cp__title">chrome://{name}</h1>
       <p className="cp__subtitle">{def?.description ?? 'Internal page'}</p>
       <div className="cp__stub">
-        <p>This page is not yet available in Agentic Browser.</p>
+        <p>This page is not yet available in The Browser.</p>
         <button
           type="button"
           className="cp__back-btn"

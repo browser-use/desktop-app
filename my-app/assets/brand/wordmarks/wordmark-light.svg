@@ -1,12 +1,12 @@
 <svg
   xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 420 64"
-  width="420"
+  viewBox="0 0 280 64"
+  width="280"
   height="64"
   role="img"
-  aria-label="Agentic Browser wordmark — light variant"
+  aria-label="The Browser wordmark — light variant"
 >
-  <title>Agentic Browser</title>
+  <title>The Browser</title>
   <defs>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap');
@@ -19,27 +19,5 @@
     </style>
   </defs>
 
-  <!-- Mascot face glyph on light background -->
-  <rect x="0" y="10" width="44" height="44" rx="14" ry="14" fill="#7fb3d0"/>
-  <!-- Eye left -->
-  <ellipse cx="14" cy="30" rx="5" ry="6" fill="#f2f0ee"/>
-  <circle  cx="15" cy="31" r="3" fill="#1a1a2e"/>
-  <circle  cx="16.5" cy="29" r="1.2" fill="#ffffff" opacity="0.9"/>
-  <!-- Eye right -->
-  <ellipse cx="30" cy="30" rx="5" ry="6" fill="#f2f0ee"/>
-  <circle  cx="31" cy="31" r="3" fill="#1a1a2e"/>
-  <circle  cx="32.5" cy="29" r="1.2" fill="#ffffff" opacity="0.9"/>
-  <!-- Smile -->
-  <path d="M 15 40 Q 22 46 29 40" stroke="#1a1a2e" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
-  <!-- Neon accent dot -->
-  <circle cx="40" cy="13" r="5" fill="#b8e020"/>
-
-  <!-- Wordmark text — dark on light -->
-  <text x="56" y="49" class="wordmark-text-light" fill="#1a1a2e">Agentic</text>
-
-  <!-- Separator -->
-  <line x1="224" y1="14" x2="224" y2="50" stroke="#5a9abf" stroke-width="1.5" opacity="0.5"/>
-
-  <!-- "Browser" subdued -->
-  <text x="234" y="49" class="wordmark-text-light" fill="#5a6270">Browser</text>
+  <text x="0" y="49" class="wordmark-text-light" fill="#1a1a2e">The Browser</text>
 </svg>

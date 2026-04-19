@@ -1,4 +1,4 @@
-# Agentic Browser
+# The Browser
 
 Mac-native AI browser with a hotkey agent pill (Cmd+K).
 
@@ -28,7 +28,7 @@ npm run dev          # electron-forge start (shell + daemon together)
 ### First run
 
 The app opens an onboarding flow:
-1. Welcome page (with mascot animation)
+1. Welcome page
 2. Name the agent
 3. Google account link (OAuth — optional, for scopes)
 4. Ready — shell opens
@@ -130,10 +130,10 @@ Renderer → Main (requests):
 See `/src/renderer/design/DESIGN_SYSTEM.md` for:
 - Theme tokens (shell: neon + dark; onboarding: warm + character)
 - Typography (Geist UI, Berkeley Mono)
-- Color palette (shell: obsidian + neon; onboarding: pastel + mascot)
+- Color palette (shell: obsidian + neon; onboarding: pastel)
 - Component library (Shell, Pill, Onboarding, Settings)
 
-Brand assets and mascot in `/assets/brand/BRAND.md`.
+Brand assets in `/assets/brand/BRAND.md`.
 
 ## Testing
 

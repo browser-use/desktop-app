@@ -1,5 +1,5 @@
 /**
- * Structured rotating logger for Agentic Browser.
+ * Structured rotating logger for The Browser.
  *
  * Outputs JSONL (one JSON object per line) to:
  *   ~/Library/Application Support/AgenticBrowser/logs/main.log

@@ -1,9 +1,9 @@
 /**
  * export-to-figma.ts
  *
- * Figma REST API importer for the Agentic Browser Design System.
+ * Figma REST API importer for the The Browser Design System.
  *
- * Creates a personal Figma file called "Agentic Browser Design System v1",
+ * Creates a personal Figma file called "The Browser Design System v1",
  * populates local variables from design tokens, uploads SVG brand assets as
  * components, and adds PNG screen baselines as reference frames.
  *
@@ -45,7 +45,7 @@ import path from 'path';
 // ---------------------------------------------------------------------------
 
 const FIGMA_API_BASE = 'https://api.figma.com';
-const FILE_NAME = 'Agentic Browser Design System v1';
+const FILE_NAME = 'The Browser Design System v1';
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const APP_ROOT = path.join(REPO_ROOT, 'my-app');
@@ -54,11 +54,6 @@ const BRAND_ROOT = path.join(APP_ROOT, 'assets/brand');
 const BASELINES_ROOT = path.join(APP_ROOT, 'tests/visual/references');
 
 const SVG_ASSETS = [
-  { label: 'Mascot / Idle',        file: 'mascot/mascot-idle.svg' },
-  { label: 'Mascot / Thinking',     file: 'mascot/mascot-thinking.svg' },
-  { label: 'Mascot / Celebrating',  file: 'mascot/mascot-celebrating.svg' },
-  { label: 'Mascot / Error',        file: 'mascot/mascot-error.svg' },
-  { label: 'Mascot / Offline',      file: 'mascot/mascot-offline.svg' },
   { label: 'Wordmark / Dark',       file: 'wordmarks/wordmark-dark.svg' },
   { label: 'Wordmark / Light',      file: 'wordmarks/wordmark-light.svg' },
   { label: 'Icon / AppIcon1024',    file: 'icons/app-icon-1024.svg' },
@@ -185,7 +180,7 @@ async function createFile(token: string): Promise<string> {
     throw new Error(
       'Could not find Drafts project. The Figma REST API requires the file ' +
       'to be created via the Figma app or Plugin API. As a workaround:\n' +
-      '  1. Create a blank file in Figma named "Agentic Browser Design System v1"\n' +
+      '  1. Create a blank file in Figma named "The Browser Design System v1"\n' +
       '  2. Copy its file key from the URL (figma.com/file/<KEY>/...)\n' +
       '  3. Set FIGMA_FILE_KEY=<KEY> and re-run this script'
     );
@@ -202,7 +197,7 @@ async function createFile(token: string): Promise<string> {
   console.log(
     '\n  NOTE: The Figma REST API does not expose a public "create file" endpoint.\n' +
     '  Please:\n' +
-    '    1. Create a blank Figma file named "Agentic Browser Design System v1"\n' +
+    '    1. Create a blank Figma file named "The Browser Design System v1"\n' +
     '    2. Copy the file key from the URL: figma.com/file/<FILE_KEY>/...\n' +
     '    3. Set FIGMA_FILE_KEY=<FILE_KEY> and re-run.\n'
   );
@@ -505,7 +500,7 @@ function printSummary(fileKey: string): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log('Agentic Browser — Figma Design System Exporter');
+  console.log('The Browser — Figma Design System Exporter');
   console.log('='.repeat(60));
 
   const token = requireToken();

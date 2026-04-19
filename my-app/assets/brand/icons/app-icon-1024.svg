@@ -4,9 +4,9 @@
   width="1024"
   height="1024"
   role="img"
-  aria-label="Agentic Browser app icon"
+  aria-label="The Browser app icon"
 >
-  <title>Agentic Browser</title>
+  <title>The Browser</title>
 
   <!-- Background — warm near-black rounded square -->
   <rect width="1024" height="1024" rx="224" ry="224" fill="#1a1a1f"/>

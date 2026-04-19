@@ -1,5 +1,5 @@
 /**
- * Telemetry metric emitter for Agentic Browser.
+ * Telemetry metric emitter for The Browser.
  *
  * API:
  *   telemetry.observe('pill_open_latency_ms', 42)

@@ -1,4 +1,4 @@
-# Figma Import Guide — Agentic Browser Design System
+# Figma Import Guide — The Browser Design System
 
 This folder contains portable design artifacts you can import into a Figma file without any OAuth or live-sync setup. The artifacts are generated from `src/renderer/design/tokens.ts` (the authoritative source) and are ready to drag in.
 
@@ -21,7 +21,7 @@ Tokens Studio (formerly Figma Tokens) is a free Figma plugin that reads the JSON
 ### Install the Plugin
 
 1. Open Figma → **Plugins** → search **Tokens Studio for Figma** → Install.
-2. Open any Figma file (or create a blank one titled "Agentic Browser Design System v1").
+2. Open any Figma file (or create a blank one titled "The Browser Design System v1").
 3. Launch the plugin: **Plugins → Tokens Studio for Figma**.
 
 ### Load the Token File
@@ -42,7 +42,7 @@ Tokens Studio (formerly Figma Tokens) is a free Figma plugin that reads the JSON
 
 After applying, open **Assets → Local variables** in Figma. You should see variable collections named:
 - `shell/colors/bg`, `shell/colors/fg`, `shell/colors/accent`, etc.
-- `onboarding/colors/bg`, `onboarding/colors/pill`, `onboarding/colors/mascot`, etc.
+- `onboarding/colors/bg`, `onboarding/colors/pill`, etc.
 - `shared/spacing`, `shared/radii`, `shared/motion`, `shared/semantic`
 
 ---
@@ -51,16 +51,6 @@ After applying, open **Assets → Local variables** in Figma. You should see var
 
 All SVG assets live in `my-app/assets/brand/`. Figma accepts SVGs dragged directly onto the canvas.
 
-### Mascot Poses (5 states)
-
-Drag each file onto the canvas, then right-click → **Frame Selection** to wrap it:
-
-| File | Suggested Frame Name |
-|---|---|
-| `assets/brand/mascot/mascot-idle.svg` | Mascot / Idle |
-| `assets/brand/mascot/mascot-thinking.svg` | Mascot / Thinking |
-| `assets/brand/mascot/mascot-celebrating.svg` | Mascot / Celebrating |
-| `assets/brand/mascot/mascot-error.svg` | Mascot / Error |
 
 ### Wordmarks
 
@@ -168,10 +158,6 @@ The following table maps every Figma variable (Tokens Studio path) to its CSS cu
 | `onboarding.colors.fg.secondary` | `--color-fg-secondary` | `#9a96a0` |
 | `onboarding.colors.fg.tertiary` | `--color-fg-tertiary` | `#7a7580` |
 | `onboarding.colors.accent.default` | `--color-accent-default` | `#c8f135` |
-| `onboarding.colors.mascot.body` | `--color-mascot-body` | `#7fb3d0` |
-| `onboarding.colors.mascot.shadow` | `--color-mascot-shadow` | `#5a9abf` |
-| `onboarding.colors.mascot.eye` | `--color-mascot-eye` | `#1a1a2e` |
-| `onboarding.colors.mascot.highlight` | `--color-mascot-highlight` | `#b0d4e8` |
 
 ### Shared — Spacing
 
@@ -248,4 +234,4 @@ Once you have a Figma Personal Access Token, run the automated importer to creat
 FIGMA_TOKEN=your_token_here npx ts-node my-app/scripts/export-to-figma.ts
 ```
 
-This script creates a file called "Agentic Browser Design System v1" in your Figma drafts, populates local variables, uploads SVG components, and adds PNG frames. See `scripts/export-to-figma.ts` for details.
+This script creates a file called "The Browser Design System v1" in your Figma drafts, populates local variables, uploads SVG components, and adds PNG frames. See `scripts/export-to-figma.ts` for details.

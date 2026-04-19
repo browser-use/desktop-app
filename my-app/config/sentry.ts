@@ -1,5 +1,5 @@
 /**
- * Sentry crash reporting configuration for Agentic Browser.
+ * Sentry crash reporting configuration for The Browser.
  *
  * DSN is provided via environment variable SENTRY_DSN.
  * In dev / when SENTRY_DSN is absent, Sentry initialisation is skipped and

@@ -1,5 +1,5 @@
 /**
- * Playwright configuration for Agentic Browser E2E tests.
+ * Playwright configuration for The Browser E2E tests.
  *
  * Tests run against the BUILT Electron artifact (not `npm start`).
  * Build first: npm run make

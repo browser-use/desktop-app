@@ -3,7 +3,7 @@
  *
  * Methodology (plan §8, Critic M1):
  *   1. For each URL in sites.json:
- *      a. Navigate via Agentic Browser (Playwright-Electron)
+ *      a. Navigate via The Browser (Playwright-Electron)
  *      b. Collect console messages during a 30s load window
  *      c. Filter to level='error' only
  *   2. Load chrome-baseline.json (captured from stock Chrome separately)
@@ -75,7 +75,7 @@ export interface ParityReport {
 
 function normaliseErrorText(text: string): string {
   // Strip stack trace line numbers and dynamic identifiers to allow
-  // fuzzy matching between Chrome and Agentic Browser console errors.
+  // fuzzy matching between Chrome and The Browser console errors.
   return text
     .replace(/:\d+:\d+/g, '') // strip :line:col
     .replace(/https?:\/\/[^\s]+/g, '[URL]') // strip URLs
