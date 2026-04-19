@@ -56,7 +56,7 @@ vi.mock('electron', () => ({
 }));
 
 import { attachContextMenu, type ContextMenuDeps } from '../../../src/main/contextMenu/ContextMenuController';
-import type { PasswordCredential } from '../../../src/main/passwords/PasswordStore';
+import type { SavedCredential } from '../../../src/main/passwords/PasswordStore';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -287,7 +287,7 @@ describe('ContextMenuController', () => {
     it('uses saved credentials submenu when credentials exist', () => {
       const mockPasswordStore = {
         findCredentialsForOrigin: vi.fn(() => [
-          { id: 'cred-1', username: 'user@example.com', passwordEncrypted: '', origin: 'https://example.com' } as PasswordCredential,
+          { id: 'cred-1', username: 'user@example.com', passwordEncrypted: '', origin: 'https://example.com', createdAt: 0, updatedAt: 0 } as SavedCredential,
         ]),
       };
       const depsWithStore = makeDeps({ passwordStore: mockPasswordStore as unknown as ContextMenuDeps['passwordStore'] });
