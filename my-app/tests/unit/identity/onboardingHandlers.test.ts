@@ -113,7 +113,7 @@ describe('onboardingHandlers.ts', () => {
       accountStore,
       oauthClient: makeOAuthClient(),
       onboardingWindow: onboardingWindow as never,
-      openShellWindow,
+      openShellWindow: openShellWindow as never,
     };
     registerOnboardingHandlers(deps);
   });
