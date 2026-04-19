@@ -161,6 +161,7 @@ export class TabManager {
     return Array.from(TabManager.instances.values());
   }
 
+
   private win: BrowserWindow;
   private tabs: Map<string, WebContentsView> = new Map();
   private tabOrder: string[] = [];
@@ -316,6 +317,7 @@ export class TabManager {
   setOnActiveTabChanged(cb: ((tabId: string) => void) | null): void {
     this.onActiveTabChanged = cb;
   }
+
 
   setHistoryStore(store: HistoryStore): void {
     this.historyStore = store;

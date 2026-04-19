@@ -97,6 +97,134 @@ function displayUrl(url: string): string {
   return host + path + parsed.search + parsed.hash;
 }
 
+interface PermissionEntry {
+  permissionType: string;
+  state: 'allow' | 'deny' | 'ask';
+}
+
+interface PageInfo {
+  url: string;
+  isHSTS: boolean;
+  hstsMaxAge: number | null;
+  hstsIncludeSubdomains: boolean;
+  isSecure: boolean;
+  permissions: PermissionEntry[];
+  cookieCount: number;
+}
+
+const PERMISSION_LABELS: Record<string, string> = {
+  camera: 'Camera',
+  microphone: 'Microphone',
+  geolocation: 'Location',
+  notifications: 'Notifications',
+  clipboard: 'Clipboard',
+  midi: 'MIDI',
+};
+
+function PageInfoPopover({
+  security,
+  pageInfo,
+  onClose,
+}: {
+  security: 'secure' | 'insecure' | 'none';
+  pageInfo: PageInfo | null;
+  onClose: () => void;
+}): React.ReactElement {
+  const [permissions, setPermissions] = React.useState<PermissionEntry[]>(
+    pageInfo?.permissions ?? [],
+  );
+
+  const handlePermissionChange = useCallback(
+    async (permType: string, newState: string) => {
+      if (!pageInfo?.url) return;
+      try {
+        const origin = new URL(pageInfo.url).origin;
+        await electronAPI.permissions.setSite(origin, permType, newState);
+        setPermissions((prev) =>
+          prev.map((p) =>
+            p.permissionType === permType ? { ...p, state: newState as PermissionEntry['state'] } : p,
+          ),
+        );
+      } catch { /* ignore */ }
+    },
+    [pageInfo?.url],
+  );
+
+  const handleSiteSettings = useCallback(() => {
+    electronAPI.tabs.navigateActive('chrome://settings').catch(() => {});
+    onClose();
+  }, [onClose]);
+
+  const namedPerms = permissions.filter((p) => PERMISSION_LABELS[p.permissionType]);
+
+  return (
+    <div className="url-bar__page-info-popover" role="dialog" aria-label="Page info">
+      {/* Connection */}
+      <div className="url-bar__page-info-row">
+        <span className={`url-bar__page-info-status url-bar__page-info-status--${security}`}>
+          {security === 'secure'
+            ? 'Connection is secure'
+            : security === 'insecure'
+              ? 'Connection is not secure'
+              : 'No connection info'}
+        </span>
+      </div>
+      {pageInfo?.isHSTS && (
+        <div className="url-bar__page-info-row url-bar__page-info-hsts">
+          <span className="url-bar__page-info-badge">HSTS</span>
+          <span className="url-bar__page-info-hsts-detail">
+            {pageInfo.hstsIncludeSubdomains ? 'Includes subdomains' : 'This domain only'}
+            {pageInfo.hstsMaxAge != null ? ` · ${Math.round(pageInfo.hstsMaxAge / 86400)}d` : ''}
+          </span>
+        </div>
+      )}
+
+      {/* Permissions */}
+      {namedPerms.length > 0 && (
+        <>
+          <div className="url-bar__page-info-divider" />
+          <div className="url-bar__page-info-section-label">Permissions</div>
+          {namedPerms.map((p) => (
+            <div key={p.permissionType} className="url-bar__page-info-perm-row">
+              <span className="url-bar__page-info-perm-label">
+                {PERMISSION_LABELS[p.permissionType]}
+              </span>
+              <select
+                className="url-bar__page-info-perm-select"
+                value={p.state}
+                onChange={(e) => void handlePermissionChange(p.permissionType, e.target.value)}
+              >
+                <option value="allow">Allow</option>
+                <option value="deny">Block</option>
+                <option value="ask">Ask</option>
+              </select>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* Cookies & site settings */}
+      <div className="url-bar__page-info-divider" />
+      <div className="url-bar__page-info-footer">
+        {pageInfo != null && (
+          <span className="url-bar__page-info-cookies">
+            {pageInfo.cookieCount === 0
+              ? 'No cookies'
+              : `${pageInfo.cookieCount} cookie${pageInfo.cookieCount === 1 ? '' : 's'}`}
+          </span>
+        )}
+        <button
+          type="button"
+          className="url-bar__page-info-site-settings"
+          onClick={handleSiteSettings}
+        >
+          Site settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function URLBar({
   url,
   isLoading,
@@ -180,7 +308,7 @@ export function URLBar({
     onNavigate(suggestion.url);
     // Record selection for ShortcutsProvider learning
     electronAPI.omnibox.recordSelection({
-      inputText: inputRef.current?.value ?? '',
+      inputText: inputValue,
       url: suggestion.url,
       title: suggestion.title,
     }).catch((err: unknown) => {
@@ -188,7 +316,7 @@ export function URLBar({
     });
     closeDropdown();
     inputRef.current?.blur();
-  }, [onNavigate, closeDropdown]);
+  }, [onNavigate, closeDropdown, inputValue]);
 
   const handleFocus = useCallback(() => {
     setIsEditing(true);
@@ -276,6 +404,47 @@ export function URLBar({
   const security = getSecurityStatus(url);
   // Hide the star on blank/new-tab URLs — nothing meaningful to bookmark.
   const starVisible = !!url && !BLANK_RE.test(url) && !NEWTAB_RE.test(url);
+
+  const [pageInfoOpen, setPageInfoOpen] = useState(false);
+  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const securityRef = useRef<HTMLButtonElement>(null);
+
+  const handleSecurityClick = useCallback(async () => {
+    if (!pageInfoOpen) {
+      try {
+        const [base, cookieCount] = await Promise.all([
+          electronAPI.security.getPageInfo(),
+          electronAPI.security.getCookieCount(),
+        ]);
+        let permissions: PermissionEntry[] = [];
+        try {
+          const origin = new URL(base.url).origin;
+          permissions = await electronAPI.permissions.getSite(origin);
+        } catch { /* non-URL pages have no permissions */ }
+        setPageInfo({ ...base, permissions, cookieCount });
+      } catch {
+        setPageInfo(null);
+      }
+    }
+    setPageInfoOpen((v) => !v);
+  }, [pageInfoOpen]);
+
+  // Close popover on navigation (URL change)
+  useEffect(() => {
+    setPageInfoOpen(false);
+  }, [url]);
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    if (!pageInfoOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (securityRef.current && !securityRef.current.closest('.url-bar__security-wrap')?.contains(e.target as Node)) {
+        setPageInfoOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pageInfoOpen]);
 
   return (
     <div className={`url-bar url-bar--${security}`}>
@@ -378,5 +547,16 @@ declare const electronAPI: {
     suggest: (payload: { input: string; remoteSearch?: boolean }) => Promise<OmniboxSuggestion[]>;
     recordSelection: (payload: { inputText: string; url: string; title: string }) => Promise<boolean>;
     removeHistory: (id: string) => Promise<boolean>;
+  };
+  security: {
+    getPageInfo: () => Promise<Omit<PageInfo, 'permissions' | 'cookieCount'>>;
+    getCookieCount: () => Promise<number>;
+  };
+  permissions: {
+    getSite: (origin: string) => Promise<PermissionEntry[]>;
+    setSite: (origin: string, permissionType: string, state: string) => Promise<void>;
+  };
+  tabs: {
+    navigateActive: (input: string) => Promise<void>;
   };
 };
