@@ -49,6 +49,7 @@ export default defineConfig({
       // must each persist under <userData>/profiles/<id>/ not the shared root).
       'tests/unit/bookmarks/**/*.spec.ts',
       'tests/unit/autofill/**/*.spec.ts',
+      'tests/unit/sessions/**/*.test.ts',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file
