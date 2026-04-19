@@ -31,7 +31,7 @@ const { loggerSpy, mockApp } = vi.hoisted(() => ({
 vi.mock('electron', () => ({ app: mockApp }));
 vi.mock('../../../src/main/logger', () => ({ mainLogger: loggerSpy }));
 
-import { NtpCustomizationStore } from '../../../src/main/ntp/NtpCustomizationStore';
+import { NtpCustomizationStore, type NtpCustomization } from '../../../src/main/ntp/NtpCustomizationStore';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +49,7 @@ function newStore(): NtpCustomizationStore {
   return new NtpCustomizationStore();
 }
 
-const DEFAULTS = {
+const DEFAULTS: NtpCustomization = {
   backgroundType: 'default',
   backgroundColor: '#202124',
   backgroundImageDataUrl: '',
