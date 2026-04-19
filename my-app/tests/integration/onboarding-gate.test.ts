@@ -45,6 +45,14 @@ const {
 } = vi.hoisted(() => {
   // Methods whose return value the code-under-test inspects. Anything else
   // is auto-stubbed via the Proxy below.
+  const makeWebContentsProxy = (): Record<string, unknown> =>
+    new Proxy({} as Record<string, unknown>, {
+      get(t, p: string) {
+        if (!(p in t)) t[p] = vi.fn();
+        return t[p];
+      },
+    });
+
   const tabManagerBaseline: Record<string, unknown> = {
     restoreSession: vi.fn(),
     discoverCdpPort: vi.fn(() => Promise.resolve(9222)),
@@ -56,6 +64,7 @@ const {
     getZoomOverrides: vi.fn(() => ({})),
     getTabAtIndex: vi.fn(() => null),
     getTabIdForWebContentsId: vi.fn(() => null),
+    shellWebContents: makeWebContentsProxy(),
   };
 
   // Proxy that auto-stubs any missing method with a fresh vi.fn(). This

@@ -119,7 +119,6 @@ interface UsePopupLayerConfig {
 
 export function usePopupLayer(config: UsePopupLayerConfig): void {
   const ctx = useContext(PopupLayerContext);
-  if (!ctx) throw new Error('usePopupLayer requires PopupLayerProvider');
 
   const onDismissRef = useRef(config.onDismiss);
   onDismissRef.current = config.onDismiss;
@@ -129,6 +128,7 @@ export function usePopupLayer(config: UsePopupLayerConfig): void {
   }, []);
 
   useEffect(() => {
+    if (!ctx) return;
     if (config.isOpen) {
       ctx.register({
         id: config.id,
