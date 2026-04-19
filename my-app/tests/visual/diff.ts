@@ -689,10 +689,6 @@ function checkOnboardingStructure(capturePath: string, stateName: string): strin
       issues.push('Right panel region is pure black — panel may not be rendering');
     }
 
-    // Background luminance reference
-    const bgSample = sampleRegionRgb(png, 0, 0, 80, 80);
-    const bgLuminance = 0.2126 * bgSample.r + 0.7152 * bgSample.g + 0.0722 * bgSample.b;
-
     // 4. Left panel should have text content — check for varied pixel values
     const leftPanel = sampleRegionRgb(
       png,
