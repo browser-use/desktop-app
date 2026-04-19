@@ -13,6 +13,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cancel: (id: string): Promise<void> => ipcRenderer.invoke('sessions:cancel', id),
     list: (): Promise<unknown[]> => ipcRenderer.invoke('sessions:list'),
     get: (id: string): Promise<unknown> => ipcRenderer.invoke('sessions:get', id),
+    viewAttach: (id: string, bounds: { x: number; y: number; width: number; height: number }): Promise<boolean> =>
+      ipcRenderer.invoke('sessions:view-attach', id, bounds),
+    viewDetach: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('sessions:view-detach', id),
+    viewResize: (id: string, bounds: { x: number; y: number; width: number; height: number }): Promise<boolean> =>
+      ipcRenderer.invoke('sessions:view-resize', id, bounds),
+    getTabs: (id: string): Promise<unknown[]> =>
+      ipcRenderer.invoke('sessions:get-tabs', id),
+    poolStats: (): Promise<unknown> =>
+      ipcRenderer.invoke('sessions:pool-stats'),
   },
   on: {
     windowReady: (cb: () => void): (() => void) => {

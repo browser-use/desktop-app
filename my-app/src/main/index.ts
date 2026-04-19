@@ -275,12 +275,21 @@ app.whenReady().then(async () => {
       return;
     }
 
+    const view = browserPool.create(validatedId);
+    if (!view) {
+      sessionManager.failSession(validatedId, `Browser pool full (max ${browserPool.activeCount}), session queued`);
+      mainLogger.warn('main.sessions:start.poolFull', { id: validatedId, stats: browserPool.getStats() });
+      return;
+    }
+
     let ctx;
     try {
-      ctx = await createContext({ cdpUrl: null });
+      ctx = await createContext({ webContents: view.webContents });
+      mainLogger.info('main.sessions:start.cdpAttached', { id: validatedId, transport: ctx.cdp.transport });
     } catch (err) {
       const msg = `CDP context creation failed: ${(err as Error).message}`;
       mainLogger.warn('main.sessions:start.noCdp', { id: validatedId, error: msg });
+      browserPool.destroy(validatedId, shellWindow ?? undefined);
       sessionManager.failSession(validatedId, msg);
       return;
     }
@@ -303,6 +312,9 @@ app.whenReady().then(async () => {
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:start.agentError', { id: validatedId, error: err.message });
       sessionManager.failSession(validatedId, err.message);
+    }).finally(() => {
+      browserPool.destroy(validatedId, shellWindow ?? undefined);
+      mainLogger.info('main.sessions:start.browserCleaned', { id: validatedId, poolStats: browserPool.getStats() });
     });
   });
 
@@ -310,6 +322,7 @@ app.whenReady().then(async () => {
     const validatedId = assertString(id, 'id', 100);
     mainLogger.info('main.sessions:cancel', { id: validatedId });
     sessionManager.cancelSession(validatedId);
+    browserPool.destroy(validatedId, shellWindow ?? undefined);
   });
 
   ipcMain.handle('sessions:list', () => {
@@ -319,6 +332,36 @@ app.whenReady().then(async () => {
   ipcMain.handle('sessions:get', (_event, id: string) => {
     const validatedId = assertString(id, 'id', 100);
     return sessionManager.getSession(validatedId) ?? null;
+  });
+
+  // Live view: attach/detach agent browser to shell window
+  ipcMain.handle('sessions:view-attach', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }) => {
+    const validatedId = assertString(id, 'id', 100);
+    if (!shellWindow) return false;
+    mainLogger.info('main.sessions:view-attach', { id: validatedId, bounds });
+    return browserPool.attachToWindow(validatedId, shellWindow, bounds);
+  });
+
+  ipcMain.handle('sessions:view-detach', (_event, id: string) => {
+    const validatedId = assertString(id, 'id', 100);
+    if (!shellWindow) return false;
+    mainLogger.info('main.sessions:view-detach', { id: validatedId });
+    return browserPool.detachFromWindow(validatedId, shellWindow);
+  });
+
+  ipcMain.handle('sessions:view-resize', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }) => {
+    const validatedId = assertString(id, 'id', 100);
+    if (!shellWindow) return false;
+    return browserPool.attachToWindow(validatedId, shellWindow, bounds);
+  });
+
+  ipcMain.handle('sessions:get-tabs', async (_event, id: string) => {
+    const validatedId = assertString(id, 'id', 100);
+    return browserPool.getTabs(validatedId);
+  });
+
+  ipcMain.handle('sessions:pool-stats', () => {
+    return browserPool.getStats();
   });
 
   // ---------------------------------------------------------------------------
@@ -423,6 +466,7 @@ app.whenReady().then(async () => {
       ctrl.abort();
     }
     activeAgents.clear();
+    browserPool.destroyAll(shellWindow ?? undefined);
     sessionManager.destroy();
   });
 
