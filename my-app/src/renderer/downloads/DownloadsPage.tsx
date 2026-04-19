@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 type DownloadStatus = 'in-progress' | 'paused' | 'completed' | 'cancelled' | 'interrupted';
+type WarningLevel = 'dangerous' | 'suspicious' | 'insecure' | null;
 
 interface DownloadItemDTO {
   id: string;
@@ -15,6 +16,8 @@ interface DownloadItemDTO {
   openWhenDone: boolean;
   speed: number;
   eta: number;
+  warningLevel?: WarningLevel;
+  warningDismissed?: boolean;
 }
 
 declare const downloadsAPI: {
@@ -26,6 +29,7 @@ declare const downloadsAPI: {
   showInFolder: (id: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   clearAll: () => Promise<void>;
+  dismissWarning: (id: string) => Promise<void>;
   onStateChanged: (cb: (downloads: DownloadItemDTO[]) => void) => () => void;
 };
 
@@ -113,6 +117,21 @@ function statusLabel(status: DownloadStatus): string {
   }
 }
 
+const WARNING_COPY: Record<NonNullable<WarningLevel>, { label: string; detail: string }> = {
+  dangerous: {
+    label: 'Dangerous file',
+    detail: 'This file may harm your device. Download has been paused.',
+  },
+  suspicious: {
+    label: 'Suspicious file',
+    detail: 'This file type is commonly used to distribute malware.',
+  },
+  insecure: {
+    label: 'Insecure download',
+    detail: 'This file was downloaded over an unencrypted connection.',
+  },
+};
+
 function DownloadEntry({
   item,
   onPause,
@@ -122,6 +141,7 @@ function DownloadEntry({
   onShowInFolder,
   onCopyLink,
   onRemove,
+  onDismissWarning,
 }: {
   item: DownloadItemDTO;
   onPause: (id: string) => void;
@@ -131,6 +151,7 @@ function DownloadEntry({
   onShowInFolder: (id: string) => void;
   onCopyLink: (url: string) => void;
   onRemove: (id: string) => void;
+  onDismissWarning: (id: string) => void;
 }): React.ReactElement {
   const isActive = item.status === 'in-progress' || item.status === 'paused';
   const isCompleted = item.status === 'completed';
@@ -139,9 +160,11 @@ function DownloadEntry({
     : 0;
 
   const ext = fileExtension(item.filename);
+  const showWarning = !!item.warningLevel && !item.warningDismissed;
+  const warningCopy = item.warningLevel ? WARNING_COPY[item.warningLevel] : null;
 
   return (
-    <div className={`dl__entry dl__entry--${item.status}`}>
+    <div className={`dl__entry dl__entry--${item.status}${showWarning ? ` dl__entry--warning-${item.warningLevel ?? ''}` : ''}`}>
       <div className="dl__entry-icon">
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
           <rect x="6" y="4" width="20" height="24" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
@@ -167,6 +190,27 @@ function DownloadEntry({
             </span>
           )}
         </div>
+
+        {showWarning && warningCopy && (
+          <div className={`dl__warning dl__warning--${item.warningLevel ?? ''}`}>
+            <svg className="dl__warning-icon" width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1.5L12.5 11.5H1.5L7 1.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none" />
+              <line x1="7" y1="6" x2="7" y2="8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <circle cx="7" cy="10" r="0.6" fill="currentColor" />
+            </svg>
+            <span className="dl__warning-text">
+              <strong>{warningCopy.label}:</strong> {warningCopy.detail}
+            </span>
+            <button
+              type="button"
+              className="dl__warning-dismiss"
+              onClick={() => onDismissWarning(item.id)}
+              title="Dismiss warning"
+            >
+              {item.warningLevel === 'dangerous' ? 'Keep anyway' : 'Dismiss'}
+            </button>
+          </div>
+        )}
 
         <div className="dl__entry-meta">
           {isActive && (
@@ -358,6 +402,14 @@ export function DownloadsPage(): React.ReactElement {
     setDownloads([]);
   }, []);
 
+  const handleDismissWarning = useCallback(async (id: string) => {
+    console.log('DownloadsPage.dismissWarning', { id });
+    await downloadsAPI.dismissWarning(id);
+    setDownloads((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, warningDismissed: true } : d)),
+    );
+  }, []);
+
   const filtered = debouncedQuery
     ? downloads.filter((d) => matchesSearch(d, debouncedQuery))
     : downloads;
@@ -421,6 +473,7 @@ export function DownloadsPage(): React.ReactElement {
                     onShowInFolder={handleShowInFolder}
                     onCopyLink={handleCopyLink}
                     onRemove={handleRemove}
+                    onDismissWarning={handleDismissWarning}
                   />
                 ))}
               </div>
