@@ -174,6 +174,13 @@ export async function importChromeProfileCookies(profileDir: string): Promise<Co
 
     const expirationDate = chromeTimestampToUnix(row.expires_utc);
 
+    // Skip expired cookies — Chrome keeps them but Electron rejects them
+    const now = Math.floor(Date.now() / 1000);
+    if (expirationDate > 0 && expirationDate < now) {
+      skipped++;
+      continue;
+    }
+
     try {
       await electronSession.cookies.set({
         url,
@@ -191,10 +198,12 @@ export async function importChromeProfileCookies(profileDir: string): Promise<Co
     } catch (err) {
       failed++;
       failedDomainSet.add(domain);
-      if (failed <= 5) {
+      if (failed <= 20) {
         mainLogger.debug('chromeImport.importCookies.setCookieFailed', {
           name: row.name,
           domain: row.host_key,
+          url,
+          secure: row.is_secure,
           error: (err as Error).message,
         });
       }
