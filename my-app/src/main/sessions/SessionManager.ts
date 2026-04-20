@@ -202,6 +202,29 @@ export class SessionManager extends EventEmitter {
     this.emitEvent('session-updated', { ...session });
   }
 
+  hideSession(id: string): void {
+    this.db.hideSession(id);
+    this.sessions.delete(id);
+    mainLogger.info('SessionManager.hideSession', { id });
+  }
+
+  unhideSession(id: string): void {
+    this.db.unhideSession(id);
+    mainLogger.info('SessionManager.unhideSession', { id });
+  }
+
+  deleteSession(id: string): void {
+    const session = this.sessions.get(id);
+    if (session && (session.status === 'running' || session.status === 'stuck')) {
+      this.cancelSession(id);
+    }
+    this.clearStuckTimer(id);
+    this.abortControllers.delete(id);
+    this.sessions.delete(id);
+    this.db.deleteSession(id);
+    mainLogger.info('SessionManager.deleteSession', { id });
+  }
+
   failSession(id: string, error: string): void {
     const session = this.sessions.get(id);
     if (!session) {

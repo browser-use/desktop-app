@@ -137,6 +137,18 @@ function openShellAndWire(): BrowserWindow {
   shellWindow.webContents.once('did-finish-load', () => {
     mainLogger.info('main.shellReady', { windowId: shellWindow?.id });
     shellWindow?.webContents.send('window-ready');
+    shellWindow?.webContents.executeJavaScript('localStorage.getItem("hub-zoom-factor")')
+      .then((saved) => {
+        if (saved && shellWindow && !shellWindow.isDestroyed()) {
+          const factor = parseFloat(saved);
+          if (factor >= 0.5 && factor <= 2.0) {
+            mainLogger.info('main.zoom.restore', { factor });
+            shellWindow.webContents.setZoomFactor(factor);
+            shellWindow.webContents.send('zoom-changed', factor);
+          }
+        }
+      })
+      .catch(() => {});
   });
 
   shellWindow.on('closed', () => {
@@ -386,11 +398,24 @@ app.whenReady().then(async () => {
     browserPool.destroy(validatedId, shellWindow ?? undefined);
   });
 
+  ipcMain.handle('sessions:hide', (_event, id: string) => {
+    const validatedId = assertString(id, 'id', 100);
+    mainLogger.info('main.sessions:hide', { id: validatedId });
+    browserPool.destroy(validatedId, shellWindow ?? undefined);
+    sessionManager.hideSession(validatedId);
+  });
+
   ipcMain.handle('sessions:delete', (_event, id: string) => {
     const validatedId = assertString(id, 'id', 100);
     mainLogger.info('main.sessions:delete', { id: validatedId });
     browserPool.destroy(validatedId, shellWindow ?? undefined);
     sessionManager.deleteSession(validatedId);
+  });
+
+  ipcMain.handle('sessions:unhide', (_event, id: string) => {
+    const validatedId = assertString(id, 'id', 100);
+    mainLogger.info('main.sessions:unhide', { id: validatedId });
+    sessionManager.unhideSession(validatedId);
   });
 
   ipcMain.handle('sessions:list', () => {
@@ -637,6 +662,45 @@ function buildApplicationMenu(): void {
         { role: 'paste' },
         { role: 'delete' },
         { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+=',
+          click: () => {
+            if (!shellWindow || shellWindow.isDestroyed()) return;
+            const current = shellWindow.webContents.getZoomFactor();
+            const next = Math.min(current + 0.1, 2.0);
+            mainLogger.debug('menu.zoomIn', { from: current, to: next });
+            shellWindow.webContents.setZoomFactor(next);
+            shellWindow.webContents.send('zoom-changed', next);
+          },
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => {
+            if (!shellWindow || shellWindow.isDestroyed()) return;
+            const current = shellWindow.webContents.getZoomFactor();
+            const next = Math.max(current - 0.1, 0.5);
+            mainLogger.debug('menu.zoomOut', { from: current, to: next });
+            shellWindow.webContents.setZoomFactor(next);
+            shellWindow.webContents.send('zoom-changed', next);
+          },
+        },
+        {
+          label: 'Reset Zoom',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => {
+            if (!shellWindow || shellWindow.isDestroyed()) return;
+            mainLogger.debug('menu.zoomReset');
+            shellWindow.webContents.setZoomFactor(1.0);
+            shellWindow.webContents.send('zoom-changed', 1.0);
+          },
+        },
       ],
     },
     {

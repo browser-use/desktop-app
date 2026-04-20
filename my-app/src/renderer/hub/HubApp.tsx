@@ -82,6 +82,8 @@ export function HubApp(): React.ReactElement {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const [gridPage, setGridPage] = useState(0);
+  const [zoomFactor, setZoomFactor] = useState(1.0);
+  const [gridColumns, setGridColumns] = useState(4);
 
   const vimHandlers = useMemo<Partial<Record<ActionId, () => void>>>(() => ({
     'nav.down': () => setFocusIndex((i) => Math.min(i + 1, sessions.length - 1)),
@@ -101,6 +103,7 @@ export function HubApp(): React.ReactElement {
       const s = sessions[focusIndex];
       if (!s) return;
       window.electronAPI?.sessions.viewDetach(s.id).catch(() => {});
+      window.electronAPI?.sessions.hide(s.id).catch(() => {});
       console.log('[VimKeys] dismiss session', s.id);
       dismissSession(s.id);
       setFocusIndex((i) => Math.min(i, sessions.length - 2));
@@ -149,6 +152,34 @@ export function HubApp(): React.ReactElement {
     return key ? `${label}  (${key})` : label;
   };
 
+
+  useEffect(() => {
+    const api = (window as unknown as { electronAPI?: { on?: { zoomChanged?: (cb: (f: number) => void) => () => void } } }).electronAPI;
+    const saved = localStorage.getItem('hub-zoom-factor');
+    if (saved) {
+      const f = parseFloat(saved);
+      if (f >= 0.5 && f <= 2.0) setZoomFactor(f);
+    }
+    if (api?.on?.zoomChanged) {
+      return api.on.zoomChanged((f: number) => {
+        setZoomFactor(f);
+        localStorage.setItem('hub-zoom-factor', String(f));
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth;
+      if (w < 600) setGridColumns(1);
+      else if (w < 900) setGridColumns(2);
+      else if (w < 1200) setGridColumns(3);
+      else setGridColumns(4);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [zoomFactor]);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -271,6 +302,19 @@ export function HubApp(): React.ReactElement {
               </button>
             </div>
           )}
+          {zoomFactor !== 1.0 && (
+            <button
+              className="hub-toolbar__zoom"
+              onClick={() => {
+                const api = (window as unknown as { electronAPI?: { on?: { zoomChanged?: (cb: (f: number) => void) => () => void } } }).electronAPI;
+                setZoomFactor(1.0);
+                localStorage.setItem('hub-zoom-factor', '1');
+              }}
+              title="Reset zoom (Cmd+0)"
+            >
+              {Math.round(zoomFactor * 100)}%
+            </button>
+          )}
         </div>
       </header>
 
@@ -295,14 +339,14 @@ export function HubApp(): React.ReactElement {
         />
       ) : viewMode === 'grid' ? (
         (() => {
-          const pageSize = 4;
+          const pageSize = gridColumns;
           const totalPages = Math.max(1, Math.ceil(sessions.length / pageSize));
           const safePage = Math.min(gridPage, totalPages - 1);
           const pageStart = safePage * pageSize;
           const pageSessions = sessions.slice(pageStart, pageStart + pageSize);
           return (
             <div className="hub-grid-container">
-              <div className="hub-grid" data-count={Math.min(pageSessions.length, 4)}>
+              <div className="hub-grid" data-count={Math.min(pageSessions.length, gridColumns)}>
                 {pageSessions.map((session) => {
                   const globalIdx = sessions.findIndex((s) => s.id === session.id);
                   return (
@@ -314,6 +358,7 @@ export function HubApp(): React.ReactElement {
                       onFollowUp={handleFollowUp}
                       onDismiss={(id) => {
                         window.electronAPI?.sessions.viewDetach(id).catch(() => {});
+                        window.electronAPI?.sessions.hide(id).catch(() => {});
                         dismissSession(id);
                       }}
                       onCancel={(id) => {

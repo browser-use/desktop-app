@@ -38,6 +38,8 @@ interface ElectronSessionAPI {
   cancel: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   delete: (id: string) => Promise<void>;
+  hide: (id: string) => Promise<void>;
+  unhide: (id: string) => Promise<void>;
   resume: (id: string, prompt: string) => Promise<{ resumed?: boolean; error?: string }>;
   list: () => Promise<import('./hub/types').AgentSession[]>;
   get: (id: string) => Promise<import('./hub/types').AgentSession | null>;

@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cancel: (id: string): Promise<void> => ipcRenderer.invoke('sessions:cancel', id),
     dismiss: (id: string): Promise<void> => ipcRenderer.invoke('sessions:dismiss', id),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('sessions:delete', id),
+    hide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:hide', id),
+    unhide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:unhide', id),
     resume: (id: string, prompt: string): Promise<{ resumed?: boolean; error?: string }> =>
       ipcRenderer.invoke('sessions:resume', { id, prompt }),
     list: async (): Promise<AgentSession[]> => {
@@ -81,6 +83,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('open-settings', handler);
       return () => ipcRenderer.removeListener('open-settings', handler);
+    },
+    zoomChanged: (cb: (factor: number) => void): (() => void) => {
+      const handler = (_event: unknown, factor: number) => cb(factor);
+      ipcRenderer.on('zoom-changed', handler);
+      return () => ipcRenderer.removeListener('zoom-changed', handler);
     },
   },
 });
