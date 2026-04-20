@@ -231,6 +231,14 @@ export class SessionManager extends EventEmitter {
     mainLogger.info('SessionManager.deleteSession', { id });
   }
 
+  saveMessages(id: string, messages: unknown[]): void {
+    this.db.saveMessages(id, messages);
+  }
+
+  getMessages(id: string): unknown[] | null {
+    return this.db.getMessages(id);
+  }
+
   failSession(id: string, error: string): void {
     const session = this.sessions.get(id);
     if (!session) {
@@ -251,7 +259,24 @@ export class SessionManager extends EventEmitter {
     return session ? { ...session } : undefined;
   }
 
-  listSessions(): AgentSession[] {
+  listSessions(opts?: { includeHidden?: boolean }): AgentSession[] {
+    if (opts?.includeHidden) {
+      const rows = this.db.listSessions({ includeHidden: true });
+      return rows.map((row) => {
+        const cached = this.sessions.get(row.id);
+        if (cached) return { ...cached };
+        const events = this.db.getEvents(row.id);
+        return {
+          id: row.id,
+          prompt: row.prompt,
+          status: row.status as SessionStatus,
+          createdAt: row.created_at,
+          output: events,
+          error: row.error ?? undefined,
+          group: row.group_name ?? undefined,
+        };
+      });
+    }
     return Array.from(this.sessions.values())
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((s) => ({ ...s }));

@@ -104,6 +104,17 @@ export class SessionDb {
       mainLogger.info('SessionDb.migration.complete', { version: 2 });
     }
 
+    if (this.getVersion() < 3) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 3 });
+      try {
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN messages TEXT`);
+      } catch (err) {
+        if (!(err as Error).message.includes('duplicate column')) throw err;
+      }
+      this.setVersion(3);
+      mainLogger.info('SessionDb.migration.complete', { version: 3 });
+    }
+
     const final = this.getVersion();
     if (final !== DB_SCHEMA_VERSION) {
       const msg = `SessionDb migration did not reach expected version. Got ${final}, expected ${DB_SCHEMA_VERSION}.`;
@@ -186,6 +197,28 @@ export class SessionDb {
     const now = Date.now();
     this.db.prepare('UPDATE sessions SET hidden = 0, updated_at = ? WHERE id = ?').run(now, id);
     mainLogger.info('SessionDb.unhideSession', { id });
+  }
+
+  saveMessages(id: string, messages: unknown[]): void {
+    if (this.closed) return;
+    const now = Date.now();
+    try {
+      this.db.prepare('UPDATE sessions SET messages = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(messages), now, id);
+    } catch (err) {
+      mainLogger.error('SessionDb.saveMessages.failed', { id, error: (err as Error).message });
+    }
+  }
+
+  getMessages(id: string): unknown[] | null {
+    const row = this.db.prepare('SELECT messages FROM sessions WHERE id = ?').get(id) as { messages: string | null } | undefined;
+    if (!row?.messages) return null;
+    try {
+      return JSON.parse(row.messages) as unknown[];
+    } catch {
+      mainLogger.error('SessionDb.getMessages.parseFailed', { id });
+      return null;
+    }
   }
 
   deleteSession(id: string): void {

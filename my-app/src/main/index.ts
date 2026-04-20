@@ -324,7 +324,10 @@ app.whenReady().then(async () => {
         }
       },
     }).then((msgs) => {
-      if (msgs) sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
+      if (msgs) {
+        sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
+        sessionManager.saveMessages(validatedId, msgs);
+      }
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:start.agentError', { id: validatedId, error: err.message });
       sessionManager.failSession(validatedId, err.message);
@@ -364,7 +367,11 @@ app.whenReady().then(async () => {
       return { error: msg };
     }
 
-    const priorMessages = sessionMessages.get(validatedId) as import('@anthropic-ai/sdk/resources/messages').MessageParam[] | undefined;
+    let priorMessages = sessionMessages.get(validatedId) as import('@anthropic-ai/sdk/resources/messages').MessageParam[] | undefined;
+    if (!priorMessages) {
+      const fromDb = sessionManager.getMessages(validatedId);
+      if (fromDb) priorMessages = fromDb as import('@anthropic-ai/sdk/resources/messages').MessageParam[];
+    }
     mainLogger.info('main.sessions:resume.context', { id: validatedId, priorMessageCount: priorMessages?.length ?? 0 });
 
     runAgent({
@@ -385,7 +392,10 @@ app.whenReady().then(async () => {
         }
       },
     }).then((msgs) => {
-      if (msgs) sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
+      if (msgs) {
+        sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
+        sessionManager.saveMessages(validatedId, msgs);
+      }
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:resume.agentError', { id: validatedId, error: err.message });
       sessionManager.failSession(validatedId, err.message);
