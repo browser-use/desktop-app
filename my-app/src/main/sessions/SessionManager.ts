@@ -290,14 +290,6 @@ export class SessionManager extends EventEmitter {
     return this.db.getMessages(id);
   }
 
-  saveSdkSessionId(id: string, sdkSessionId: string): void {
-    this.db.saveSdkSessionId(id, sdkSessionId);
-  }
-
-  getSdkSessionId(id: string): string | null {
-    return this.db.getSdkSessionId(id);
-  }
-
   failSession(id: string, error: string): void {
     const session = this.sessions.get(id);
     if (!session) {

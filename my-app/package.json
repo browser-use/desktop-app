@@ -1,6 +1,6 @@
 {
   "name": "my-app",
-  "productName": "Browser Use",
+  "productName": "The Browser",
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": ".vite/build/main.js",
@@ -26,8 +26,7 @@
     "visual:qa": "npm run visual:capture && npm run visual:diff",
     "qa:review": "open tests/visual/review.html",
     "qa": "npm run lint && npm run typecheck && npm run test",
-    "start:reset-onboarding": "node scripts/reset-onboarding.mjs",
-    "postinstall": "bash scripts/patch-electron-plist.sh"
+    "start:reset-onboarding": "node scripts/reset-onboarding.mjs"
   },
   "keywords": [],
   "author": {
@@ -75,7 +74,6 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.114",
     "@anthropic-ai/sdk": "^0.90.0",
     "@hapi/boom": "^10.0.1",
     "@tanstack/react-query": "^5.99.2",

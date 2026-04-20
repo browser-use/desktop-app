@@ -1,9 +1,9 @@
 /**
- * Main process entry point — minimal Browser Use.
+ * Main process entry point — minimal agent hub.
  *
  * Browser modules (tabs, bookmarks, history, downloads, extensions,
  * permissions, profiles, etc.) have been removed in the nuclear pivot.
- * Only the Browser Use infrastructure remains: shell window, pill, HL engine,
+ * Only the agent hub infrastructure remains: shell window, pill, HL engine,
  * OAuth/identity, settings window, updater, hotkeys.
  */
 
@@ -16,13 +16,11 @@ import path from 'node:path';
 // dev-time fallback.
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage } from 'electron';
-
-app.setName('Browser Use');
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions } from 'electron';
 import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 // Track B — Pill + hotkeys
-import { createPillWindow, togglePill, showPill, hidePill, sendToPill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
+import { createPillWindow, togglePill, hidePill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
 import { registerHotkeys, unregisterHotkeys } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
 import type { AgentEvent } from '../shared/types';
@@ -43,8 +41,9 @@ import {
 } from './startup/cli';
 import { getApiKey } from './agentApiKey';
 import { assertString } from './ipc-validators';
-// Wave HL — Agent SDK
-import { runAgentSdk } from './hl/agent-sdk';
+// Wave HL — in-process TS agent
+import { runAgent } from './hl/agent';
+import { createContext } from './hl/context';
 import { getEngine, setEngine, type EngineId } from './hl/engine';
 import { forwardAgentEvent } from './pill';
 // Session management
@@ -130,18 +129,15 @@ function openShellAndWire(): BrowserWindow {
 
   shellWindow = createShellWindow();
 
-  // Create pill window (hidden) and register global hotkey
+  // Create pill window (hidden) and register Cmd+K hotkey
   createPillWindow();
-  const togglePillAndNotify = () => {
-    togglePill();
-    if (shellWindow && !shellWindow.isDestroyed()) {
-      shellWindow.webContents.send('pill-toggled');
-    }
-  };
-  const hotkeyOk = registerHotkeys(togglePillAndNotify);
+  const hotkeyOk = registerHotkeys(() => togglePill());
   if (!hotkeyOk) {
-    mainLogger.warn('main.hotkey', { msg: 'Global hotkey registration failed — another app may own it' });
+    mainLogger.warn('main.hotkey', { msg: 'Cmd+K hotkey registration failed — another app may own it' });
   }
+
+  // Cmd+K is handled by the hub renderer's own keydown listener (CommandBar).
+  // No before-input-event intercept needed — let the key pass through to the DOM.
 
   buildApplicationMenu();
 
@@ -183,12 +179,7 @@ function openShellAndWire(): BrowserWindow {
 // App ready
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
-  mainLogger.info('main.appReady', { msg: 'Electron app ready — initializing Browser Use' });
-
-  if (process.platform === 'darwin' && app.dock) {
-    const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
-    app.dock.setIcon(nativeImage.createFromPath(iconPath));
-  }
+  mainLogger.info('main.appReady', { msg: 'Electron app ready — initializing agent hub' });
 
   // ---------------------------------------------------------------------------
   // Channel IPC handlers (registered early so onboarding can use them too)
@@ -253,15 +244,6 @@ app.whenReady().then(async () => {
   ipcMain.handle('pill:toggle', async () => {
     mainLogger.info('main.pill:toggle');
     togglePill();
-    if (shellWindow && !shellWindow.isDestroyed()) {
-      shellWindow.webContents.send('pill-toggled');
-    }
-  });
-
-  ipcMain.on('pill:open-followup', (_event, sessionId: string, sessionPrompt: string) => {
-    mainLogger.info('main.pill:openFollowUp', { sessionId });
-    showPill();
-    sendToPill('pill:followup-mode', { sessionId, sessionPrompt });
   });
 
   ipcMain.on('pill:select-session', (_event, id: string) => {
@@ -283,7 +265,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  // pill:get-tabs — no tabs in Browser Use, return empty
+  // pill:get-tabs — no tabs in agent hub, return empty
   ipcMain.handle('pill:get-tabs', () => {
     return { tabs: [], activeTabId: null };
   });
@@ -351,13 +333,26 @@ app.whenReady().then(async () => {
     await view.webContents.loadURL('about:blank');
     mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'loadBlank', ms: Date.now() - t0 });
 
-    const session = sessionManager.getSession(id)!;
-    runAgentSdk({
-      prompt: session.prompt,
+    let ctx;
+    try {
+      ctx = await createContext({ name: id, webContents: view.webContents });
+      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'cdpAttach', ms: Date.now() - t0 });
+      mainLogger.info('main.startSessionWithAgent.cdpAttached', { id, transport: ctx.cdp.transport });
+    } catch (err) {
+      const msg = `CDP context creation failed: ${(err as Error).message}`;
+      mainLogger.warn('main.startSessionWithAgent.noCdp', { id, error: msg });
+      browserPool.destroy(id, shellWindow ?? undefined);
+      sessionManager.failSession(id, msg);
+      return;
+    }
+
+    steerQueues.set(id, []);
+    runAgent({
+      ctx,
+      prompt: sessionManager.getSession(id)!.prompt,
       apiKey,
-      webContents: view.webContents,
-      sessionName: id,
       signal: abortController.signal,
+      drainQueue: () => { const q = steerQueues.get(id); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(id, event);
@@ -369,15 +364,16 @@ app.whenReady().then(async () => {
           sessionManager.appendOutput(id, event);
         }
       },
-    }).then((sdkSessionId) => {
-      if (sdkSessionId) {
-        sessionManager.saveSdkSessionId(id, sdkSessionId);
+    }).then((msgs) => {
+      if (msgs) {
+        sessionManager.saveMessages(id, msgs);
       }
     }).catch((err: Error) => {
       mainLogger.error('main.startSessionWithAgent.agentError', { id, error: err.message });
       sessionManager.failSession(id, err.message);
       browserPool.destroy(id, shellWindow ?? undefined);
     }).finally(() => {
+      steerQueues.delete(id);
       startingSessionIds.delete(id);
       mainLogger.info('main.startSessionWithAgent.finished', { id, poolStats: browserPool.getStats() });
     });
@@ -415,16 +411,29 @@ app.whenReady().then(async () => {
 
     const abortController = sessionManager.resumeSession(validatedId, validatedPrompt);
 
-    const sdkResumeId = sessionManager.getSdkSessionId(validatedId);
-    mainLogger.info('main.sessions:resume.context', { id: validatedId, sdkResumeId });
+    let ctx;
+    try {
+      ctx = await createContext({ name: validatedId, webContents });
+      mainLogger.info('main.sessions:resume.cdpAttached', { id: validatedId, transport: ctx.cdp.transport });
+    } catch (err) {
+      const msg = `CDP context creation failed: ${(err as Error).message}`;
+      mainLogger.warn('main.sessions:resume.noCdp', { id: validatedId, error: msg });
+      sessionManager.failSession(validatedId, msg);
+      return { error: msg };
+    }
 
-    runAgentSdk({
+    const fromDb = sessionManager.getMessages(validatedId);
+    const priorMessages = fromDb as import('@anthropic-ai/sdk/resources/messages').MessageParam[] | undefined;
+    mainLogger.info('main.sessions:resume.context', { id: validatedId, priorMessageCount: priorMessages?.length ?? 0 });
+
+    steerQueues.set(validatedId, []);
+    runAgent({
+      ctx,
       prompt: validatedPrompt,
       apiKey,
-      webContents,
-      sessionName: validatedId,
       signal: abortController.signal,
-      resumeSessionId: sdkResumeId ?? undefined,
+      priorMessages,
+      drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -436,9 +445,9 @@ app.whenReady().then(async () => {
           sessionManager.appendOutput(validatedId, event);
         }
       },
-    }).then((sdkSessionId) => {
-      if (sdkSessionId) {
-        sessionManager.saveSdkSessionId(validatedId, sdkSessionId);
+    }).then((msgs) => {
+      if (msgs) {
+        sessionManager.saveMessages(validatedId, msgs);
       }
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:resume.agentError', { id: validatedId, error: err.message });
@@ -472,14 +481,23 @@ app.whenReady().then(async () => {
       return { error: 'Browser pool full' };
     }
 
-    await view.webContents.loadURL('about:blank');
+    let ctx;
+    try {
+      ctx = await createContext({ name: validatedId, webContents: view.webContents });
+    } catch (err) {
+      const msg = `CDP context creation failed: ${(err as Error).message}`;
+      browserPool.destroy(validatedId, shellWindow ?? undefined);
+      sessionManager.failSession(validatedId, msg);
+      return { error: msg };
+    }
 
-    runAgentSdk({
+    steerQueues.set(validatedId, []);
+    runAgent({
+      ctx,
       prompt: session.prompt,
       apiKey,
-      webContents: view.webContents,
-      sessionName: validatedId,
       signal: abortController.signal,
+      drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -491,14 +509,16 @@ app.whenReady().then(async () => {
           sessionManager.appendOutput(validatedId, event);
         }
       },
-    }).then((sdkSessionId) => {
-      if (sdkSessionId) {
-        sessionManager.saveSdkSessionId(validatedId, sdkSessionId);
+    }).then((msgs) => {
+      if (msgs) {
+        sessionManager.saveMessages(validatedId, msgs);
       }
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:rerun.agentError', { id: validatedId, error: err.message });
       sessionManager.failSession(validatedId, err.message);
       browserPool.destroy(validatedId, shellWindow ?? undefined);
+    }).finally(() => {
+      steerQueues.delete(validatedId);
     });
 
     return { rerun: true };
@@ -661,7 +681,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('shell:set-chrome-height', (_e, height: unknown) => {
     if (typeof height !== 'number' || !Number.isFinite(height)) return;
     mainLogger.debug('main.shell:set-chrome-height', { height });
-    // No TabManager to relay to — no-op in Browser Use
+    // No TabManager to relay to — no-op in agent hub
   });
 
   ipcMain.handle('shell:set-overlay', (_e, active: unknown) => {
@@ -773,16 +793,12 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainLogger.info('main.activate', { msg: 'Re-activating app (no windows)', onboardingComplete: accountStore.isOnboardingComplete() });
+      mainLogger.info('main.activate', { msg: 'Re-activating app', onboardingComplete: accountStore.isOnboardingComplete() });
       if (accountStore.isOnboardingComplete()) {
         openShellAndWire();
       } else {
         onboardingWindow = createOnboardingWindow();
       }
-    } else if (shellWindow && !shellWindow.isDestroyed()) {
-      mainLogger.info('main.activate', { msg: 'Re-activating app (showing shell)' });
-      shellWindow.show();
-      shellWindow.focus();
     }
   });
 });
@@ -844,9 +860,6 @@ function buildApplicationMenu(): void {
           click: () => {
             mainLogger.debug('menu.newAgent.togglePill');
             togglePill();
-            if (shellWindow && !shellWindow.isDestroyed()) {
-              shellWindow.webContents.send('pill-toggled');
-            }
           },
         },
       ],
