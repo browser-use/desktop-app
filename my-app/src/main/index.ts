@@ -479,16 +479,23 @@ app.whenReady().then(async () => {
       if (s.pid > 0) pidToSession.set(s.pid, s.sessionId);
     }
 
-    const shellPid = shellWindow?.webContents.getOSProcessId() ?? -1;
-    const knownWindowPids = new Map<number, string>();
+    const knownPids = new Map<number, string>();
+    if (shellWindow && !shellWindow.isDestroyed()) {
+      knownPids.set(shellWindow.webContents.getOSProcessId(), 'Interface');
+    }
+    const settingsWin = getSettingsWindow();
+    if (settingsWin && !settingsWin.isDestroyed()) {
+      knownPids.set(settingsWin.webContents.getOSProcessId(), 'Settings');
+    }
     for (const win of BrowserWindow.getAllWindows()) {
       try {
         const pid = win.webContents.getOSProcessId();
-        const title = win.getTitle();
-        if (pid === shellPid) knownWindowPids.set(pid, 'Hub UI');
-        else if (title.toLowerCase().includes('setting')) knownWindowPids.set(pid, 'Settings');
-        else if (title.toLowerCase().includes('onboard')) knownWindowPids.set(pid, 'Onboarding');
-        else knownWindowPids.set(pid, title || 'Window');
+        if (!knownPids.has(pid)) {
+          const title = win.getTitle();
+          if (title.toLowerCase().includes('onboard')) knownPids.set(pid, 'Onboarding');
+          else if (win.isAlwaysOnTop()) knownPids.set(pid, 'Command Bar');
+          else knownPids.set(pid, title || 'Window');
+        }
       } catch { /* destroyed */ }
     }
 
@@ -504,19 +511,19 @@ app.whenReady().then(async () => {
       if (sessionId) {
         const session = sessionManager.getSession(sessionId);
         const prompt = session?.prompt ?? '';
-        const label = prompt.length > 30 ? prompt.slice(0, 30) + '...' : prompt;
+        const label = prompt.length > 40 ? prompt.slice(0, 40) + '...' : prompt;
         sessions.push({ id: sessionId, mb, status: session?.status ?? 'unknown' });
         processes.push({ label, type: 'session', mb, sessionId });
-      } else if (knownWindowPids.has(m.pid)) {
-        processes.push({ label: knownWindowPids.get(m.pid)!, type: 'window', mb });
+      } else if (knownPids.has(m.pid)) {
+        processes.push({ label: knownPids.get(m.pid)!, type: 'window', mb });
       } else if (m.type === 'Tab') {
-        processes.push({ label: 'Session', type: 'session', mb });
+        processes.push({ label: 'Agent Browser', type: 'session', mb });
       } else if (m.type === 'Browser') {
-        processes.push({ label: 'App', type: 'main', mb });
+        processes.push({ label: 'Core', type: 'main', mb });
       } else if (m.type === 'GPU') {
-        processes.push({ label: 'GPU', type: 'gpu', mb });
+        processes.push({ label: 'Graphics', type: 'gpu', mb });
       } else {
-        processes.push({ label: m.type, type: m.type.toLowerCase(), mb });
+        processes.push({ label: 'System', type: 'system', mb });
       }
     }
 
