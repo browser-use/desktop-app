@@ -698,6 +698,8 @@ function checkOnboardingStructure(capturePath: string, stateName: string): strin
       Math.floor(png.height * 0.6),
     );
     const leftLuminance = 0.2126 * leftPanel.r + 0.7152 * leftPanel.g + 0.0722 * leftPanel.b;
+    const bgSampleLocal = sampleRegionRgb(png, 0, 0, png.width, Math.floor(png.height * 0.1));
+    const bgLuminance = 0.2126 * bgSampleLocal.r + 0.7152 * bgSampleLocal.g + 0.0722 * bgSampleLocal.b;
     if (leftLuminance < 12 && bgLuminance < 30) {
       issues.push(
         `Left panel content area very dark (luminance ${leftLuminance.toFixed(1)}) — text/pills may not be rendering`,

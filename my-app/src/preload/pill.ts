@@ -116,6 +116,12 @@ contextBridge.exposeInMainWorld('pillAPI', {
    * Subscribe to hide requests from main (e.g., after task_done + 5s timer).
    * Returns an unsubscribe function.
    */
+  onShown: (callback: () => void): (() => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('pill:shown', handler);
+    return () => { ipcRenderer.removeListener('pill:shown', handler); };
+  },
+
   onHideRequest: (callback: () => void): (() => void) => {
     const handler = () => {
       log.info('preload.pill.onHideRequest', {

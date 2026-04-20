@@ -1503,27 +1503,35 @@
 }
 
 .cmdbar__result--create {
-  border-bottom: 1px solid var(--color-border-subtle);
-  color: var(--color-fg-tertiary);
+  border-bottom: 1px solid var(--color-border-default);
+  color: var(--color-fg-primary);
   background-color: var(--color-bg-elevated);
+  padding: var(--space-4) var(--space-6);
+}
+
+.cmdbar__result--create .cmdbar__result-prompt {
+  color: var(--color-fg-primary);
+  font-weight: var(--font-weight-medium);
 }
 
 .cmdbar__result-create-icon {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg-disabled);
-  width: 6px;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg-tertiary);
+  width: 14px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .cmdbar__result-kbd {
   font-family: var(--font-mono);
-  font-size: var(--font-size-2xs);
-  color: var(--color-fg-disabled);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-tertiary);
   flex-shrink: 0;
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-bg-base);
+  border: 1px solid var(--color-border-default);
 }
 
 .cmdbar__footer {
