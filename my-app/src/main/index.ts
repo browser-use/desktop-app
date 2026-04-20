@@ -204,7 +204,6 @@ app.whenReady().then(async () => {
 
   // Active HL agent abort controllers keyed by task_id
   const activeAgents = new Map<string, AbortController>();
-  const sessionMessages = new Map<string, Array<{ role: string; content: unknown }>>();
   const steerQueues = new Map<string, string[]>();
   const startingSessionIds = new Set<string>();
 
@@ -372,7 +371,6 @@ app.whenReady().then(async () => {
       },
     }).then((msgs) => {
       if (msgs) {
-        sessionMessages.set(id, msgs as Array<{ role: string; content: unknown }>);
         sessionManager.saveMessages(id, msgs);
       }
     }).catch((err: Error) => {
@@ -429,11 +427,8 @@ app.whenReady().then(async () => {
       return { error: msg };
     }
 
-    let priorMessages = sessionMessages.get(validatedId) as import('@anthropic-ai/sdk/resources/messages').MessageParam[] | undefined;
-    if (!priorMessages) {
-      const fromDb = sessionManager.getMessages(validatedId);
-      if (fromDb) priorMessages = fromDb as import('@anthropic-ai/sdk/resources/messages').MessageParam[];
-    }
+    const fromDb = sessionManager.getMessages(validatedId);
+    const priorMessages = fromDb as import('@anthropic-ai/sdk/resources/messages').MessageParam[] | undefined;
     mainLogger.info('main.sessions:resume.context', { id: validatedId, priorMessageCount: priorMessages?.length ?? 0 });
 
     steerQueues.set(validatedId, []);
@@ -457,7 +452,6 @@ app.whenReady().then(async () => {
       },
     }).then((msgs) => {
       if (msgs) {
-        sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
         sessionManager.saveMessages(validatedId, msgs);
       }
     }).catch((err: Error) => {
@@ -483,7 +477,6 @@ app.whenReady().then(async () => {
     if (!session) return { error: 'Session not found' };
 
     browserPool.destroy(validatedId, shellWindow ?? undefined);
-    sessionMessages.delete(validatedId);
 
     const abortController = sessionManager.rerunSession(validatedId);
 
@@ -523,7 +516,6 @@ app.whenReady().then(async () => {
       },
     }).then((msgs) => {
       if (msgs) {
-        sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
         sessionManager.saveMessages(validatedId, msgs);
       }
     }).catch((err: Error) => {

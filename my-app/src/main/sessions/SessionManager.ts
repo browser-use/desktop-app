@@ -21,21 +21,22 @@ export class SessionManager extends EventEmitter {
     this.loadPersistedSessions();
   }
 
+  private hydratedOutputs = new Set<string>();
+
   private loadPersistedSessions(): void {
     const recoveredCount = this.db.recoverStaleSessions();
     if (recoveredCount > 0) {
       mainLogger.warn('SessionManager.loadPersistedSessions.recovered', { count: recoveredCount });
     }
 
-    const rows = this.db.listSessions({ limit: 50, includeHidden: true });
+    const rows = this.db.listSessions({ limit: 100, includeHidden: true });
     for (const row of rows) {
-      const events = this.db.getEvents(row.id);
       const session: AgentSession = {
         id: row.id,
         prompt: row.prompt,
         status: row.status as SessionStatus,
         createdAt: row.created_at,
-        output: events,
+        output: [],
         error: row.error ?? undefined,
         group: row.group_name ?? undefined,
         hidden: row.hidden === 1,
@@ -49,6 +50,22 @@ export class SessionManager extends EventEmitter {
       totalLoaded: this.sessions.size,
       recovered: recoveredCount,
     });
+  }
+
+  private hydrateOutput(id: string): void {
+    if (this.hydratedOutputs.has(id)) return;
+    const session = this.sessions.get(id);
+    if (!session) return;
+    if (session.output.length > 0) {
+      this.hydratedOutputs.add(id);
+      return;
+    }
+    const events = this.db.getEvents(id);
+    if (events.length > 0) {
+      session.output = events;
+      mainLogger.info('SessionManager.hydrateOutput', { id, eventCount: events.length });
+    }
+    this.hydratedOutputs.add(id);
   }
 
   // -- typed emit/on helpers ------------------------------------------------
@@ -179,6 +196,7 @@ export class SessionManager extends EventEmitter {
       throw new Error(`Session ${id} is ${session.status}, expected idle`);
     }
 
+    this.hydrateOutput(id);
     const userEvent: HlEvent = { type: 'user_input', text: prompt };
     session.output.push(userEvent);
     const seq = session.output.length - 1;
@@ -289,31 +307,15 @@ export class SessionManager extends EventEmitter {
 
   getSession(id: string): AgentSession | undefined {
     const session = this.sessions.get(id);
-    return session ? { ...session } : undefined;
+    if (!session) return undefined;
+    this.hydrateOutput(id);
+    return { ...session };
   }
 
-  listSessions(opts?: { includeHidden?: boolean }): AgentSession[] {
-    if (opts?.includeHidden) {
-      const rows = this.db.listSessions({ includeHidden: true });
-      return rows.map((row) => {
-        const cached = this.sessions.get(row.id);
-        if (cached) return { ...cached, hidden: row.hidden === 1 };
-        const events = this.db.getEvents(row.id);
-        return {
-          id: row.id,
-          prompt: row.prompt,
-          status: row.status as SessionStatus,
-          createdAt: row.created_at,
-          output: events,
-          error: row.error ?? undefined,
-          group: row.group_name ?? undefined,
-          hidden: row.hidden === 1,
-        };
-      });
-    }
+  listSessions(): AgentSession[] {
     return Array.from(this.sessions.values())
       .sort((a, b) => b.createdAt - a.createdAt)
-      .map((s) => ({ ...s }));
+      .map((s) => ({ ...s, output: [] }));
   }
 
   getAbortController(id: string): AbortController | undefined {
