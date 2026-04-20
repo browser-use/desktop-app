@@ -254,9 +254,11 @@ export class WhatsAppAdapter implements ChannelAdapter {
         continue;
       }
 
-      const ownJid = this.sock?.user?.id?.replace(/:.*@/, '@');
+      const stripDevice = (jid: string | null | undefined): string | null => jid ? jid.replace(/:.*@/, '@') : null;
+      const ownJid = stripDevice(this.sock?.user?.id);
+      const ownLid = stripDevice(this.selfLid);
       const isSelfChat =
-        msg.key.remoteJid === this.selfLid ||
+        msg.key.remoteJid === ownLid ||
         msg.key.remoteJid === ownJid;
       if (!isSelfChat) {
         mainLogger.info('whatsapp.msg.skipNotSelfChat', {
