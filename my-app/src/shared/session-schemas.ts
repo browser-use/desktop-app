@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Session status
 // ---------------------------------------------------------------------------
 
-export const SessionStatusSchema = z.enum(['draft', 'running', 'stuck', 'stopped']);
+export const SessionStatusSchema = z.enum(['draft', 'running', 'stuck', 'idle', 'stopped']);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 
 // ---------------------------------------------------------------------------
@@ -42,12 +42,27 @@ export const HlEventErrorSchema = z.object({
   message: z.string(),
 });
 
+export const HlEventUserInputSchema = z.object({
+  type: z.literal('user_input'),
+  text: z.string(),
+});
+
+export const HlEventSkillWrittenSchema = z.object({
+  type: z.literal('skill_written'),
+  path: z.string(),
+  domain: z.string(),
+  topic: z.string(),
+  bytes: z.number(),
+});
+
 export const HlEventSchema = z.discriminatedUnion('type', [
   HlEventThinkingSchema,
   HlEventToolCallSchema,
   HlEventToolResultSchema,
   HlEventDoneSchema,
   HlEventErrorSchema,
+  HlEventUserInputSchema,
+  HlEventSkillWrittenSchema,
 ]);
 
 export type HlEvent = z.infer<typeof HlEventSchema>;

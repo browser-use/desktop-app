@@ -10,6 +10,7 @@ export const STATUS_LABEL: Record<string, string> = {
   running: 'Running',
   stuck: 'Stuck',
   stopped: 'Stopped',
+  idle: 'Idle',
 };
 
 export const STATUS_CSS_MODIFIER: Record<string, string> = {

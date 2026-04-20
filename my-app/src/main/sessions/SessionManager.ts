@@ -3,19 +3,50 @@ import { EventEmitter } from 'node:events';
 import { mainLogger } from '../logger';
 import type { HlEvent } from '../hl/agent';
 import type { AgentSession, SessionStatus, SessionEvents } from './types';
+import { SessionDb } from './SessionDb';
 
 export type { AgentSession, SessionStatus, SessionEvents };
 
 const STUCK_TIMEOUT_MS = 30_000;
 
-// ---------------------------------------------------------------------------
-// SessionManager
-// ---------------------------------------------------------------------------
-
 export class SessionManager extends EventEmitter {
   private sessions: Map<string, AgentSession> = new Map();
   private abortControllers: Map<string, AbortController> = new Map();
   private stuckTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private db: SessionDb;
+
+  constructor(dbPath: string) {
+    super();
+    this.db = new SessionDb(dbPath);
+    this.loadPersistedSessions();
+  }
+
+  private loadPersistedSessions(): void {
+    const recoveredCount = this.db.recoverStaleSessions();
+    if (recoveredCount > 0) {
+      mainLogger.warn('SessionManager.loadPersistedSessions.recovered', { count: recoveredCount });
+    }
+
+    const rows = this.db.listSessions({ limit: 50 });
+    for (const row of rows) {
+      const events = this.db.getEvents(row.id);
+      const session: AgentSession = {
+        id: row.id,
+        prompt: row.prompt,
+        status: row.status as SessionStatus,
+        createdAt: row.created_at,
+        output: events,
+        error: row.error ?? undefined,
+        group: row.group_name ?? undefined,
+      };
+      this.sessions.set(row.id, session);
+    }
+
+    mainLogger.info('SessionManager.loadPersistedSessions', {
+      totalLoaded: this.sessions.size,
+      recovered: recoveredCount,
+    });
+  }
 
   // -- typed emit/on helpers ------------------------------------------------
 
@@ -31,14 +62,16 @@ export class SessionManager extends EventEmitter {
 
   createSession(prompt: string): string {
     const id = randomUUID();
+    const now = Date.now();
     const session: AgentSession = {
       id,
       prompt,
       status: 'draft',
-      createdAt: Date.now(),
+      createdAt: now,
       output: [],
     };
     this.sessions.set(id, session);
+    this.db.insertSession({ id, prompt, status: 'draft', createdAt: now });
     mainLogger.info('SessionManager.createSession', { id, promptLength: prompt.length });
     this.emitEvent('session-created', { ...session });
     return id;
@@ -49,17 +82,18 @@ export class SessionManager extends EventEmitter {
     if (!session) {
       throw new Error(`Session not found: ${id}`);
     }
-    if (session.status !== 'draft') {
-      throw new Error(`Session ${id} is ${session.status}, expected draft`);
+    if (session.status !== 'draft' && session.status !== 'idle') {
+      throw new Error(`Session ${id} is ${session.status}, expected draft or idle`);
     }
 
     session.status = 'running';
+    this.db.updateSessionStatus(id, 'running');
     const abortController = new AbortController();
     this.abortControllers.set(id, abortController);
 
     this.resetStuckTimer(id);
 
-    mainLogger.info('SessionManager.startSession', { id });
+    mainLogger.info('SessionManager.startSession', { id, resumed: session.output.length > 0 });
     this.emitEvent('session-updated', { ...session });
     return abortController;
   }
@@ -84,6 +118,7 @@ export class SessionManager extends EventEmitter {
     this.clearStuckTimer(id);
     session.status = 'stopped';
     session.error = 'Cancelled by user';
+    this.db.updateSessionStatus(id, 'stopped', 'Cancelled by user');
     mainLogger.info('SessionManager.cancelSession', { id });
     this.emitEvent('session-updated', { ...session });
   }
@@ -95,9 +130,12 @@ export class SessionManager extends EventEmitter {
       return;
     }
     session.output.push(event);
+    const seq = session.output.length - 1;
+    this.db.appendEvent(id, seq, event);
 
     if (session.status === 'stuck') {
       session.status = 'running';
+      this.db.updateSessionStatus(id, 'running');
       mainLogger.info('SessionManager.appendOutput', { id, recovered: true });
       this.emitEvent('session-updated', { ...session });
     }
@@ -117,9 +155,51 @@ export class SessionManager extends EventEmitter {
     }
     this.clearStuckTimer(id);
     this.abortControllers.delete(id);
-    session.status = 'stopped';
+    session.status = 'idle';
+    this.db.updateSessionStatus(id, 'idle');
     mainLogger.info('SessionManager.completeSession', { id, outputLines: session.output.length });
     this.emitEvent('session-completed', { ...session });
+  }
+
+  resumeSession(id: string, prompt: string): AbortController {
+    const session = this.sessions.get(id);
+    if (!session) {
+      throw new Error(`Session not found: ${id}`);
+    }
+    if (session.status !== 'idle') {
+      throw new Error(`Session ${id} is ${session.status}, expected idle`);
+    }
+
+    const userEvent: HlEvent = { type: 'user_input', text: prompt };
+    session.output.push(userEvent);
+    const seq = session.output.length - 1;
+    this.db.appendEvent(id, seq, userEvent);
+    this.emitEvent('session-output', id, userEvent);
+
+    session.prompt = prompt;
+    session.status = 'running';
+    this.db.updateSessionPrompt(id, prompt);
+    this.db.updateSessionStatus(id, 'running');
+    const abortController = new AbortController();
+    this.abortControllers.set(id, abortController);
+
+    this.resetStuckTimer(id);
+
+    mainLogger.info('SessionManager.resumeSession', { id, promptLength: prompt.length });
+    this.emitEvent('session-updated', { ...session });
+    return abortController;
+  }
+
+  dismissSession(id: string): void {
+    const session = this.sessions.get(id);
+    if (!session) {
+      mainLogger.warn('SessionManager.dismissSession', { id, reason: 'not_found' });
+      return;
+    }
+    session.status = 'stopped';
+    this.db.updateSessionStatus(id, 'stopped');
+    mainLogger.info('SessionManager.dismissSession', { id });
+    this.emitEvent('session-updated', { ...session });
   }
 
   failSession(id: string, error: string): void {
@@ -132,6 +212,7 @@ export class SessionManager extends EventEmitter {
     this.abortControllers.delete(id);
     session.status = 'stopped';
     session.error = error;
+    this.db.updateSessionStatus(id, 'stopped', error);
     mainLogger.info('SessionManager.failSession', { id, error });
     this.emitEvent('session-error', { ...session });
   }
@@ -159,6 +240,7 @@ export class SessionManager extends EventEmitter {
       const session = this.sessions.get(id);
       if (session && session.status === 'running') {
         session.status = 'stuck';
+        this.db.updateSessionStatus(id, 'stuck');
         mainLogger.warn('SessionManager.stuckDetected', { id, timeoutMs: STUCK_TIMEOUT_MS });
         this.emitEvent('session-updated', { ...session });
       }
@@ -190,6 +272,7 @@ export class SessionManager extends EventEmitter {
     this.stuckTimers.clear();
 
     this.removeAllListeners();
+    this.db.close();
     mainLogger.info('SessionManager.destroy', { sessionCount: this.sessions.size });
   }
 }
