@@ -479,27 +479,8 @@ app.whenReady().then(async () => {
       if (s.pid > 0) pidToSession.set(s.pid, s.sessionId);
     }
 
-    const knownPids = new Map<number, string>();
-    if (shellWindow && !shellWindow.isDestroyed()) {
-      knownPids.set(shellWindow.webContents.getOSProcessId(), 'Interface');
-    }
-    const settingsWin = getSettingsWindow();
-    if (settingsWin && !settingsWin.isDestroyed()) {
-      knownPids.set(settingsWin.webContents.getOSProcessId(), 'Settings');
-    }
-    for (const win of BrowserWindow.getAllWindows()) {
-      try {
-        const pid = win.webContents.getOSProcessId();
-        if (!knownPids.has(pid)) {
-          const title = win.getTitle();
-          if (title.toLowerCase().includes('onboard')) knownPids.set(pid, 'Onboarding');
-          else if (win.isAlwaysOnTop()) knownPids.set(pid, 'Command Bar');
-          else knownPids.set(pid, title || 'Window');
-        }
-      } catch { /* destroyed */ }
-    }
-
     let totalMb = 0;
+    let appMb = 0;
     const sessions: Array<{ id: string; mb: number; status: string }> = [];
     const processes: Array<{ label: string; type: string; mb: number; sessionId?: string }> = [];
 
@@ -514,18 +495,12 @@ app.whenReady().then(async () => {
         const label = prompt.length > 40 ? prompt.slice(0, 40) + '...' : prompt;
         sessions.push({ id: sessionId, mb, status: session?.status ?? 'unknown' });
         processes.push({ label, type: 'session', mb, sessionId });
-      } else if (knownPids.has(m.pid)) {
-        processes.push({ label: knownPids.get(m.pid)!, type: 'window', mb });
-      } else if (m.type === 'Tab') {
-        processes.push({ label: 'Agent Browser', type: 'session', mb });
-      } else if (m.type === 'Browser') {
-        processes.push({ label: 'Core', type: 'main', mb });
-      } else if (m.type === 'GPU') {
-        processes.push({ label: 'Graphics', type: 'gpu', mb });
       } else {
-        processes.push({ label: 'System', type: 'system', mb });
+        appMb += mb;
       }
     }
+
+    processes.unshift({ label: 'App', type: 'app', mb: appMb });
 
     return { totalMb, sessions, processes, processCount: metrics.length };
   });
