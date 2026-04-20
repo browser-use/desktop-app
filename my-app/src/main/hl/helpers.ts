@@ -148,12 +148,19 @@ function isWebContents(ctx: HlContext): boolean {
 }
 
 async function webContentsTabInfo(ctx: HlContext): Promise<TabInfo> {
-  const info = await pageInfo(ctx);
-  return { targetId: 'webcontents', title: String(info.title ?? ''), url: String(info.url ?? '') };
+  try {
+    const info = await Promise.race([
+      pageInfo(ctx),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
+    return { targetId: 'webcontents', title: String(info.title ?? ''), url: String(info.url ?? '') };
+  } catch {
+    return { targetId: 'webcontents', title: '', url: 'about:blank' };
+  }
 }
 
 export async function listTabs(ctx: HlContext, includeChrome = false): Promise<TabInfo[]> {
-  if (isWebContents(ctx)) return [await webContentsTabInfo(ctx)];
+  if (isWebContents(ctx)) return [{ targetId: 'webcontents', title: 'active', url: 'webcontents' }];
   const r = (await cdp(ctx, 'Target.getTargets')) as { targetInfos: Array<{ targetId: string; type: string; url: string; title?: string }> };
   const out: TabInfo[] = [];
   for (const t of r.targetInfos) {
@@ -166,7 +173,7 @@ export async function listTabs(ctx: HlContext, includeChrome = false): Promise<T
 }
 
 export async function currentTab(ctx: HlContext): Promise<TabInfo> {
-  if (isWebContents(ctx)) return webContentsTabInfo(ctx);
+  if (isWebContents(ctx)) return { targetId: 'webcontents', title: 'active', url: 'webcontents' };
   const r = (await cdp(ctx, 'Target.getTargetInfo')) as { targetInfo?: { targetId: string; url?: string; title?: string } };
   const t = r.targetInfo ?? { targetId: '', url: '', title: '' };
   return { targetId: t.targetId ?? '', title: t.title ?? '', url: t.url ?? '' };
@@ -199,7 +206,7 @@ export async function newTab(ctx: HlContext, url = 'about:blank'): Promise<strin
 }
 
 export async function ensureRealTab(ctx: HlContext): Promise<TabInfo | null> {
-  if (isWebContents(ctx)) return webContentsTabInfo(ctx);
+  if (isWebContents(ctx)) return { targetId: 'webcontents', title: 'active', url: 'webcontents' };
   const tabs = await listTabs(ctx);
   if (tabs.length === 0) return null;
   try {
