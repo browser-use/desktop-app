@@ -8,6 +8,7 @@
  */
 
 import { config as loadDotEnv } from 'dotenv';
+import fs from 'node:fs';
 import path from 'node:path';
 
 // Load .env from the app root (my-app/.env) BEFORE any module reads
@@ -155,6 +156,14 @@ function openShellAndWire(): BrowserWindow {
         }
       })
       .catch(() => {});
+
+    const waAuthDir = path.join(app.getPath('userData'), 'whatsapp-auth');
+    if (fs.existsSync(path.join(waAuthDir, 'creds.json'))) {
+      mainLogger.info('main.whatsapp.autoReconnect', { authDir: waAuthDir });
+      whatsAppAdapter.connect().catch((err) => {
+        mainLogger.warn('main.whatsapp.autoReconnect.failed', { error: (err as Error).message });
+      });
+    }
   });
 
   shellWindow.on('closed', () => {
@@ -196,6 +205,7 @@ app.whenReady().then(async () => {
   // Active HL agent abort controllers keyed by task_id
   const activeAgents = new Map<string, AbortController>();
   const sessionMessages = new Map<string, Array<{ role: string; content: unknown }>>();
+  const steerQueues = new Map<string, string[]>();
 
   // pill:submit — runs the HL in-process agent
   ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {
@@ -292,6 +302,71 @@ app.whenReady().then(async () => {
     shellWindow?.webContents.send('session-output', id, line);
   });
 
+  async function startSessionWithAgent(id: string): Promise<void> {
+    mainLogger.info('main.startSessionWithAgent', { id });
+
+    const abortController = sessionManager.startSession(id);
+
+    const apiKey = await getApiKey({ accountEmail: accountStore.load()?.email });
+    if (!apiKey) {
+      sessionManager.failSession(id, 'No API key configured');
+      mainLogger.warn('main.startSessionWithAgent.noApiKey', { id });
+      return;
+    }
+
+    const view = browserPool.create(id);
+    if (!view) {
+      sessionManager.failSession(id, `Browser pool full (max ${browserPool.activeCount}), session queued`);
+      mainLogger.warn('main.startSessionWithAgent.poolFull', { id, stats: browserPool.getStats() });
+      return;
+    }
+
+    let ctx;
+    try {
+      ctx = await createContext({ name: id, webContents: view.webContents });
+      mainLogger.info('main.startSessionWithAgent.cdpAttached', { id, transport: ctx.cdp.transport });
+    } catch (err) {
+      const msg = `CDP context creation failed: ${(err as Error).message}`;
+      mainLogger.warn('main.startSessionWithAgent.noCdp', { id, error: msg });
+      browserPool.destroy(id, shellWindow ?? undefined);
+      sessionManager.failSession(id, msg);
+      return;
+    }
+
+    steerQueues.set(id, []);
+    runAgent({
+      ctx,
+      prompt: sessionManager.getSession(id)!.prompt,
+      apiKey,
+      signal: abortController.signal,
+      drainQueue: () => { const q = steerQueues.get(id); if (!q?.length) return null; return q.shift()!; },
+      onEvent: (event) => {
+        if (event.type === 'done') {
+          sessionManager.appendOutput(id, event);
+          sessionManager.completeSession(id);
+        } else if (event.type === 'error') {
+          sessionManager.failSession(id, event.message);
+          browserPool.destroy(id, shellWindow ?? undefined);
+        } else {
+          sessionManager.appendOutput(id, event);
+        }
+      },
+    }).then((msgs) => {
+      if (msgs) {
+        sessionMessages.set(id, msgs as Array<{ role: string; content: unknown }>);
+        sessionManager.saveMessages(id, msgs);
+      }
+    }).catch((err: Error) => {
+      mainLogger.error('main.startSessionWithAgent.agentError', { id, error: err.message });
+      sessionManager.failSession(id, err.message);
+      browserPool.destroy(id, shellWindow ?? undefined);
+    }).finally(() => {
+      mainLogger.info('main.startSessionWithAgent.finished', { id, poolStats: browserPool.getStats() });
+    });
+  }
+
+  channelRouter.setStartSession(startSessionWithAgent);
+
   ipcMain.handle('sessions:create', (_event, prompt: string) => {
     const validatedPrompt = assertString(prompt, 'prompt', 10000);
     mainLogger.info('main.sessions:create', { promptLength: validatedPrompt.length });
@@ -300,64 +375,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('sessions:start', async (_event, id: string) => {
     const validatedId = assertString(id, 'id', 100);
-    mainLogger.info('main.sessions:start', { id: validatedId });
-
-    const abortController = sessionManager.startSession(validatedId);
-
-    const apiKey = await getApiKey({ accountEmail: accountStore.load()?.email });
-    if (!apiKey) {
-      sessionManager.failSession(validatedId, 'No API key configured');
-      mainLogger.warn('main.sessions:start.noApiKey', { id: validatedId });
-      return;
-    }
-
-    const view = browserPool.create(validatedId);
-    if (!view) {
-      sessionManager.failSession(validatedId, `Browser pool full (max ${browserPool.activeCount}), session queued`);
-      mainLogger.warn('main.sessions:start.poolFull', { id: validatedId, stats: browserPool.getStats() });
-      return;
-    }
-
-    let ctx;
-    try {
-      ctx = await createContext({ name: validatedId, webContents: view.webContents });
-      mainLogger.info('main.sessions:start.cdpAttached', { id: validatedId, transport: ctx.cdp.transport });
-    } catch (err) {
-      const msg = `CDP context creation failed: ${(err as Error).message}`;
-      mainLogger.warn('main.sessions:start.noCdp', { id: validatedId, error: msg });
-      browserPool.destroy(validatedId, shellWindow ?? undefined);
-      sessionManager.failSession(validatedId, msg);
-      return;
-    }
-
-    runAgent({
-      ctx,
-      prompt: sessionManager.getSession(validatedId)!.prompt,
-      apiKey,
-      signal: abortController.signal,
-      onEvent: (event) => {
-        if (event.type === 'done') {
-          sessionManager.appendOutput(validatedId, event);
-          sessionManager.completeSession(validatedId);
-        } else if (event.type === 'error') {
-          sessionManager.failSession(validatedId, event.message);
-          browserPool.destroy(validatedId, shellWindow ?? undefined);
-        } else {
-          sessionManager.appendOutput(validatedId, event);
-        }
-      },
-    }).then((msgs) => {
-      if (msgs) {
-        sessionMessages.set(validatedId, msgs as Array<{ role: string; content: unknown }>);
-        sessionManager.saveMessages(validatedId, msgs);
-      }
-    }).catch((err: Error) => {
-      mainLogger.error('main.sessions:start.agentError', { id: validatedId, error: err.message });
-      sessionManager.failSession(validatedId, err.message);
-      browserPool.destroy(validatedId, shellWindow ?? undefined);
-    }).finally(() => {
-      mainLogger.info('main.sessions:start.agentFinished', { id: validatedId, poolStats: browserPool.getStats() });
-    });
+    await startSessionWithAgent(validatedId);
   });
 
   ipcMain.handle('sessions:resume', async (_event, { id, prompt }: { id: string; prompt: string }) => {
@@ -397,12 +415,14 @@ app.whenReady().then(async () => {
     }
     mainLogger.info('main.sessions:resume.context', { id: validatedId, priorMessageCount: priorMessages?.length ?? 0 });
 
+    steerQueues.set(validatedId, []);
     runAgent({
       ctx,
       prompt: validatedPrompt,
       apiKey,
       signal: abortController.signal,
       priorMessages,
+      drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -461,11 +481,13 @@ app.whenReady().then(async () => {
       return { error: msg };
     }
 
+    steerQueues.set(validatedId, []);
     runAgent({
       ctx,
       prompt: session.prompt,
       apiKey,
       signal: abortController.signal,
+      drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -496,6 +518,27 @@ app.whenReady().then(async () => {
     mainLogger.info('main.sessions:cancel', { id: validatedId });
     sessionManager.cancelSession(validatedId);
     browserPool.destroy(validatedId, shellWindow ?? undefined);
+    steerQueues.delete(validatedId);
+  });
+
+  ipcMain.handle('sessions:halt', (_event, id: string) => {
+    const validatedId = assertString(id, 'id', 100);
+    mainLogger.info('main.sessions:halt', { id: validatedId });
+    const ctrl = sessionManager.getAbortController(validatedId);
+    if (ctrl) ctrl.abort();
+    steerQueues.delete(validatedId);
+  });
+
+  ipcMain.handle('sessions:steer', (_event, { id, message }: { id: string; message: string }) => {
+    const validatedId = assertString(id, 'id', 100);
+    const validatedMsg = assertString(message, 'message', 10000);
+    mainLogger.info('main.sessions:steer', { id: validatedId, messageLength: validatedMsg.length });
+    const q = steerQueues.get(validatedId);
+    if (q) {
+      q.push(validatedMsg);
+      return { queued: true };
+    }
+    return { error: 'Session not running' };
   });
 
   ipcMain.handle('sessions:dismiss', (_event, id: string) => {

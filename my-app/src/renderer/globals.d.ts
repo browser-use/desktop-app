@@ -36,6 +36,8 @@ interface ElectronSessionAPI {
   create: (prompt: string) => Promise<string>;
   start: (id: string) => Promise<void>;
   cancel: (id: string) => Promise<void>;
+  halt: (id: string) => Promise<void>;
+  steer: (id: string, message: string) => Promise<{ queued?: boolean; error?: string }>;
   dismiss: (id: string) => Promise<void>;
   delete: (id: string) => Promise<void>;
   hide: (id: string) => Promise<void>;

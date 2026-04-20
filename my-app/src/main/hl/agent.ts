@@ -42,6 +42,7 @@ export interface RunAgentOptions {
   onEvent: (e: HlEvent) => void;
   model?: string;
   priorMessages?: MessageParam[];
+  drainQueue?: () => string | null;
 }
 
 const SYSTEM_PROMPT = `You control a Chromium tab via CDP-backed tools AND have full local filesystem + shell access.
@@ -134,7 +135,21 @@ export async function runAgent(opts: RunAgentOptions): Promise<MessageParam[]> {
   ];
 
   for (let iter = 1; ; iter++) {
-    if (signal?.aborted) { onEvent({ type: 'error', message: 'cancelled' }); return messages; }
+    if (signal?.aborted) { onEvent({ type: 'done', summary: 'Halted by user', iterations: iter }); return messages; }
+
+    const queued = opts.drainQueue?.() ?? null;
+    if (queued) {
+      mainLogger.info('hl.agent.steer', { iter, promptLength: queued.length });
+      onEvent({ type: 'user_input', text: queued });
+      const last = messages[messages.length - 1];
+      if (last?.role === 'user') {
+        const existing = typeof last.content === 'string' ? last.content : JSON.stringify(last.content);
+        last.content = existing + '\n\n[User interruption]: ' + queued;
+      } else {
+        messages.push({ role: 'user', content: '[User interruption]: ' + queued });
+      }
+    }
+
     mainLogger.info('hl.agent.iter', { iter, model, ctx: ctx.name, messages: messages.length });
 
     let finalMsg: { content: ContentBlock[]; stop_reason: string | null; usage?: unknown };

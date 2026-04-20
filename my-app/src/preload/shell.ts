@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (prompt: string): Promise<string> => ipcRenderer.invoke('sessions:create', prompt),
     start: (id: string): Promise<void> => ipcRenderer.invoke('sessions:start', id),
     cancel: (id: string): Promise<void> => ipcRenderer.invoke('sessions:cancel', id),
+    halt: (id: string): Promise<void> => ipcRenderer.invoke('sessions:halt', id),
+    steer: (id: string, message: string): Promise<{ queued?: boolean; error?: string }> =>
+      ipcRenderer.invoke('sessions:steer', { id, message }),
     dismiss: (id: string): Promise<void> => ipcRenderer.invoke('sessions:dismiss', id),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('sessions:delete', id),
     hide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:hide', id),
