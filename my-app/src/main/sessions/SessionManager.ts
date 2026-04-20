@@ -312,8 +312,12 @@ export class SessionManager extends EventEmitter {
     return { ...session };
   }
 
-  listSessions(): AgentSession[] {
-    return Array.from(this.sessions.values())
+  listSessions(opts?: { includeHidden?: boolean }): AgentSession[] {
+    let list = Array.from(this.sessions.values());
+    if (!opts?.includeHidden) {
+      list = list.filter((s) => !(s as any).hidden);
+    }
+    return list
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((s) => ({ ...s, output: [] }));
   }

@@ -81,6 +81,8 @@ export const AgentSessionSchema = z.object({
   group: z.string().optional(),
   hasBrowser: z.boolean().optional(),
   hidden: z.boolean().optional(),
+  originChannel: z.string().optional(),
+  originConversationId: z.string().optional(),
 });
 
 export type AgentSession = z.infer<typeof AgentSessionSchema>;

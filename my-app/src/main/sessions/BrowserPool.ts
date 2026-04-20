@@ -155,13 +155,22 @@ export class BrowserPool {
     return true;
   }
 
-  setAllVisible(visible: boolean): void {
+  temporarilyDetachAll(window: BrowserWindow): void {
     for (const entry of this.entries.values()) {
       if (entry.attached) {
-        entry.view.setVisible(visible);
+        window.contentView.removeChildView(entry.view);
       }
     }
-    mainLogger.info('BrowserPool.setAllVisible', { visible });
+    mainLogger.info('BrowserPool.temporarilyDetachAll');
+  }
+
+  reattachAll(window: BrowserWindow): void {
+    for (const entry of this.entries.values()) {
+      if (entry.attached) {
+        window.contentView.addChildView(entry.view);
+      }
+    }
+    mainLogger.info('BrowserPool.reattachAll');
   }
 
   async getTabs(sessionId: string): Promise<TabInfo[]> {

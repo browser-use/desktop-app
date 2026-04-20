@@ -632,7 +632,9 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('sessions:views-set-visible', (_event, visible: boolean) => {
-    browserPool.setAllVisible(visible);
+    if (!shellWindow) return;
+    if (visible) browserPool.reattachAll(shellWindow);
+    else browserPool.temporarilyDetachAll(shellWindow);
   });
 
   ipcMain.handle('sessions:get-tabs', async (_event, id: string) => {
