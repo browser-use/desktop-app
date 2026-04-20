@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   pill: {
     toggle: (): Promise<void> => ipcRenderer.invoke('pill:toggle'),
+    hide: (): Promise<void> => ipcRenderer.invoke('pill:hide'),
+    openFollowUp: (sessionId: string, sessionPrompt: string): void => {
+      ipcRenderer.send('pill:open-followup', sessionId, sessionPrompt);
+    },
   },
   sessions: {
     create: (prompt: string): Promise<string> => ipcRenderer.invoke('sessions:create', prompt),
@@ -126,6 +130,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event: unknown, channelId: string, status: string, detail?: string) => cb(channelId, status, detail);
       ipcRenderer.on('channel-status', handler);
       return () => ipcRenderer.removeListener('channel-status', handler);
+    },
+    pillToggled: (cb: () => void): (() => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('pill-toggled', handler);
+      return () => ipcRenderer.removeListener('pill-toggled', handler);
     },
   },
 });

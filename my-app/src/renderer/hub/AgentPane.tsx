@@ -1,5 +1,4 @@
 import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react';
-import { useToast } from '@/renderer/components/base/Toast';
 import { useHydrateSession } from './useSessionsQuery';
 import { STATUS_LABEL } from './constants';
 import { ContentRenderer, getPreview } from './ContentRenderer';
@@ -280,6 +279,15 @@ function OutputIcon(): React.ReactElement {
   );
 }
 
+function SplitIcon(): React.ReactElement {
+  return (
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+      <rect x="1.5" y="2" width="11" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="1.5" y="7.5" width="11" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
 function CopyIcon(): React.ReactElement {
   return (
     <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
@@ -369,83 +377,142 @@ interface AgentPaneProps {
 }
 
 export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, onCancel, onSelect, onOpenFollowUp }: AgentPaneProps): React.ReactElement {
-  const toast = useToast();
   useHydrateSession(session.id);
   const scrollRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  const [showBrowser, setShowBrowser] = useState(false);
+  type PaneViewMode = 'output' | 'split' | 'browser';
+  const [viewMode, setViewMode] = useState<PaneViewMode>('split');
   const [browserDead, setBrowserDead] = useState(false);
+  const [splitPaddingLeft, setSplitPaddingLeft] = useState(0);
+  const [frameRect, setFrameRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [showFollowUpBar, setShowFollowUpBar] = useState(false);
-  const { entries } = useMemo(() => adaptSession(session), [session]);
+  const { entries: rawEntries } = useMemo(() => adaptSession(session), [session]);
+  const entries = useMemo<OutputEntry[]>(() => {
+    if (!session.prompt) return rawEntries;
+    const promptEntry: OutputEntry = {
+      id: `prompt-${session.id}`,
+      type: 'user_input',
+      timestamp: session.createdAt,
+      content: session.prompt,
+    };
+    return [promptEntry, ...rawEntries];
+  }, [rawEntries, session.prompt, session.id, session.createdAt]);
+
+  const SPLIT_RATIO = 0.6;
+
+  const computeBounds = useCallback((mode: PaneViewMode): { x: number; y: number; width: number; height: number; slotWidth: number } | null => {
+    const el = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const fullWidth = Math.round(rect.width);
+    const slotWidth = mode === 'split' ? Math.round(fullWidth * SPLIT_RATIO) : fullWidth;
+    const border = 1;
+    return {
+      x: Math.round(rect.x) + border,
+      y: Math.round(rect.y) + border,
+      width: slotWidth - border * 2,
+      height: Math.round(rect.height) - border * 2,
+      slotWidth,
+    };
+  }, []);
 
   useEffect(() => {
     if (session.status === 'running') {
       setBrowserDead(false);
     }
-    const api = window.electronAPI;
-    if (!api) return;
-    api.sessions.viewIsAttached(session.id).then((attached) => {
-      if (attached) setShowBrowser(true);
-    }).catch(() => {});
-    if (session.status !== 'running' && session.status !== 'draft') {
-      api.sessions.get(session.id).then((s) => {
-        if (s && s.hasBrowser === false) {
-          setBrowserDead(true);
-        }
-      }).catch(() => {});
-    }
   }, [session.id, session.status]);
 
-  const toggleBrowser = useCallback(async () => {
-    if (browserDead) {
-      setBrowserDead(false);
+  const applyViewMode = useCallback(async (mode: PaneViewMode): Promise<void> => {
+    const api = window.electronAPI;
+    if (!api) return;
+
+    if (mode === 'output' || browserDead) {
+      console.log('[AgentPane] detaching browser view', { id: session.id, mode });
+      await api.sessions.viewDetach(session.id).catch(() => {});
+      setSplitPaddingLeft(0);
+      setFrameRect(null);
       return;
     }
 
-    const api = window.electronAPI;
-    if (!api) return;
-
-    if (showBrowser) {
-      console.log('[AgentPane] detaching browser view', { id: session.id });
-      await api.sessions.viewDetach(session.id);
-      setShowBrowser(false);
-    } else {
-      const el = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      console.log('[AgentPane] attaching browser view', { id: session.id, bounds: rect });
-      const ok = await api.sessions.viewAttach(session.id, {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      });
-      if (ok) setShowBrowser(true);
-      else setBrowserDead(true);
+    const computed = computeBounds(mode);
+    if (!computed) return;
+    const { slotWidth, ...bounds } = computed;
+    console.log('[AgentPane] attaching browser view', { id: session.id, mode, bounds });
+    const ok = await api.sessions.viewAttach(session.id, bounds);
+    if (!ok) {
+      setBrowserDead(true);
+      setSplitPaddingLeft(0);
+      setFrameRect(null);
+      return;
     }
-  }, [showBrowser, session.id]);
+    setSplitPaddingLeft(mode === 'split' ? slotWidth : 0);
+    const paneEl = paneRef.current;
+    const outEl = paneEl?.querySelector('.pane__output') as HTMLElement | null;
+    if (paneEl && outEl) {
+      const p = paneEl.getBoundingClientRect();
+      const o = outEl.getBoundingClientRect();
+      setFrameRect({
+        left: Math.round(o.left - p.left),
+        top: Math.round(o.top - p.top),
+        width: slotWidth,
+        height: Math.round(o.height),
+      });
+    }
+  }, [session.id, browserDead, computeBounds]);
+
+  const handleSetMode = useCallback((mode: PaneViewMode) => {
+    if (browserDead && mode !== 'output') {
+      setBrowserDead(false);
+    }
+    setViewMode(mode);
+  }, [browserDead]);
 
   useEffect(() => {
-    if (!showBrowser) return;
-    const el = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
-    if (!el) return;
+    void applyViewMode(viewMode);
+  }, [viewMode, applyViewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'output') return;
+    const paneEl = paneRef.current;
+    if (!paneEl) return;
     const api = window.electronAPI;
     if (!api) return;
 
+    let lastKey = '';
     const updateBounds = () => {
-      const rect = el.getBoundingClientRect();
-      api.sessions.viewAttach(session.id, {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      }).catch(() => {});
+      const outEl = paneEl.querySelector('.pane__output') as HTMLElement | null;
+      if (!outEl) return;
+      const computed = computeBounds(viewMode);
+      if (!computed) return;
+      const { slotWidth, ...bounds } = computed;
+      const key = `${bounds.x}|${bounds.y}|${bounds.width}|${bounds.height}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      api.sessions.viewAttach(session.id, bounds).catch(() => {});
+      setSplitPaddingLeft(viewMode === 'split' ? slotWidth : 0);
+      const p = paneEl.getBoundingClientRect();
+      const o = outEl.getBoundingClientRect();
+      setFrameRect({
+        left: Math.round(o.left - p.left),
+        top: Math.round(o.top - p.top),
+        width: slotWidth,
+        height: Math.round(o.height),
+      });
     };
 
     const observer = new ResizeObserver(updateBounds);
-    observer.observe(el);
+    observer.observe(paneEl, { box: 'border-box' });
     return () => observer.disconnect();
-  }, [showBrowser, session.id]);
+  }, [viewMode, session.id, computeBounds]);
+
+  useEffect(() => {
+    return () => {
+      const api = window.electronAPI;
+      if (!api) return;
+      console.log('[AgentPane] unmount -> detach', { id: session.id });
+      api.sessions.viewDetach(session.id).catch(() => {});
+    };
+  }, [session.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -468,24 +535,33 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
               <span>Browser ended</span>
             </span>
           ) : (
-            <button
-              className={`pane__action-btn pane__action-btn--primary${showBrowser ? ' pane__action-btn--active' : ''}`}
-              onClick={toggleBrowser}
-            >
-              {showBrowser ? <OutputIcon /> : <BrowserIcon />}
-              <span>{showBrowser ? 'Output' : 'Browser'}</span>
-            </button>
+            <div className="pane__view-toggle" role="radiogroup" aria-label="Pane view mode">
+              <button
+                className={`pane__action-btn${viewMode === 'output' ? ' pane__action-btn--active' : ''}`}
+                onClick={(e) => { e.stopPropagation(); handleSetMode('output'); }}
+                aria-label="Output only"
+              >
+                <OutputIcon />
+                <span>Output</span>
+              </button>
+              <button
+                className={`pane__action-btn${viewMode === 'split' ? ' pane__action-btn--active' : ''}`}
+                onClick={(e) => { e.stopPropagation(); handleSetMode('split'); }}
+                aria-label="Split view"
+              >
+                <SplitIcon />
+                <span>Split</span>
+              </button>
+              <button
+                className={`pane__action-btn${viewMode === 'browser' ? ' pane__action-btn--active' : ''}`}
+                onClick={(e) => { e.stopPropagation(); handleSetMode('browser'); }}
+                aria-label="Browser only"
+              >
+                <BrowserIcon />
+                <span>Browser</span>
+              </button>
+            </div>
           )}
-          <button
-            className="pane__action-btn"
-            onClick={() => {
-              navigator.clipboard.writeText(session.prompt);
-              toast.show({ variant: 'success', title: 'Copied to clipboard', duration: 2000 });
-            }}
-          >
-            <CopyIcon />
-            <span>Copy</span>
-          </button>
           {onRerun && (
             <button
               className="pane__action-btn"
@@ -544,22 +620,38 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         </div>
       )}
 
-      <div className="pane__output" ref={scrollRef}>
-        {entries.length === 0 && session.status === 'draft' && (
-          <div className="pane__output-empty">
-            <p className="pane__output-empty-text">Not started yet</p>
-          </div>
-        )}
-        {entries.length === 0 && session.status === 'running' && (
-          <div className="pane__output-empty">
+      {frameRect && viewMode !== 'output' && (
+        <div
+          className="pane__browser-frame"
+          style={{
+            left: frameRect.left,
+            top: frameRect.top,
+            width: frameRect.width,
+            height: frameRect.height,
+          }}
+          aria-hidden="true"
+        >
+          <div className="pane__browser-starting">
             <span className="pane__spinner" />
-            <p className="pane__output-empty-text">Starting...</p>
+            <span>Browser starting…</span>
           </div>
-        )}
+        </div>
+      )}
+      <div
+        className={`pane__output${viewMode === 'split' ? ' pane__output--split' : ''}`}
+        ref={scrollRef}
+        style={viewMode === 'split' && splitPaddingLeft > 0 ? { paddingLeft: splitPaddingLeft } : undefined}
+      >
         {entries.map((entry) => (
           <OutputRow key={entry.id} entry={entry} />
         ))}
-        {session.status === 'running' && entries.length > 0 && (
+        {session.status === 'running' && rawEntries.length === 0 && (
+          <div className="pane__output-starting">
+            <span className="pane__spinner" />
+            <span className="pane__output-empty-text">Agent starting…</span>
+          </div>
+        )}
+        {session.status === 'running' && rawEntries.length > 0 && (
           <div className="pane__cursor-row">
             <span className="pane__cursor" />
           </div>
@@ -604,7 +696,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         )}
       </div>
 
-      {showFollowUpBar && showBrowser && session.status === 'idle' && onFollowUp && (
+      {showFollowUpBar && viewMode !== 'output' && session.status === 'idle' && onFollowUp && (
         <div className="pane__browser-followup">
           <FollowUpInput
             sessionId={session.id}

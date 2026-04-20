@@ -105,7 +105,7 @@ const SUCCESS_HTML = `<!DOCTYPE html>
 <style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#1a1a1f;color:#f0f0f2}
 .card{text-align:center;padding:48px;border-radius:16px;background:#252530}
 h1{font-size:24px;margin:0 0 8px}p{color:#8a8f98;margin:0}</style></head>
-<body><div class="card"><h1>Sign-in complete</h1><p>You can close this tab and return to The Browser.</p></div></body></html>`;
+<body><div class="card"><h1>Sign-in complete</h1><p>You can close this tab and return to Browser Use.</p></div></body></html>`;
 
 const ERROR_HTML = (msg: string) => `<!DOCTYPE html>
 <html><head><title>Sign-in Error</title>

@@ -8,6 +8,8 @@ declare global {
       setExpanded: (expanded: boolean | number) => void;
       listSessions: () => Promise<Array<{ id: string; prompt: string; status: string; createdAt: number }>>;
       selectSession: (id: string) => void;
+      followUpSubmit: (sessionId: string, prompt: string) => Promise<{ resumed?: boolean; error?: string }>;
+      onFollowUpMode: (cb: (data: { sessionId: string; sessionPrompt: string }) => void) => () => void;
     };
   }
 }
@@ -58,11 +60,18 @@ export function Pill(): React.ReactElement {
   const [value, setValue] = useState('');
   const [sessions, setSessions] = useState<SessionLite[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [followUp, setFollowUp] = useState<{ sessionId: string; sessionPrompt: string } | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setTimeout(() => ref.current?.focus(), 50);
     window.pillAPI.listSessions().then(setSessions).catch(() => {});
+    const unsub = window.pillAPI.onFollowUpMode((data) => {
+      setFollowUp(data);
+      setValue('');
+      setTimeout(() => ref.current?.focus(), 50);
+    });
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -87,6 +96,13 @@ export function Pill(): React.ReactElement {
   const submit = useCallback(() => {
     const trimmed = value.trim();
     if (!trimmed) return;
+    if (followUp) {
+      window.pillAPI.followUpSubmit(followUp.sessionId, trimmed);
+      setValue('');
+      setFollowUp(null);
+      window.pillAPI.hide();
+      return;
+    }
     if (hasResults && selectedIdx === 0) {
       window.pillAPI.submit(trimmed);
       setValue('');
@@ -99,13 +115,18 @@ export function Pill(): React.ReactElement {
     }
     window.pillAPI.submit(trimmed);
     setValue('');
-  }, [value, hasResults, selectedIdx, results]);
+  }, [value, hasResults, selectedIdx, results, followUp]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        window.pillAPI.hide();
+        if (followUp) {
+          setFollowUp(null);
+          setValue('');
+        } else {
+          window.pillAPI.hide();
+        }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIdx((i) => Math.min(i + 1, results.length));
@@ -134,7 +155,7 @@ export function Pill(): React.ReactElement {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search sessions or create new agent..."
+            placeholder={followUp ? `Follow up on: ${followUp.sessionPrompt.slice(0, 40)}${followUp.sessionPrompt.length > 40 ? '...' : ''}` : 'Search sessions or create new agent...'}
             rows={1}
             aria-label="Search or create"
           />
@@ -148,7 +169,7 @@ export function Pill(): React.ReactElement {
           </button>
         </div>
 
-        {hasResults && (
+        {hasResults && !followUp && (
           <div className="cmdbar__results">
             <button
               className={`cmdbar__result cmdbar__result--create${selectedIdx === 0 ? ' cmdbar__result--active' : ''}`}
@@ -177,15 +198,15 @@ export function Pill(): React.ReactElement {
 
         <div className="cmdbar__footer">
           <span className="cmdbar__hint">
-            <kbd className="cmdbar__kbd">Enter</kbd> {hasResults ? 'select' : 'create'}
+            <kbd className="cmdbar__kbd">Enter</kbd> {followUp ? 'follow up' : hasResults ? 'select' : 'create'}
           </span>
-          {hasResults && (
+          {hasResults && !followUp && (
             <span className="cmdbar__hint">
               <kbd className="cmdbar__kbd">{'\u2318\u21B5'}</kbd> new agent
             </span>
           )}
           <span className="cmdbar__hint">
-            <kbd className="cmdbar__kbd">Esc</kbd> close
+            <kbd className="cmdbar__kbd">Esc</kbd> {followUp ? 'cancel' : 'close'}
           </span>
         </div>
       </div>

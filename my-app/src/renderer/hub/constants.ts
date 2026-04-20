@@ -1,4 +1,4 @@
-export const APP_TITLE = 'Agent Hub' as const;
+export const APP_TITLE = 'Browser Use' as const;
 export const INPUT_PLACEHOLDER = 'What should the agent do?' as const;
 export const EMPTY_TITLE = 'No session selected' as const;
 export const EMPTY_BODY = 'Choose a session from the sidebar, or start a new one.' as const;

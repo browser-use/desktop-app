@@ -101,7 +101,7 @@ export function HubApp(): React.ReactElement {
     'goto.dashboard': () => setViewMode('dashboard'),
     'goto.agents': () => setViewMode('grid'),
     'goto.list': () => setViewMode('list'),
-    'goto.settings': () => { hideBrowserViews(); setSettingsOpen(true); },
+    'goto.settings': () => { window.electronAPI?.pill.hide(); hideBrowserViews(); setSettingsOpen(true); },
     'search.open': () => { window.electronAPI?.pill.toggle(); },
     'action.create': () => { window.electronAPI?.pill.toggle(); },
     'action.dismiss': () => {
@@ -168,7 +168,18 @@ export function HubApp(): React.ReactElement {
 
   useEffect(() => {
     const unsub = window.electronAPI?.on?.openSettings?.(() => {
+      window.electronAPI?.pill.hide();
+      hideBrowserViews();
       setSettingsOpen(true);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = window.electronAPI?.on?.pillToggled?.(() => {
+      setSettingsOpen(false);
+      setHelpOpen(false);
+      showBrowserViews();
     });
     return unsub;
   }, []);
@@ -286,7 +297,7 @@ export function HubApp(): React.ReactElement {
     <div className="hub-root">
       <header className="hub-toolbar">
         <div className="hub-toolbar__left">
-          <span className="hub-toolbar__title">Agent Hub</span>
+          <span className="hub-toolbar__title">Browser Use</span>
           <MemoryIndicator />
         </div>
         <div className="hub-toolbar__right">
@@ -443,7 +454,7 @@ export function HubApp(): React.ReactElement {
                       }}
                       onSelect={handleSelectSession}
                       onOpenFollowUp={() => {
-                        openPill();
+                        window.electronAPI?.pill.openFollowUp(session.id, session.prompt);
                       }}
                     />
                   );
@@ -492,6 +503,8 @@ export function HubApp(): React.ReactElement {
         keybindings={vim.keybindings}
         onOpenSettings={() => {
           setHelpOpen(false);
+          window.electronAPI?.pill.hide();
+          hideBrowserViews();
           setSettingsOpen(true);
         }}
       />

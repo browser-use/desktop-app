@@ -239,16 +239,33 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (type === 'append') return;
 
     for (const msg of messages) {
-      if (msg.key.remoteJid === 'status@broadcast') continue;
-      if (!msg.key.remoteJid || !msg.key.id) continue;
-      if (!msg.key.fromMe) continue;
-
-      mainLogger.debug('whatsapp.msg.candidate', {
+      mainLogger.info('whatsapp.msg.received', {
         remoteJid: msg.key.remoteJid,
         fromMe: msg.key.fromMe,
+        participant: msg.key.participant,
         selfLid: this.selfLid,
-        selfJid: this.sock?.user?.id,
+        ownJid: this.sock?.user?.id,
       });
+
+      if (msg.key.remoteJid === 'status@broadcast') continue;
+      if (!msg.key.remoteJid || !msg.key.id) continue;
+      if (!msg.key.fromMe) {
+        mainLogger.info('whatsapp.msg.skipNotFromMe', { remoteJid: msg.key.remoteJid });
+        continue;
+      }
+
+      const ownJid = this.sock?.user?.id?.replace(/:.*@/, '@');
+      const isSelfChat =
+        msg.key.remoteJid === this.selfLid ||
+        msg.key.remoteJid === ownJid;
+      if (!isSelfChat) {
+        mainLogger.info('whatsapp.msg.skipNotSelfChat', {
+          remoteJid: msg.key.remoteJid,
+          selfLid: this.selfLid,
+          ownJid,
+        });
+        continue;
+      }
 
       const dedupKey = `${msg.key.remoteJid}:${msg.key.id}`;
       if (this.seenMessages.has(dedupKey)) continue;

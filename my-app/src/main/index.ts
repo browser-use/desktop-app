@@ -16,11 +16,14 @@ import path from 'node:path';
 // dev-time fallback.
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage } from 'electron';
+
+app.setName('Browser Use');
+
 import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 // Track B — Pill + hotkeys
-import { createPillWindow, togglePill, hidePill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
+import { createPillWindow, togglePill, showPill, hidePill, sendToPill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
 import { registerHotkeys, unregisterHotkeys } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
 import type { AgentEvent } from '../shared/types';
@@ -129,11 +132,17 @@ function openShellAndWire(): BrowserWindow {
 
   shellWindow = createShellWindow();
 
-  // Create pill window (hidden) and register Cmd+K hotkey
+  // Create pill window (hidden) and register global hotkey
   createPillWindow();
-  const hotkeyOk = registerHotkeys(() => togglePill());
+  const togglePillAndNotify = () => {
+    togglePill();
+    if (shellWindow && !shellWindow.isDestroyed()) {
+      shellWindow.webContents.send('pill-toggled');
+    }
+  };
+  const hotkeyOk = registerHotkeys(togglePillAndNotify);
   if (!hotkeyOk) {
-    mainLogger.warn('main.hotkey', { msg: 'Cmd+K hotkey registration failed — another app may own it' });
+    mainLogger.warn('main.hotkey', { msg: 'Global hotkey registration failed — another app may own it' });
   }
 
   // Cmd+K is handled by the hub renderer's own keydown listener (CommandBar).
@@ -179,7 +188,24 @@ function openShellAndWire(): BrowserWindow {
 // App ready
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
-  mainLogger.info('main.appReady', { msg: 'Electron app ready — initializing agent hub' });
+  mainLogger.info('main.appReady', { msg: 'Electron app ready — initializing Browser Use' });
+
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      await app.dock.show();
+      const iconPath = path.resolve(app.getAppPath(), 'assets', 'icon.png');
+      mainLogger.info('main.dockIcon', { iconPath, exists: fs.existsSync(iconPath) });
+      if (fs.existsSync(iconPath)) {
+        const icon = nativeImage.createFromPath(iconPath);
+        mainLogger.info('main.dockIcon.loaded', { isEmpty: icon.isEmpty(), size: icon.getSize() });
+        if (!icon.isEmpty()) {
+          app.dock.setIcon(icon);
+        }
+      }
+    } catch (err) {
+      mainLogger.error('main.dockIcon.error', { error: (err as Error).message });
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Channel IPC handlers (registered early so onboarding can use them too)
@@ -244,6 +270,17 @@ app.whenReady().then(async () => {
   ipcMain.handle('pill:toggle', async () => {
     mainLogger.info('main.pill:toggle');
     togglePill();
+    if (shellWindow && !shellWindow.isDestroyed()) {
+      shellWindow.webContents.send('pill-toggled');
+    }
+  });
+
+  ipcMain.on('pill:open-followup', (_event, sessionId: string, sessionPrompt: string) => {
+    mainLogger.info('main.pill:openFollowUp', { sessionId, promptLen: sessionPrompt.length });
+    showPill();
+    setTimeout(() => {
+      sendToPill('pill:followup-mode', { sessionId, sessionPrompt });
+    }, 50);
   });
 
   ipcMain.on('pill:select-session', (_event, id: string) => {
@@ -793,12 +830,16 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainLogger.info('main.activate', { msg: 'Re-activating app', onboardingComplete: accountStore.isOnboardingComplete() });
+      mainLogger.info('main.activate', { msg: 'Re-activating app (no windows)', onboardingComplete: accountStore.isOnboardingComplete() });
       if (accountStore.isOnboardingComplete()) {
         openShellAndWire();
       } else {
         onboardingWindow = createOnboardingWindow();
       }
+    } else if (shellWindow && !shellWindow.isDestroyed()) {
+      mainLogger.info('main.activate', { msg: 'Re-activating app (showing shell)' });
+      shellWindow.show();
+      shellWindow.focus();
     }
   });
 });
@@ -860,6 +901,9 @@ function buildApplicationMenu(): void {
           click: () => {
             mainLogger.debug('menu.newAgent.togglePill');
             togglePill();
+            if (shellWindow && !shellWindow.isDestroyed()) {
+              shellWindow.webContents.send('pill-toggled');
+            }
           },
         },
       ],

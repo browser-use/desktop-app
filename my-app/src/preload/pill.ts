@@ -68,6 +68,16 @@ contextBridge.exposeInMainWorld('pillAPI', {
     ipcRenderer.send('pill:select-session', id);
   },
 
+  followUpSubmit: (sessionId: string, prompt: string): Promise<{ resumed?: boolean; error?: string }> => {
+    return ipcRenderer.invoke('sessions:resume', { id: sessionId, prompt });
+  },
+
+  onFollowUpMode: (cb: (data: { sessionId: string; sessionPrompt: string }) => void): (() => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: { sessionId: string; sessionPrompt: string }) => cb(data);
+    ipcRenderer.on('pill:followup-mode', handler);
+    return () => ipcRenderer.removeListener('pill:followup-mode', handler);
+  },
+
   /**
    * Hide the pill window (Esc key or close button).
    */

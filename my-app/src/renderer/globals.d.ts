@@ -73,10 +73,13 @@ interface ElectronOnAPI {
   zoomChanged?: (cb: (factor: number) => void) => () => void;
   whatsappQr?: (cb: (dataUrl: string) => void) => () => void;
   channelStatus?: (cb: (channelId: string, status: string, detail?: string) => void) => () => void;
+  pillToggled?: (cb: () => void) => () => void;
 }
 
 interface ElectronPillAPI {
   toggle: () => Promise<void>;
+  hide: () => Promise<void>;
+  openFollowUp: (sessionId: string, sessionPrompt: string) => void;
 }
 
 interface ElectronAPI {

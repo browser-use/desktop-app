@@ -29,7 +29,7 @@ async function clearBrowsingData(_opts: {
   passwordStore?: unknown;
   downloadManager?: unknown;
 }): Promise<ClearDataResult> {
-  return { cleared: [], errors: ['Browser data clearing not available in agent hub'] };
+  return { cleared: [], errors: ['Browser data clearing not available in Browser Use'] };
 }
 function isBiometricAvailable(): boolean { return false; }
 type PasswordStore = null;
