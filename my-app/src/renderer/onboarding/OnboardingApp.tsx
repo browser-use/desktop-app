@@ -71,30 +71,55 @@ function buildAccelerator(e: KeyboardEvent): string | null {
   return [...mods, key].join('+');
 }
 
-function ErrorReasonsDisclosure({ reasons }: { reasons: Record<string, number> }) {
-  const [open, setOpen] = useState(false);
+function FailedSection({
+  failed,
+  failedDomains,
+  errorReasons,
+}: {
+  failed: number;
+  failedDomains: string[];
+  errorReasons: Record<string, number>;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
+  const hasReasons = Object.keys(errorReasons).length > 0;
+
+  return (
+    <div className="import-failed-section">
+      <div className="import-failed-row">
+        <div className="import-stat import-stat-error">
+          <svg className="import-stat-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span>{failed} failed from {failedDomains.length} domains</span>
+        </div>
+        {hasReasons && (
+          <button
+            type="button"
+            className="error-reasons-toggle"
+            onClick={() => setShowDetails((v) => !v)}
+          >
+            <span>{showDetails ? 'Hide details' : 'Show details'}</span>
+            <span className="error-reasons-chevron">{showDetails ? '\u25B4' : '\u25BE'}</span>
+          </button>
+        )}
+      </div>
+      <DomainList domains={failedDomains} collapsible />
+      {showDetails && <ErrorReasonsDetails reasons={errorReasons} />}
+    </div>
+  );
+}
+
+function ErrorReasonsDetails({ reasons }: { reasons: Record<string, number> }) {
   const entries = Object.entries(reasons).sort(([, a], [, b]) => b - a);
   if (entries.length === 0) return null;
   return (
-    <div className="error-reasons-wrap">
-      <button
-        type="button"
-        className="error-reasons-toggle"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="error-reasons-chevron">{open ? '\u25B4' : '\u25BE'}</span>
-        <span>{open ? 'Hide error details' : 'Show error details'}</span>
-      </button>
-      {open && (
-        <div className="error-reasons">
-          {entries.map(([reason, count]) => (
-            <div key={reason} className="error-reason-row">
-              <span className="error-reason-count">{count}</span>
-              <span className="error-reason-text">{reason}</span>
-            </div>
-          ))}
+    <div className="error-reasons">
+      {entries.map(([reason, count]) => (
+        <div key={reason} className="error-reason-row">
+          <span className="error-reason-count">{count}</span>
+          <span className="error-reason-text">{reason}</span>
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -329,18 +354,11 @@ export function OnboardingApp() {
                 <DomainList domains={importResult.domains} collapsible />
 
                 {importResult.failedDomains.length > 0 && (
-                  <div className="import-failed-section">
-                    <div className="import-stat import-stat-error">
-                      <svg className="import-stat-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      <span>
-                        {importResult.failed} failed from {importResult.failedDomains.length} domains
-                      </span>
-                    </div>
-                    <ErrorReasonsDisclosure reasons={importResult.errorReasons} />
-                    <DomainList domains={importResult.failedDomains} collapsible />
-                  </div>
+                  <FailedSection
+                    failed={importResult.failed}
+                    failedDomains={importResult.failedDomains}
+                    errorReasons={importResult.errorReasons}
+                  />
                 )}
 
                 <div className="apikey-actions">

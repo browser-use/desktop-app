@@ -387,6 +387,13 @@ html, body {
   gap: 10px;
 }
 
+.import-failed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .import-continue-btn {
   margin-top: 4px;
 }
