@@ -218,6 +218,49 @@ export const HL_TOOLS: HlTool[] = [
     },
     run: (ctx, a) => H.cdp(ctx, str(a, 'method'), (a.params as Record<string, unknown>) ?? {}),
   },
+  // ── Filesystem + Shell tools ──────────────────────────────────────────────
+  {
+    name: 'read_file',
+    description: 'Read a file from the local filesystem. Returns {path, content, size}. Large files are truncated at 256 KB.',
+    input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    run: (ctx, a) => H.readFile(ctx, str(a, 'path')),
+  },
+  {
+    name: 'write_file',
+    description: 'Write content to a file (creates parent dirs if needed). Returns {path, bytes}.',
+    input_schema: {
+      type: 'object',
+      properties: { path: { type: 'string' }, content: { type: 'string' } },
+      required: ['path', 'content'],
+    },
+    run: (ctx, a) => H.writeFile(ctx, str(a, 'path'), str(a, 'content')),
+  },
+  {
+    name: 'patch_file',
+    description: 'Replace the first occurrence of old_str with new_str in a file. Returns {path, replaced: bool}.',
+    input_schema: {
+      type: 'object',
+      properties: { path: { type: 'string' }, old_str: { type: 'string' }, new_str: { type: 'string' } },
+      required: ['path', 'old_str', 'new_str'],
+    },
+    run: (ctx, a) => H.patchFile(ctx, str(a, 'path'), str(a, 'old_str'), str(a, 'new_str')),
+  },
+  {
+    name: 'list_dir',
+    description: 'List directory entries. Returns {path, entries: [{name, type}]}.',
+    input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    run: (ctx, a) => H.listDir(ctx, str(a, 'path')),
+  },
+  {
+    name: 'shell',
+    description: 'Execute a shell command. Returns {exitCode, stdout, stderr}. Timeout: 30s. Optional cwd.',
+    input_schema: {
+      type: 'object',
+      properties: { command: { type: 'string' }, cwd: { type: 'string' } },
+      required: ['command'],
+    },
+    run: (ctx, a) => H.shellExec(ctx, str(a, 'command'), (a.cwd as string | undefined)),
+  },
   {
     name: 'done',
     description: 'Call this when the task is complete. Pass a short user-facing summary of the outcome.',

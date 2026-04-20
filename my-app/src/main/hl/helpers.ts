@@ -28,7 +28,13 @@
  */
 
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { app } from 'electron';
 import { INTERNAL_URL_PREFIXES, type HlContext, type BufferedCdpEvent } from './context';
+
+function skillsRoot(): string {
+  return path.resolve(app.isPackaged ? process.resourcesPath : path.join(__dirname, '../../..'));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Core: cdp() + meta helpers
@@ -54,13 +60,28 @@ export function setSession(ctx: HlContext, s: string | null): void { ctx.session
 // Navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Navigate the attached tab. Does NOT wait for load — call waitForLoad after. */
+/** Navigate the attached tab. Does NOT wait for load — call waitForLoad after. Returns domain_skills if any exist for the hostname. */
 export async function goto(ctx: HlContext, url: string): Promise<unknown> {
-  return cdp(ctx, 'Page.navigate', { url });
+  const r = await cdp(ctx, 'Page.navigate', { url });
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '').split('.')[0];
+    const skillDir = path.join(skillsRoot(), 'domain-skills', hostname);
+    const stat = await fs.stat(skillDir).catch(() => null);
+    if (stat?.isDirectory()) {
+      const files = await fs.readdir(skillDir);
+      const skills = files.filter((f) => f.endsWith('.md')).slice(0, 10);
+      return { ...(r as object), domain_skills: skills };
+    }
+  } catch { /* no skills for this domain */ }
+  return r;
 }
 
-/** Full viewport+scroll+page info: {url, title, w, h, sx, sy, pw, ph}. */
-export async function pageInfo(ctx: HlContext): Promise<{ url: string; title: string; w: number; h: number; sx: number; sy: number; pw: number; ph: number }> {
+/** Full viewport+scroll+page info. If a native dialog is open, returns {dialog: {...}} instead — the JS thread is frozen until handled. */
+export async function pageInfo(ctx: HlContext): Promise<Record<string, unknown>> {
+  const pendingDialog = ctx.events.find((e) => e.method === 'Page.javascriptDialogOpening');
+  if (pendingDialog) {
+    return { dialog: pendingDialog.params };
+  }
   const expr = 'JSON.stringify({url:location.href,title:document.title,w:innerWidth,h:innerHeight,sx:scrollX,sy:scrollY,pw:document.documentElement.scrollWidth,ph:document.documentElement.scrollHeight})';
   const r = (await cdp(ctx, 'Runtime.evaluate', { expression: expr, returnByValue: true })) as { result: { value: string } };
   return JSON.parse(r.result.value);
@@ -122,7 +143,17 @@ export async function screenshot(ctx: HlContext, outPath?: string, full = false)
 
 export interface TabInfo { targetId: string; title: string; url: string }
 
+function isWebContents(ctx: HlContext): boolean {
+  return ctx.cdp.transport === 'webcontents';
+}
+
+async function webContentsTabInfo(ctx: HlContext): Promise<TabInfo> {
+  const info = await pageInfo(ctx);
+  return { targetId: 'webcontents', title: String(info.title ?? ''), url: String(info.url ?? '') };
+}
+
 export async function listTabs(ctx: HlContext, includeChrome = false): Promise<TabInfo[]> {
+  if (isWebContents(ctx)) return [await webContentsTabInfo(ctx)];
   const r = (await cdp(ctx, 'Target.getTargets')) as { targetInfos: Array<{ targetId: string; type: string; url: string; title?: string }> };
   const out: TabInfo[] = [];
   for (const t of r.targetInfos) {
@@ -135,25 +166,40 @@ export async function listTabs(ctx: HlContext, includeChrome = false): Promise<T
 }
 
 export async function currentTab(ctx: HlContext): Promise<TabInfo> {
+  if (isWebContents(ctx)) return webContentsTabInfo(ctx);
   const r = (await cdp(ctx, 'Target.getTargetInfo')) as { targetInfo?: { targetId: string; url?: string; title?: string } };
   const t = r.targetInfo ?? { targetId: '', url: '', title: '' };
   return { targetId: t.targetId ?? '', title: t.title ?? '', url: t.url ?? '' };
 }
 
 export async function switchTab(ctx: HlContext, targetId: string): Promise<string> {
+  if (isWebContents(ctx)) return 'webcontents';
+  try { await cdp(ctx, 'Runtime.evaluate', { expression: "if(document.title.startsWith('\\u{1F7E2} '))document.title=document.title.slice(2)" }); } catch { /* old tab gone */ }
+  try {
+    await Promise.race([
+      cdp(ctx, 'Target.activateTarget', { targetId }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('activateTarget timeout')), 2000)),
+    ]);
+  } catch { /* not supported or timed out */ }
   const r = (await cdp(ctx, 'Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
   setSession(ctx, r.sessionId);
+  try { await cdp(ctx, 'Runtime.evaluate', { expression: "if(!document.title.startsWith('\\u{1F7E2}'))document.title='\\u{1F7E2} '+document.title" }); } catch { /* e.g. about:blank */ }
   return r.sessionId;
 }
 
 export async function newTab(ctx: HlContext, url = 'about:blank'): Promise<string> {
-  const r = (await cdp(ctx, 'Target.createTarget', { url })) as { targetId: string };
+  if (isWebContents(ctx)) {
+    if (url !== 'about:blank') await goto(ctx, url);
+    return 'webcontents';
+  }
+  const r = (await cdp(ctx, 'Target.createTarget', { url: 'about:blank' })) as { targetId: string };
   await switchTab(ctx, r.targetId);
+  if (url !== 'about:blank') await goto(ctx, url);
   return r.targetId;
 }
 
-/** Switch to a real user tab if current is chrome:// / internal / stale. */
 export async function ensureRealTab(ctx: HlContext): Promise<TabInfo | null> {
+  if (isWebContents(ctx)) return webContentsTabInfo(ctx);
   const tabs = await listTabs(ctx);
   if (tabs.length === 0) return null;
   try {
@@ -164,8 +210,8 @@ export async function ensureRealTab(ctx: HlContext): Promise<TabInfo | null> {
   return tabs[0];
 }
 
-/** First iframe target whose URL contains substr. Use with js(expr, targetId). */
 export async function iframeTarget(ctx: HlContext, urlSubstr: string): Promise<string | null> {
+  if (isWebContents(ctx)) return null;
   const r = (await cdp(ctx, 'Target.getTargets')) as { targetInfos: Array<{ targetId: string; type: string; url?: string }> };
   const t = r.targetInfos.find((i) => i.type === 'iframe' && (i.url ?? '').includes(urlSubstr));
   return t ? t.targetId : null;
@@ -270,4 +316,67 @@ export async function httpGet(_ctx: HlContext, url: string, headers?: Record<str
 export async function reactSetValue(ctx: HlContext, selector: string, value: string): Promise<void> {
   const sel = JSON.stringify(selector); const v = JSON.stringify(value);
   await js(ctx, `(()=>{const el=document.querySelector(${sel});if(!el)throw new Error('no element for '+${sel});const d=Object.getOwnPropertyDescriptor(el.__proto__,'value');if(d&&d.set){d.set.call(el,${v});}else{el.value=${v};}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filesystem + Shell — local machine access for self-editing harness
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { exec as execCb } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(execCb);
+
+const MAX_READ_BYTES = 256 * 1024; // 256 KB
+const MAX_EXEC_TIMEOUT = 30_000;   // 30 seconds
+const MAX_OUTPUT_CHARS = 64_000;   // truncate shell output
+
+export async function readFile(_ctx: HlContext, filePath: string): Promise<{ path: string; content: string; size: number }> {
+  const resolved = path.resolve(filePath);
+  const stat = await fs.stat(resolved);
+  if (stat.size > MAX_READ_BYTES) {
+    const buf = Buffer.alloc(MAX_READ_BYTES);
+    const fh = await fs.open(resolved, 'r');
+    await fh.read(buf, 0, MAX_READ_BYTES, 0);
+    await fh.close();
+    return { path: resolved, content: buf.toString('utf-8') + `\n…[truncated at ${MAX_READ_BYTES} bytes, total ${stat.size}]`, size: stat.size };
+  }
+  const content = await fs.readFile(resolved, 'utf-8');
+  return { path: resolved, content, size: stat.size };
+}
+
+export async function writeFile(_ctx: HlContext, filePath: string, content: string): Promise<{ path: string; bytes: number }> {
+  const resolved = path.resolve(filePath);
+  await fs.mkdir(path.dirname(resolved), { recursive: true });
+  await fs.writeFile(resolved, content, 'utf-8');
+  return { path: resolved, bytes: Buffer.byteLength(content, 'utf-8') };
+}
+
+export async function listDir(_ctx: HlContext, dirPath: string): Promise<{ path: string; entries: Array<{ name: string; type: string }> }> {
+  const resolved = path.resolve(dirPath);
+  const entries = await fs.readdir(resolved, { withFileTypes: true });
+  return {
+    path: resolved,
+    entries: entries.map((e) => ({ name: e.name, type: e.isDirectory() ? 'dir' : e.isFile() ? 'file' : e.isSymbolicLink() ? 'symlink' : 'other' })),
+  };
+}
+
+export async function shellExec(_ctx: HlContext, command: string, cwd?: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const opts = { timeout: MAX_EXEC_TIMEOUT, maxBuffer: 10 * 1024 * 1024, cwd: cwd ? path.resolve(cwd) : undefined };
+  try {
+    const { stdout, stderr } = await execAsync(command, opts);
+    const out = stdout.length > MAX_OUTPUT_CHARS ? stdout.slice(0, MAX_OUTPUT_CHARS) + '\n…[truncated]' : stdout;
+    const err = stderr.length > MAX_OUTPUT_CHARS ? stderr.slice(0, MAX_OUTPUT_CHARS) + '\n…[truncated]' : stderr;
+    return { exitCode: 0, stdout: out, stderr: err };
+  } catch (e: any) {
+    return { exitCode: e.code ?? 1, stdout: (e.stdout ?? '').slice(0, MAX_OUTPUT_CHARS), stderr: (e.stderr ?? e.message ?? '').slice(0, MAX_OUTPUT_CHARS) };
+  }
+}
+
+export async function patchFile(_ctx: HlContext, filePath: string, oldStr: string, newStr: string): Promise<{ path: string; replaced: boolean }> {
+  const resolved = path.resolve(filePath);
+  const content = await fs.readFile(resolved, 'utf-8');
+  if (!content.includes(oldStr)) return { path: resolved, replaced: false };
+  await fs.writeFile(resolved, content.replace(oldStr, newStr), 'utf-8');
+  return { path: resolved, replaced: true };
 }
