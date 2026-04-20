@@ -43,11 +43,15 @@ const accountJson = join(userData, "account.json");
 console.log(`[reset-onboarding] productName=${productName}`);
 console.log(`[reset-onboarding] userData=${userData}`);
 
-if (existsSync(accountJson)) {
-  unlinkSync(accountJson);
-  console.log(`[reset-onboarding] deleted ${accountJson}`);
-} else {
-  console.log(`[reset-onboarding] no account.json at ${accountJson} (already reset)`);
+const sessionsDb = join(userData, "sessions.db");
+
+for (const [label, filePath] of [["account.json", accountJson], ["sessions.db", sessionsDb]]) {
+  if (existsSync(filePath)) {
+    unlinkSync(filePath);
+    console.log(`[reset-onboarding] deleted ${label}`);
+  } else {
+    console.log(`[reset-onboarding] ${label} not found (already clean)`);
+  }
 }
 
 console.log(
