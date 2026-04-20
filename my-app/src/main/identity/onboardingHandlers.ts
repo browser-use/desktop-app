@@ -104,7 +104,17 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
 
   const registerOnboardingShortcut = (accelerator: string): boolean => {
     if (!pillCreated) {
-      createPillWindow();
+      const pill = createPillWindow();
+      pill.on('show', () => {
+        if (!onboardingWindow.isDestroyed()) {
+          onboardingWindow.webContents.send('pill-shown');
+        }
+      });
+      pill.on('hide', () => {
+        if (!onboardingWindow.isDestroyed()) {
+          onboardingWindow.webContents.send('pill-hidden');
+        }
+      });
       pillCreated = true;
       mainLogger.info('onboardingHandlers.pillCreated');
     }

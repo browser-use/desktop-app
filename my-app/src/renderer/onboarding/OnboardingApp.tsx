@@ -29,6 +29,8 @@ declare global {
       setShortcut: (accelerator: string) => Promise<{ ok: boolean; accelerator: string }>;
       onShortcutActivated: (cb: () => void) => () => void;
       onTaskSubmitted: (cb: () => void) => () => void;
+      onPillShown: (cb: () => void) => () => void;
+      onPillHidden: (cb: () => void) => () => void;
       complete: () => Promise<void>;
       whatsapp: {
         connect: () => Promise<{ status: string }>;
@@ -141,6 +143,7 @@ export function OnboardingApp() {
   const [accelerator, setAccelerator] = useState<string>(DEFAULT_ACCELERATOR);
   const [recording, setRecording] = useState(false);
   const [shortcutActivated, setShortcutActivated] = useState(false);
+  const [pillOpen, setPillOpen] = useState(false);
 
   const [waStatus, setWaStatus] = useState<string>('disconnected');
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -238,10 +241,16 @@ export function OnboardingApp() {
     const unsubActivated = window.onboardingAPI.onShortcutActivated(() => {
       setShortcutActivated(true);
     });
+    const unsubShown = window.onboardingAPI.onPillShown(() => {
+      setPillOpen(true);
+    });
+    const unsubHidden = window.onboardingAPI.onPillHidden(() => {
+      setPillOpen(false);
+    });
     const unsubSubmitted = window.onboardingAPI.onTaskSubmitted(() => {
       void window.onboardingAPI.complete();
     });
-    return () => { unsubActivated(); unsubSubmitted(); };
+    return () => { unsubActivated(); unsubShown(); unsubHidden(); unsubSubmitted(); };
   }, [step]);
 
   // Key recording
@@ -505,13 +514,22 @@ export function OnboardingApp() {
           </div>
         )}
 
-        {step === 'shortcut' && (
+        {step === 'shortcut' && pillOpen && (
+          <div className="step-panel pill-takeover">
+            <div className="pill-takeover-dot" />
+            <h1 className="pill-takeover-title">Pill is open</h1>
+            <p className="pill-takeover-subtitle">
+              Type a task and press Enter to finish setup.<br/>
+              Press Escape to go back.
+            </p>
+          </div>
+        )}
+
+        {step === 'shortcut' && !pillOpen && (
           <div className="step-panel">
-            <h1 className="step-title">Enter your first task</h1>
+            <h1 className="step-title">Set up your global shortcut</h1>
             <p className="step-subtitle">
-              {shortcutActivated
-                ? 'Type a task in the pill and press Enter to begin.'
-                : 'Press your shortcut to open the command pill from anywhere.'}
+              Press this shortcut from <strong>any app on your computer</strong> to open the command pill and send a task to an agent.
             </p>
 
             <div className="shortcut-demo">
@@ -532,6 +550,12 @@ export function OnboardingApp() {
               )}
             </div>
 
+            <p className="shortcut-hint">
+              {shortcutActivated
+                ? 'Press your shortcut again to open the pill.'
+                : 'Press the shortcut to try it out.'}
+            </p>
+
             <div className="apikey-actions">
               <button
                 className="btn btn-secondary"
@@ -543,12 +567,6 @@ export function OnboardingApp() {
                 Skip
               </button>
             </div>
-
-            {shortcutActivated && (
-              <p className="shortcut-hint shortcut-hint-active">
-                Pill is open — enter a task to finish setup
-              </p>
-            )}
 
             <button className="back-btn" onClick={() => setStep('whatsapp')}>
               Back

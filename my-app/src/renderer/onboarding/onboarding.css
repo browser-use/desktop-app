@@ -503,6 +503,39 @@ html, body {
   opacity: 1;
 }
 
+.pill-takeover {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 60px 0;
+  text-align: center;
+}
+
+.pill-takeover-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--color-status-success);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.pill-takeover-title {
+  font-size: 36px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.02em;
+  color: var(--color-fg-primary);
+}
+
+.pill-takeover-subtitle {
+  font-size: 15px;
+  color: var(--color-fg-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
 /* Error reasons */
 
 .error-reasons-wrap {

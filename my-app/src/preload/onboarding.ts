@@ -48,6 +48,18 @@ const onboardingAPI = {
     return () => ipcRenderer.removeListener('onboarding-task-submitted', handler);
   },
 
+  onPillShown: (cb: () => void): (() => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('pill-shown', handler);
+    return () => ipcRenderer.removeListener('pill-shown', handler);
+  },
+
+  onPillHidden: (cb: () => void): (() => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('pill-hidden', handler);
+    return () => ipcRenderer.removeListener('pill-hidden', handler);
+  },
+
   complete: (): Promise<void> =>
     ipcRenderer.invoke('onboarding:complete'),
 
