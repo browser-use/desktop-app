@@ -24,16 +24,19 @@ export function useSessionsQuery() {
       const api = window.electronAPI;
       if (!api) return [];
       const list = await api.sessions.list();
-      const hiddenCount = list.filter((s) => s.hidden).length;
-      const visibleCount = list.filter((s) => !s.hidden).length;
-      console.log('[useSessionsQuery] fetched sessions', {
-        total: list.length,
-        visible: visibleCount,
-        hidden: hiddenCount,
-        fetchMs: Math.round(performance.now() - t0),
-        ids: list.map((s) => ({ id: s.id.slice(0, 8), status: s.status, hidden: !!s.hidden })),
+      const prev = qc.getQueryData<AgentSession[]>(SESSIONS_KEY) ?? [];
+      const merged = list.map((s) => {
+        const cached = prev.find((p) => p.id === s.id);
+        if (cached && cached.output.length > 0 && s.output.length === 0) {
+          return { ...s, output: cached.output };
+        }
+        return s;
       });
-      return list;
+      console.log('[useSessionsQuery] fetched sessions', {
+        total: merged.length,
+        fetchMs: Math.round(performance.now() - t0),
+      });
+      return merged;
     },
   });
 

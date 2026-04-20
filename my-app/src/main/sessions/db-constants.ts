@@ -1,4 +1,4 @@
-export const DB_SCHEMA_VERSION = 4;
+export const DB_SCHEMA_VERSION = 5;
 
 export const RECOVERY_ERROR = 'App exited unexpectedly';
 

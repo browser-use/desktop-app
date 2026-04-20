@@ -42,6 +42,8 @@ export class SessionDb {
     getEventCount: Database.Statement;
     recoverCrashed: Database.Statement;
     recoverIdle: Database.Statement;
+    saveSdkSessionId: Database.Statement;
+    getSdkSessionId: Database.Statement;
   };
 
   constructor(dbPath: string) {
@@ -116,6 +118,12 @@ export class SessionDb {
       ),
       recoverIdle: this.db.prepare(
         "UPDATE sessions SET status = 'stopped', updated_at = ? WHERE status = 'idle'"
+      ),
+      saveSdkSessionId: this.db.prepare(
+        'UPDATE sessions SET sdk_session_id = ?, updated_at = ? WHERE id = ?'
+      ),
+      getSdkSessionId: this.db.prepare(
+        'SELECT sdk_session_id FROM sessions WHERE id = ?'
       ),
     };
   }
@@ -197,6 +205,18 @@ export class SessionDb {
         this.setVersion(4);
       })();
       mainLogger.info('SessionDb.migration.complete', { version: 4 });
+    }
+
+    if (this.getVersion() < 5) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 5 });
+      this.db.transaction(() => {
+        const cols = this.db.pragma('table_info(sessions)') as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === 'sdk_session_id')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN sdk_session_id TEXT');
+        }
+        this.setVersion(5);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 5 });
     }
 
     const final = this.getVersion();
@@ -310,6 +330,16 @@ export class SessionDb {
       mainLogger.error('SessionDb.getMessages.parseFailed', { id });
       return null;
     }
+  }
+
+  saveSdkSessionId(id: string, sdkSessionId: string): void {
+    if (this.closed) return;
+    this.stmts.saveSdkSessionId.run(sdkSessionId, Date.now(), id);
+  }
+
+  getSdkSessionId(id: string): string | null {
+    const row = this.stmts.getSdkSessionId.get(id) as { sdk_session_id: string | null } | undefined;
+    return row?.sdk_session_id ?? null;
   }
 
   clearEvents(id: string): void {

@@ -74,6 +74,7 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.114",
     "@anthropic-ai/sdk": "^0.90.0",
     "@hapi/boom": "^10.0.1",
     "@tanstack/react-query": "^5.99.2",
