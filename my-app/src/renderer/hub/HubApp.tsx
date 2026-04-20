@@ -216,6 +216,7 @@ export function HubApp(): React.ReactElement {
       setTimeout(() => pushEvent({ type: 'tool_call', name: 'file.read', args: { path: 'src/main/index.ts', lines: '1-50' }, iteration: 2 }), 7000);
       setTimeout(() => pushEvent({ type: 'tool_result', name: 'file.read', ok: true, preview: 'Read 50 lines. Found entry point configuration.', ms: 800 }), 8000);
       setTimeout(() => pushEvent({ type: 'done', summary: 'Implementation complete.', iterations: 2 }, 'stopped'), 10000);
+      setViewMode('grid');
       return;
     }
 
@@ -228,6 +229,7 @@ export function HubApp(): React.ReactElement {
       console.log('[HubApp] session created', { id });
       await api.sessions.start(id);
       console.log('[HubApp] session started', { id });
+      setViewMode('grid');
     } catch (err) {
       console.error('[HubApp] createSession failed', err);
     }
@@ -346,7 +348,7 @@ export function HubApp(): React.ReactElement {
           const pageSessions = sessions.slice(pageStart, pageStart + pageSize);
           return (
             <div className="hub-grid-container">
-              <div className="hub-grid" data-count={Math.min(pageSessions.length, gridColumns)}>
+              <div className="hub-grid" data-count="4">
                 {pageSessions.map((session) => {
                   const globalIdx = sessions.findIndex((s) => s.id === session.id);
                   return (

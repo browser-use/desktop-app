@@ -172,6 +172,26 @@
   color: var(--color-fg-primary);
 }
 
+.hub-toolbar__zoom {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-2xs);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-tertiary);
+  background-color: var(--color-bg-elevated);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.hub-toolbar__zoom:hover {
+  color: var(--color-fg-primary);
+  background-color: var(--color-surface-interactive-hover);
+}
+
 /* ---------------------------------------------------------------------------
    EMPTY STATE
 --------------------------------------------------------------------------- */
