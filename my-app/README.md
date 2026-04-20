@@ -5,9 +5,7 @@ Desktop app for running AI browser automation agents. Each agent gets its own sa
 ## Quick start
 
 ```bash
-cd my-app
-yarn install
-task start
+task up    # Install deps, build agent image, start the app
 ```
 
 On first run, the onboarding flow walks through Google OAuth and API key setup (stored in OS keychain via keytar).

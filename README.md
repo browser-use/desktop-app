@@ -86,22 +86,16 @@ my-app/
 Requires [Task](https://taskfile.dev) (`brew install go-task`).
 
 ```bash
-cd my-app && yarn install
+task up    # Install deps, build agent image, start the app
+```
 
-# Start the app
-task start
+Other launch modes:
 
-# Start against a throwaway profile (preserves real userData)
-task start:fresh
-
-# Start with onboarding forced open
-task start:onboarding
-
-# Build agent Docker image + start
-task up
-
-# Tail app logs
-task logs
+```bash
+task start              # Start without rebuilding
+task start:fresh        # Throwaway profile (preserves real userData)
+task start:onboarding   # Force onboarding open
+task logs               # Tail app logs
 ```
 
 ### Agent containers

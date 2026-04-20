@@ -79,9 +79,19 @@ tasks:
     cmds:
       - docker compose exec daemon bash
 
-  up:
-    desc: Build agent image + start the browser (everything in one command)
+  install:
+    desc: Install Node dependencies
+    dir: "{{.APP_DIR}}"
     cmds:
+      - yarn install
+    sources:
+      - package.json
+      - yarn.lock
+
+  up:
+    desc: Install deps, build agent image, and start the app (everything in one command)
+    cmds:
+      - task: install
       - task: agent:build
       - task: start
 
