@@ -49,6 +49,7 @@ interface ElectronSessionAPI {
   viewIsAttached: (id: string) => Promise<boolean>;
   getTabs: (id: string) => Promise<unknown[]>;
   poolStats: () => Promise<unknown>;
+  memory: () => Promise<{ totalMb: number; sessions: Array<{ id: string; mb: number; status: string }>; processes: Array<{ label: string; type: string; mb: number; sessionId?: string }>; processCount: number }>;
 }
 
 interface ElectronOnAPI {

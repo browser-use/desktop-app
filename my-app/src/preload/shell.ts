@@ -50,6 +50,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const raw = await ipcRenderer.invoke('sessions:pool-stats');
       return validatePoolStats(raw);
     },
+    memory: (): Promise<{
+      totalMb: number;
+      sessions: Array<{ id: string; mb: number; status: string }>;
+      processes: Array<{ label: string; type: string; mb: number; sessionId?: string }>;
+      processCount: number;
+    }> => ipcRenderer.invoke('sessions:memory'),
   },
   on: {
     windowReady: (cb: () => void): (() => void) => {

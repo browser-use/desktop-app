@@ -467,6 +467,45 @@ app.whenReady().then(async () => {
     return browserPool.getStats();
   });
 
+  ipcMain.handle('sessions:memory', () => {
+    const metrics = app.getAppMetrics();
+    const poolStats = browserPool.getStats();
+    const pidToSession = new Map<number, string>();
+    for (const s of poolStats.sessions) {
+      if (s.pid > 0) pidToSession.set(s.pid, s.sessionId);
+    }
+
+    const shellPid = shellWindow?.webContents.getOSProcessId() ?? -1;
+
+    let totalMb = 0;
+    const sessions: Array<{ id: string; mb: number; status: string }> = [];
+    const processes: Array<{ label: string; type: string; mb: number; sessionId?: string }> = [];
+
+    for (const m of metrics) {
+      const mb = Math.round(m.memory.workingSetSize / 1024);
+      totalMb += mb;
+      const sessionId = pidToSession.get(m.pid);
+
+      if (sessionId) {
+        const session = sessionManager.getSession(sessionId);
+        const prompt = session?.prompt ?? '';
+        const label = prompt.length > 30 ? prompt.slice(0, 30) + '...' : prompt;
+        sessions.push({ id: sessionId, mb, status: session?.status ?? 'unknown' });
+        processes.push({ label, type: 'session', mb, sessionId });
+      } else if (m.pid === shellPid) {
+        processes.push({ label: 'Hub UI', type: 'tab', mb });
+      } else if (m.type === 'Browser') {
+        processes.push({ label: 'App', type: 'main', mb });
+      } else if (m.type === 'GPU') {
+        processes.push({ label: 'GPU', type: 'gpu', mb });
+      } else {
+        processes.push({ label: m.type, type: m.type.toLowerCase(), mb });
+      }
+    }
+
+    return { totalMb, sessions, processes, processCount: metrics.length };
+  });
+
   // ---------------------------------------------------------------------------
   // Shell layout IPC (retained for shell renderer compatibility)
   // ---------------------------------------------------------------------------
