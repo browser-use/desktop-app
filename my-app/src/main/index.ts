@@ -786,6 +786,8 @@ app.whenReady().then(async () => {
   const onboardingComplete = !forceOnboarding && accountStore.isOnboardingComplete();
   mainLogger.info('main.onboardingGate', { onboardingComplete, forceOnboarding });
 
+  buildApplicationMenu();
+
   if (!onboardingComplete) {
     mainLogger.info('main.onboardingGate.fresh', { msg: 'Opening onboarding window' });
     onboardingWindow = createOnboardingWindow();

@@ -78,6 +78,16 @@ contextBridge.exposeInMainWorld('pillAPI', {
     return () => ipcRenderer.removeListener('pill:followup-mode', handler);
   },
 
+  onSettingsMode: (cb: () => void): (() => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('pill:settings-mode', handler);
+    return () => ipcRenderer.removeListener('pill:settings-mode', handler);
+  },
+
+  getKeybindings: (): Promise<Array<{ id: string; label: string; keys: string[]; category: string }>> => {
+    return ipcRenderer.invoke('pill:get-keybindings');
+  },
+
   /**
    * Hide the pill window (Esc key or close button).
    */
