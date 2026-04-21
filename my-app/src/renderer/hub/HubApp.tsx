@@ -106,10 +106,22 @@ export function HubApp(): React.ReactElement {
   const [gridColumns, setGridColumns] = useState(4);
 
   const vimHandlers = useMemo<Partial<Record<ActionId, () => void>>>(() => ({
-    'nav.down': () => setFocusIndex((i) => Math.min(i + 1, sessions.length - 1)),
-    'nav.up': () => setFocusIndex((i) => Math.max(i - 1, 0)),
-    'nav.top': () => setFocusIndex(0),
-    'nav.bottom': () => setFocusIndex(sessions.length - 1),
+    'nav.down': () => setFocusIndex((i) => {
+      const next = Math.min(i + 1, sessions.length - 1);
+      setGridPage(Math.floor(next / Math.max(1, gridColumns)));
+      return next;
+    }),
+    'nav.up': () => setFocusIndex((i) => {
+      const next = Math.max(i - 1, 0);
+      setGridPage(Math.floor(next / Math.max(1, gridColumns)));
+      return next;
+    }),
+    'nav.top': () => { setFocusIndex(0); setGridPage(0); },
+    'nav.bottom': () => {
+      const last = sessions.length - 1;
+      setFocusIndex(last);
+      setGridPage(Math.floor(last / Math.max(1, gridColumns)));
+    },
     'nav.open': () => {
       console.log('[VimKeys] open session', sessions[focusIndex]?.id);
     },
@@ -158,7 +170,7 @@ export function HubApp(): React.ReactElement {
       if (settingsOpen) { setSettingsOpen(false); showBrowserViews(); return; }
       setFocusIndex(-1);
     },
-  }), [sessions, focusIndex, helpOpen, settingsOpen]);
+  }), [sessions, focusIndex, helpOpen, settingsOpen, gridColumns]);
 
   const vim = useVimKeys(vimHandlers);
 
