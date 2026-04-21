@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentPane } from './AgentPane';
 import { ListView } from './ListView';
 import { Dashboard } from './Dashboard';
@@ -106,21 +106,36 @@ export function HubApp(): React.ReactElement {
   const [gridColumns, setGridColumns] = useState(4);
 
   const vimHandlers = useMemo<Partial<Record<ActionId, () => void>>>(() => ({
-    'nav.down': () => setFocusIndex((i) => {
-      const next = Math.min(i + 1, sessions.length - 1);
-      setGridPage(Math.floor(next / Math.max(1, gridColumns)));
-      return next;
-    }),
-    'nav.up': () => setFocusIndex((i) => {
-      const next = Math.max(i - 1, 0);
-      setGridPage(Math.floor(next / Math.max(1, gridColumns)));
-      return next;
-    }),
-    'nav.top': () => { setFocusIndex(0); setGridPage(0); },
+    'nav.down': () => {
+      const visible = sessions.filter((s) => !s.hidden);
+      if (!visible.length) return;
+      const currVis = visible.findIndex((v) => v.id === sessions[focusIndex]?.id);
+      const nextVis = Math.min((currVis < 0 ? 0 : currVis + 1), visible.length - 1);
+      const nextGlobal = sessions.findIndex((s) => s.id === visible[nextVis].id);
+      console.log('[VimKeys] nav.down', { from: focusIndex, to: nextGlobal, visIdx: nextVis });
+      setFocusIndex(nextGlobal);
+    },
+    'nav.up': () => {
+      const visible = sessions.filter((s) => !s.hidden);
+      if (!visible.length) return;
+      const currVis = visible.findIndex((v) => v.id === sessions[focusIndex]?.id);
+      const nextVis = Math.max((currVis < 0 ? 0 : currVis - 1), 0);
+      const nextGlobal = sessions.findIndex((s) => s.id === visible[nextVis].id);
+      console.log('[VimKeys] nav.up', { from: focusIndex, to: nextGlobal, visIdx: nextVis });
+      setFocusIndex(nextGlobal);
+    },
+    'nav.top': () => {
+      const visible = sessions.filter((s) => !s.hidden);
+      if (!visible.length) return;
+      const nextGlobal = sessions.findIndex((s) => s.id === visible[0].id);
+      setFocusIndex(nextGlobal);
+    },
     'nav.bottom': () => {
-      const last = sessions.length - 1;
-      setFocusIndex(last);
-      setGridPage(Math.floor(last / Math.max(1, gridColumns)));
+      const visible = sessions.filter((s) => !s.hidden);
+      if (!visible.length) return;
+      const lastVis = visible.length - 1;
+      const nextGlobal = sessions.findIndex((s) => s.id === visible[lastVis].id);
+      setFocusIndex(nextGlobal);
     },
     'nav.open': () => {
       console.log('[VimKeys] open session', sessions[focusIndex]?.id);
@@ -154,6 +169,18 @@ export function HubApp(): React.ReactElement {
       if (!api) return;
       console.log('[VimKeys] cancel session', s.id);
       api.sessions.cancel(s.id).catch((err) => console.error('[VimKeys] cancel failed', err));
+    },
+    'action.followUp': () => {
+      const s = sessions[focusIndex];
+      if (!s || s.status !== 'idle') return;
+      console.log('[VimKeys] follow up', s.id);
+      window.electronAPI?.pill.openFollowUp(s.id, s.prompt);
+    },
+    'view.cycle': () => {
+      const s = sessions[focusIndex];
+      if (!s) return;
+      console.log('[VimKeys] cycle pane view', s.id);
+      window.dispatchEvent(new CustomEvent('pane:cycle-view', { detail: { sessionId: s.id } }));
     },
     'scroll.halfDown': () => {
       const el = document.querySelector('.hub-grid, .list-view__body, .dashboard');
@@ -240,12 +267,50 @@ export function HubApp(): React.ReactElement {
   }, [zoomFactor]);
 
   useEffect(() => {
+    const visible = sessions.filter((s) => !s.hidden).length;
+    if (visible <= 1 && gridColumns !== 1) {
+      console.log('[HubApp] auto-clamp gridColumns -> 1', { visible });
+      setGridColumns(1);
+    } else if (visible <= 4 && gridColumns === 9) {
+      console.log('[HubApp] auto-clamp gridColumns -> 4', { visible });
+      setGridColumns(4);
+    }
+  }, [sessions, gridColumns]);
+
+  useEffect(() => {
     const api = window.electronAPI;
     if (!api || isMock) return;
     sessions.forEach((s) => {
       api.sessions.viewDetach(s.id).catch(() => {});
     });
   }, [viewMode, gridColumns, gridPage]);
+
+  const pendingFocusIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const pendingId = pendingFocusIdRef.current;
+    if (!pendingId) return;
+    const globalIdx = sessions.findIndex((s) => s.id === pendingId);
+    if (globalIdx < 0) return;
+    console.log('[HubApp] focusing pending new session', { pendingId, globalIdx });
+    setFocusIndex(globalIdx);
+    pendingFocusIdRef.current = null;
+  }, [sessions]);
+
+  useEffect(() => {
+    const visible = sessions.filter((s) => !s.hidden);
+    if (!visible.length) return;
+    const focused = sessions[focusIndex];
+    if (!focused) return;
+    const visIdx = visible.findIndex((v) => v.id === focused.id);
+    if (visIdx < 0) return;
+    const pageSize = Math.max(1, gridColumns);
+    const correctPage = Math.floor(visIdx / pageSize);
+    if (correctPage !== gridPage) {
+      console.log('[HubApp] auto-correct gridPage', { from: gridPage, to: correctPage, focusIndex, visIdx, gridColumns });
+      setGridPage(correctPage);
+    }
+  }, [focusIndex, sessions, gridColumns, gridPage]);
 
   const handleCreateSession = useCallback(async (prompt: string) => {
     if (isMock) {
@@ -256,6 +321,8 @@ export function HubApp(): React.ReactElement {
         output: [{ type: 'thinking', text: `Analyzing the task: "${prompt}". Let me break this down and determine the best approach.` }],
       };
       console.log('[HubApp] createSession (mock)', { id, prompt });
+      pendingFocusIdRef.current = id;
+      setViewMode('grid');
       setSessions((prev) => [...prev, newSession]);
 
       const pushEvent = (event: HlEvent, statusOverride?: AgentSession['status']) => {
@@ -274,8 +341,6 @@ export function HubApp(): React.ReactElement {
       setTimeout(() => pushEvent({ type: 'tool_call', name: 'file.read', args: { path: 'src/main/index.ts', lines: '1-50' }, iteration: 2 }), 7000);
       setTimeout(() => pushEvent({ type: 'tool_result', name: 'file.read', ok: true, preview: 'Read 50 lines. Found entry point configuration.', ms: 800 }), 8000);
       setTimeout(() => pushEvent({ type: 'done', summary: 'Implementation complete.', iterations: 2 }, 'stopped'), 10000);
-      setViewMode('grid');
-      setGridPage(Math.floor(sessions.length / 4));
       return;
     }
 
@@ -286,14 +351,14 @@ export function HubApp(): React.ReactElement {
       console.log('[HubApp] createSession (live)', { prompt });
       const id = await api.sessions.create(prompt);
       console.log('[HubApp] session created', { id });
+      pendingFocusIdRef.current = id;
+      setViewMode('grid');
       await api.sessions.start(id);
       console.log('[HubApp] session started', { id });
-      setViewMode('grid');
-      setGridPage(Math.floor(sessions.length / 4));
     } catch (err) {
       console.error('[HubApp] createSession failed', err);
     }
-  }, [isMock]);
+  }, [isMock, setViewMode]);
 
   const hasNoSessions = sessions.length === 0;
 
@@ -383,7 +448,9 @@ export function HubApp(): React.ReactElement {
         </div>
       </header>
 
-      {viewMode === 'grid' && (
+      {viewMode === 'grid' && (() => {
+        const visibleCount = sessions.filter((s) => !s.hidden).length;
+        return (
         <div className="hub-layout-bar">
           <div className="hub-layout-bar__group">
             <button
@@ -395,6 +462,7 @@ export function HubApp(): React.ReactElement {
                 <rect x="2" y="2" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
               </svg>
             </button>
+            {visibleCount > 1 && (
             <button
               className={`hub-layout-bar__btn${gridColumns === 4 ? ' hub-layout-bar__btn--active' : ''}`}
               onClick={() => { setGridColumns(4); setGridPage(0); }}
@@ -407,6 +475,8 @@ export function HubApp(): React.ReactElement {
                 <rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
               </svg>
             </button>
+            )}
+            {visibleCount > 4 && (
             <button
               className={`hub-layout-bar__btn${gridColumns === 9 ? ' hub-layout-bar__btn--active' : ''}`}
               onClick={() => { setGridColumns(9); setGridPage(0); }}
@@ -424,9 +494,11 @@ export function HubApp(): React.ReactElement {
                 <rect x="10" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
               </svg>
             </button>
+            )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {hasNoSessions ? (
         <div className="hub-empty-state" onClick={() => openPill()} style={{ cursor: 'pointer' }}>
@@ -483,6 +555,8 @@ export function HubApp(): React.ReactElement {
                       onOpenFollowUp={() => {
                         window.electronAPI?.pill.openFollowUp(session.id, session.prompt);
                       }}
+                      followUpShortcut={shortcutFor('action.followUp')}
+                      cycleShortcut={shortcutFor('view.cycle')}
                     />
                   );
                 })}

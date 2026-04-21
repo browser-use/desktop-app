@@ -374,9 +374,11 @@ interface AgentPaneProps {
   onCancel?: (sessionId: string) => void;
   onSelect?: (sessionId: string) => void;
   onOpenFollowUp?: () => void;
+  followUpShortcut?: string;
+  cycleShortcut?: string;
 }
 
-export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, onCancel, onSelect, onOpenFollowUp }: AgentPaneProps): React.ReactElement {
+export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, onCancel, onSelect, onOpenFollowUp, followUpShortcut, cycleShortcut }: AgentPaneProps): React.ReactElement {
   useHydrateSession(session.id);
   const scrollRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -385,7 +387,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   const [browserDead, setBrowserDead] = useState(false);
   const [splitPaddingLeft, setSplitPaddingLeft] = useState(0);
   const [frameRect, setFrameRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-  const [showFollowUpBar, setShowFollowUpBar] = useState(false);
   const { entries: rawEntries } = useMemo(() => adaptSession(session), [session]);
   const entries = useMemo<OutputEntry[]>(() => {
     if (!session.prompt) return rawEntries;
@@ -484,6 +485,22 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   }, [browserDead]);
 
   useEffect(() => {
+    const onCycle = (e: Event) => {
+      const detail = (e as CustomEvent<{ sessionId: string }>).detail;
+      if (!detail || detail.sessionId !== session.id) return;
+      const order: PaneViewMode[] = ['output', 'split', 'browser'];
+      setViewMode((curr) => {
+        const next = order[(order.indexOf(curr) + 1) % order.length];
+        console.log('[AgentPane] cycle view', { id: session.id, from: curr, to: next });
+        if (browserDead && next !== 'output') setBrowserDead(false);
+        return next;
+      });
+    };
+    window.addEventListener('pane:cycle-view', onCycle);
+    return () => window.removeEventListener('pane:cycle-view', onCycle);
+  }, [session.id, browserDead]);
+
+  useEffect(() => {
     void applyViewMode(viewMode);
   }, [viewMode, applyViewMode]);
 
@@ -545,24 +562,18 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         <span className={`pane__dot pane__dot--${session.status}`} />
         <span className="pane__prompt">{session.prompt}</span>
         <div className="pane__actions">
-          {session.status === 'idle' && onOpenFollowUp && (
-            <button
-              className="pane__action-btn pane__action-btn--primary"
-              onClick={(e) => { e.stopPropagation(); onOpenFollowUp(); }}
-            >
-              <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-                <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              <span>Follow up</span>
-            </button>
-          )}
           {browserDead ? (
             <span className="pane__action-btn pane__action-btn--disabled">
               <BrowserIcon />
               <span>Browser ended</span>
             </span>
           ) : (
-            <div className="pane__view-toggle" role="radiogroup" aria-label="Pane view mode">
+            <div
+              className="pane__view-toggle"
+              role="radiogroup"
+              aria-label="Pane view mode"
+              data-tip={`Press ${cycleShortcut || 'v'} to cycle`}
+            >
               <button
                 className={`pane__action-btn${viewMode === 'output' ? ' pane__action-btn--active' : ''}`}
                 onClick={(e) => { e.stopPropagation(); handleSetMode('output'); }}
@@ -675,12 +686,14 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
             <span className="pane__cursor" />
           </div>
         )}
-        {session.status === 'idle' && !session.error && onFollowUp && (
-          <FollowUpInput
-            sessionId={session.id}
-            onUserInput={(text) => onFollowUp(session.id, text)}
-            autoFocus={focused}
-          />
+        {session.status === 'idle' && !session.error && onOpenFollowUp && (
+          <button
+            type="button"
+            className="pane__followup-hint"
+            onClick={(e) => { e.stopPropagation(); onOpenFollowUp(); }}
+          >
+            Press <kbd className="pane__followup-kbd">{followUpShortcut || 'f'}</kbd> to follow up
+          </button>
         )}
         {session.error && entries.length <= 2 && (
           <div className="pane__error-center">
@@ -715,17 +728,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         )}
       </div>
 
-      {showFollowUpBar && viewMode !== 'output' && session.status === 'idle' && onFollowUp && (
-        <div className="pane__browser-followup">
-          <FollowUpInput
-            sessionId={session.id}
-            onUserInput={(text) => {
-              onFollowUp(session.id, text);
-              setShowFollowUpBar(false);
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }

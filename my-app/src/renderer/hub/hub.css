@@ -749,6 +749,33 @@
   border: none;
 }
 
+.pane__view-toggle[data-tip] {
+  position: relative;
+}
+
+.pane__view-toggle[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-1) var(--space-3);
+  background-color: var(--color-bg-overlay);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-2xs);
+  color: var(--color-fg-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  z-index: var(--z-tooltip);
+}
+
+.pane__view-toggle[data-tip]:hover::after {
+  opacity: 1;
+}
+
 .pane__browser-frame {
   position: absolute;
   box-sizing: border-box;
@@ -776,6 +803,61 @@
   padding: var(--space-3) var(--space-4);
   font-size: var(--font-size-xs);
   color: var(--color-fg-tertiary);
+}
+
+.pane__followup-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent-default);
+  background-color: var(--color-accent-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent-default);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.pane__followup-hint:hover {
+  background-color: var(--color-accent-default);
+  color: var(--color-bg-base);
+  border-color: var(--color-accent-default);
+}
+
+.pane__followup-hint:hover .pane__followup-kbd {
+  background-color: var(--color-bg-base);
+  color: var(--color-accent-default);
+  border-color: var(--color-bg-base);
+}
+
+.pane__followup-hint:active {
+  transform: translateY(1px);
+}
+
+.pane__followup-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  background-color: transparent;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
 }
 
 .pane__output--split {
