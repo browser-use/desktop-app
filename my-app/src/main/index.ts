@@ -48,6 +48,7 @@ import { getApiKey } from './agentApiKey';
 import { assertString, assertAttachments } from './ipc-validators';
 // Wave HL — in-process TS agent
 import { runAgent } from './hl/agent';
+import { bootstrapHarness } from './hl/harness';
 import { createContext } from './hl/context';
 import { getEngine, setEngine, type EngineId } from './hl/engine';
 import { forwardAgentEvent } from './pill';
@@ -118,6 +119,9 @@ let onboardingWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
 const sessionManager = new SessionManager(path.join(app.getPath('userData'), 'sessions.db'));
+// Bootstrap the editable helpers harness — writes stock helpers.js + TOOLS.json
+// to <userData>/harness/ on first run, preserves user edits on subsequent runs.
+bootstrapHarness();
 const browserPool = new BrowserPool();
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({
@@ -218,7 +222,8 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
     try {
       await app.dock.show();
-      const iconPath = path.resolve(app.getAppPath(), 'assets', 'icon.png');
+      const iconFile = app.isPackaged ? 'icon.png' : 'icon-dev.png';
+      const iconPath = path.resolve(app.getAppPath(), 'assets', iconFile);
       mainLogger.info('main.dockIcon', { iconPath, exists: fs.existsSync(iconPath) });
       if (fs.existsSync(iconPath)) {
         const icon = nativeImage.createFromPath(iconPath);
@@ -373,8 +378,18 @@ app.whenReady().then(async () => {
   // ---------------------------------------------------------------------------
 
   const notifiedStuck = new Set<string>();
+  const notifiedStarted = new Set<string>();
   sessionManager.onEvent('session-updated', (session) => {
     shellWindow?.webContents.send('session-updated', session);
+    if (session.status === 'running' && !notifiedStarted.has(session.id)) {
+      notifiedStarted.add(session.id);
+      sendSessionNotification({
+        title: 'Task started',
+        body: `"${session.prompt.slice(0, 120)}"`,
+        sessionId: session.id,
+        shellWindow,
+      });
+    }
     if (session.status === 'stuck' && !notifiedStuck.has(session.id)) {
       notifiedStuck.add(session.id);
       sendSessionNotification({
@@ -791,10 +806,13 @@ app.whenReady().then(async () => {
     return browserPool.detachFromWindow(validatedId, shellWindow);
   });
 
-  ipcMain.handle('sessions:view-resize', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }) => {
-    const validatedId = assertString(id, 'id', 100);
-    if (!shellWindow) return false;
-    return browserPool.attachToWindow(validatedId, shellWindow, bounds);
+  // Fast path: fire-and-forget. Called on every frame during window resize /
+  // layout reflow, so we skip logging and only do the minimum work — just
+  // setBounds on the already-attached WebContentsView.
+  ipcMain.on('sessions:view-resize', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }) => {
+    if (!shellWindow) return;
+    const view = browserPool.getView(id);
+    if (view) view.setBounds(bounds);
   });
 
   ipcMain.handle('sessions:view-is-attached', (_event, id: string) => {
