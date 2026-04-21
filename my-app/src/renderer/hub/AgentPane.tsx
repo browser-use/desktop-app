@@ -400,6 +400,8 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   }, [rawEntries, session.prompt, session.id, session.createdAt]);
 
   const SPLIT_RATIO = 0.6;
+  const BROWSER_CTA_RESERVE = 64;
+  const showBrowserCta = session.status === 'idle' && !session.error && !!onOpenFollowUp;
 
   const computeBounds = useCallback((mode: PaneViewMode): { x: number; y: number; width: number; height: number; slotWidth: number } | null => {
     const el = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
@@ -408,14 +410,15 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     const fullWidth = Math.round(rect.width);
     const slotWidth = mode === 'split' ? Math.round(fullWidth * SPLIT_RATIO) : fullWidth;
     const border = 1;
+    const topReserve = mode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
     return {
       x: Math.round(rect.x) + border,
-      y: Math.round(rect.y) + border,
+      y: Math.round(rect.y) + border + topReserve,
       width: slotWidth - border * 2,
-      height: Math.round(rect.height) - border * 2,
+      height: Math.round(rect.height) - border * 2 - topReserve,
       slotWidth,
     };
-  }, []);
+  }, [showBrowserCta]);
 
   useEffect(() => {
     if (session.status === 'running') {
@@ -425,19 +428,20 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
 
   const browserNotReady = session.status === 'draft' || (session.status === 'running' && rawEntries.length === 0);
 
-  const updateFrameRect = useCallback((slotWidth: number) => {
+  const updateFrameRect = useCallback((slotWidth: number, mode: PaneViewMode) => {
     const paneEl = paneRef.current;
     const outEl = paneEl?.querySelector('.pane__output') as HTMLElement | null;
     if (!paneEl || !outEl) return;
     const p = paneEl.getBoundingClientRect();
     const o = outEl.getBoundingClientRect();
+    const topReserve = mode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
     setFrameRect({
       left: Math.round(o.left - p.left),
-      top: Math.round(o.top - p.top),
+      top: Math.round(o.top - p.top) + topReserve,
       width: slotWidth,
-      height: Math.round(o.height),
+      height: Math.round(o.height) - topReserve,
     });
-  }, []);
+  }, [showBrowserCta]);
 
   const applyViewMode = useCallback(async (mode: PaneViewMode): Promise<void> => {
     const api = window.electronAPI;
@@ -457,7 +461,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       const computed = computeBounds(mode);
       if (computed) {
         setSplitPaddingLeft(mode === 'split' ? computed.slotWidth : 0);
-        updateFrameRect(computed.slotWidth);
+        updateFrameRect(computed.slotWidth, mode);
       }
       return;
     }
@@ -474,7 +478,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       return;
     }
     setSplitPaddingLeft(mode === 'split' ? slotWidth : 0);
-    updateFrameRect(slotWidth);
+    updateFrameRect(slotWidth, mode);
   }, [session.id, browserDead, computeBounds, browserNotReady, updateFrameRect]);
 
   const handleSetMode = useCallback((mode: PaneViewMode) => {
@@ -525,11 +529,12 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       setSplitPaddingLeft(viewMode === 'split' ? slotWidth : 0);
       const p = paneEl.getBoundingClientRect();
       const o = outEl.getBoundingClientRect();
+      const topReserve = viewMode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
       setFrameRect({
         left: Math.round(o.left - p.left),
-        top: Math.round(o.top - p.top),
+        top: Math.round(o.top - p.top) + topReserve,
         width: slotWidth,
-        height: Math.round(o.height),
+        height: Math.round(o.height) - topReserve,
       });
     };
 
@@ -672,7 +677,16 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         ref={scrollRef}
         style={viewMode === 'split' && splitPaddingLeft > 0 ? { paddingLeft: splitPaddingLeft } : undefined}
       >
-        {entries.map((entry) => (
+        {viewMode === 'browser' && showBrowserCta && (
+          <button
+            type="button"
+            className="pane__followup-hint pane__followup-hint--top"
+            onClick={(e) => { e.stopPropagation(); onOpenFollowUp?.(); }}
+          >
+            Press <kbd className="pane__followup-kbd">{followUpShortcut || 'f'}</kbd> to follow up
+          </button>
+        )}
+        {viewMode !== 'browser' && entries.map((entry) => (
           <OutputRow key={entry.id} entry={entry} />
         ))}
         {session.status === 'running' && rawEntries.length === 0 && (
@@ -686,7 +700,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
             <span className="pane__cursor" />
           </div>
         )}
-        {session.status === 'idle' && !session.error && onOpenFollowUp && (
+        {viewMode !== 'browser' && session.status === 'idle' && !session.error && onOpenFollowUp && (
           <button
             type="button"
             className="pane__followup-hint"
