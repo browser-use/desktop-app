@@ -62,7 +62,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.4",
     "electron": "41.2.1",
-    "electron-playwright-helpers": "^1.8.2",
+    "electron-playwright-helpers": "^2.1.0",
     "eslint": "^10.2.1",
     "eslint-plugin-import-x": "^4.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
