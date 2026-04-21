@@ -37,6 +37,13 @@
   --accent-dim:   #5C7085;
   --accent-hover: #7E92A7;
 
+  /* Extended slate-blue palette (from intro.png artwork) */
+  --palette-100:  #bfcddc;
+  --palette-300:  #8ea7c1;
+  --palette-500:  #6d8196;
+  --palette-700:  #4e5d6d;
+  --palette-900:  #313b46;
+
   /* Status primitives */
   --danger:  #f87171;
   --success: #4ade80;
