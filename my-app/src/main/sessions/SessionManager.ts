@@ -30,6 +30,11 @@ export class SessionManager extends EventEmitter {
     }
 
     const rows = this.db.listSessions({ limit: 100, includeHidden: true });
+    mainLogger.info('SessionManager.loadPersistedSessions.rows', {
+      rowCount: rows.length,
+      hiddenCount: rows.filter((r) => r.hidden === 1).length,
+      statuses: rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] ?? 0) + 1; return acc; }, {} as Record<string, number>),
+    });
     for (const row of rows) {
       const session: AgentSession = {
         id: row.id,
@@ -290,6 +295,25 @@ export class SessionManager extends EventEmitter {
     return this.db.getMessages(id);
   }
 
+  getNextAttachmentTurnIndex(sessionId: string): number {
+    return this.db.getNextTurnIndex(sessionId);
+  }
+
+  saveAttachment(sessionId: string, a: { name: string; mime: string; bytes: Buffer | Uint8Array }, turnIndex: number): number {
+    return this.db.saveAttachment(sessionId, a, turnIndex);
+  }
+
+  getAttachmentsMeta(sessionId: string): Array<{ id: number; name: string; mime: string; size: number; created_at: number; turn_index: number }> {
+    return this.db.getAttachmentsMeta(sessionId);
+  }
+
+  // For rerun / start: only the latest turn's attachments are replayed, because
+  // `session.prompt` is updated to the latest follow-up prompt on resume. Older
+  // turns' attachments are already represented textually in priorMessages.
+  loadAttachmentsForRun(sessionId: string): Array<{ id: number; name: string; mime: string; bytes: Buffer; size: number; turn_index: number }> {
+    return this.db.getLatestTurnAttachments(sessionId);
+  }
+
   failSession(id: string, error: string): void {
     const session = this.sessions.get(id);
     if (!session) {
@@ -313,10 +337,17 @@ export class SessionManager extends EventEmitter {
   }
 
   listSessions(opts?: { includeHidden?: boolean }): AgentSession[] {
+    const total = this.sessions.size;
     let list = Array.from(this.sessions.values());
     if (!opts?.includeHidden) {
       list = list.filter((s) => !(s as any).hidden);
     }
+    mainLogger.info('SessionManager.listSessions', {
+      includeHidden: !!opts?.includeHidden,
+      inMemoryTotal: total,
+      returning: list.length,
+      filteredHidden: total - list.length,
+    });
     return list
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((s) => ({ ...s, output: [] }));

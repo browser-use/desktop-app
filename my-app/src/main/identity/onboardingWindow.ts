@@ -27,7 +27,9 @@ export function createOnboardingWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 920,
     height: 640,
-    resizable: false,
+    resizable: true,
+    minWidth: 720,
+    minHeight: 520,
     titleBarStyle: 'hiddenInset',
     show: false,           // Show only after content loads (avoids white flash)
     backgroundColor: '#1a1a1f',  // Match --color-bg-base before CSS loads

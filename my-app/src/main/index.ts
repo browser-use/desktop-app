@@ -24,6 +24,7 @@ import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 // Track B — Pill + hotkeys
 import { createPillWindow, togglePill, showPill, hidePill, sendToPill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
+import { sendSessionNotification } from './notifications';
 import { registerHotkeys, unregisterHotkeys, getGlobalCmdbarAccelerator, setGlobalCmdbarAccelerator } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
 import type { AgentEvent } from '../shared/types';
@@ -33,6 +34,7 @@ import { OAuthClient } from './identity/OAuthClient';
 import { KeychainStore } from './identity/KeychainStore';
 import { createOnboardingWindow } from './identity/onboardingWindow';
 import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './identity/onboardingHandlers';
+import { registerApiKeyHandlers } from './settings/apiKeyIpc';
 import { registerChromeImportHandlers, unregisterChromeImportHandlers } from './chrome-import/ipc';
 import { performSignOut, turnOffSync } from './identity/SignOutController';
 import type { SignOutMode } from './identity/SignOutController';
@@ -43,7 +45,7 @@ import {
   setAnnouncedCdpPort,
 } from './startup/cli';
 import { getApiKey } from './agentApiKey';
-import { assertString } from './ipc-validators';
+import { assertString, assertAttachments } from './ipc-validators';
 // Wave HL — in-process TS agent
 import { runAgent } from './hl/agent';
 import { createContext } from './hl/context';
@@ -145,6 +147,8 @@ function openShellAndWire(): BrowserWindow {
   if (!hotkeyOk) {
     mainLogger.warn('main.hotkey', { msg: 'Global hotkey registration failed — another app may own it' });
   }
+
+  registerApiKeyHandlers();
 
   ipcMain.handle('hotkeys:get-global', () => getGlobalCmdbarAccelerator());
   ipcMain.handle('hotkeys:set-global', (_e, accel: string) => {
@@ -255,13 +259,33 @@ app.whenReady().then(async () => {
   const startingSessionIds = new Set<string>();
 
   // pill:submit — creates a session via the standard pipeline, hides pill
-  ipcMain.handle('pill:submit', async (_event, { prompt }: { prompt: string }) => {
-    const validatedPrompt = assertString(prompt, 'prompt', 10000);
-    mainLogger.info('main.pill:submit', { promptLength: validatedPrompt.length });
+  ipcMain.handle('pill:submit', async (_event, payload: unknown) => {
+    let promptRaw: unknown;
+    let attachmentsRaw: unknown;
+    if (typeof payload === 'string') {
+      promptRaw = payload;
+    } else if (payload && typeof payload === 'object') {
+      promptRaw = (payload as { prompt?: unknown }).prompt;
+      attachmentsRaw = (payload as { attachments?: unknown }).attachments;
+    } else {
+      throw new Error('pill:submit payload must be a string or { prompt, attachments? }');
+    }
+    const validatedPrompt = assertString(promptRaw, 'prompt', 10000);
+    const attachments = assertAttachments(attachmentsRaw);
+    mainLogger.info('main.pill:submit', {
+      promptLength: validatedPrompt.length,
+      attachmentCount: attachments.length,
+    });
 
     hidePill();
 
     const id = sessionManager.createSession(validatedPrompt);
+    if (attachments.length > 0) {
+      const turnIndex = sessionManager.getNextAttachmentTurnIndex(id);
+      for (const a of attachments) {
+        sessionManager.saveAttachment(id, a, turnIndex);
+      }
+    }
     startSessionWithAgent(id).catch((err) => {
       mainLogger.error('main.pill:submit.startFailed', { id, error: (err as Error).message });
     });
@@ -348,14 +372,43 @@ app.whenReady().then(async () => {
   // Session IPC handlers
   // ---------------------------------------------------------------------------
 
+  const notifiedStuck = new Set<string>();
   sessionManager.onEvent('session-updated', (session) => {
     shellWindow?.webContents.send('session-updated', session);
+    if (session.status === 'stuck' && !notifiedStuck.has(session.id)) {
+      notifiedStuck.add(session.id);
+      sendSessionNotification({
+        title: 'Session stuck',
+        body: `"${session.prompt.slice(0, 80)}" needs input`,
+        sessionId: session.id,
+        shellWindow,
+      });
+    }
+    if (session.status !== 'stuck') notifiedStuck.delete(session.id);
   });
   sessionManager.onEvent('session-completed', (session) => {
     shellWindow?.webContents.send('session-updated', session);
+    notifiedStuck.delete(session.id);
+    const doneEvent = session.output.find(
+      (e: { type: string }) => e.type === 'done',
+    ) as { type: string; summary?: string } | undefined;
+    const summary = doneEvent?.summary ?? 'Task completed';
+    sendSessionNotification({
+      title: 'Session done',
+      body: `"${session.prompt.slice(0, 60)}" — ${summary.slice(0, 80)}`,
+      sessionId: session.id,
+      shellWindow,
+    });
   });
   sessionManager.onEvent('session-error', (session) => {
     shellWindow?.webContents.send('session-updated', session);
+    notifiedStuck.delete(session.id);
+    sendSessionNotification({
+      title: 'Session failed',
+      body: `"${session.prompt.slice(0, 60)}" — ${session.error ?? 'Unknown error'}`,
+      sessionId: session.id,
+      shellWindow,
+    });
   });
   sessionManager.onEvent('session-output', (id, line) => {
     shellWindow?.webContents.send('session-output', id, line);
@@ -410,12 +463,17 @@ app.whenReady().then(async () => {
       return;
     }
 
+    const attachmentsForRun = sessionManager.loadAttachmentsForRun(id);
+    if (attachmentsForRun.length > 0) {
+      mainLogger.info('main.startSessionWithAgent.attachments', { id, count: attachmentsForRun.length, totalBytes: attachmentsForRun.reduce((s, a) => s + a.size, 0) });
+    }
     steerQueues.set(id, []);
     runAgent({
       ctx,
       prompt: sessionManager.getSession(id)!.prompt,
       apiKey,
       signal: abortController.signal,
+      attachments: attachmentsForRun.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
       drainQueue: () => { const q = steerQueues.get(id); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
@@ -445,10 +503,32 @@ app.whenReady().then(async () => {
 
   channelRouter.setStartSession(startSessionWithAgent);
 
-  ipcMain.handle('sessions:create', (_event, prompt: string) => {
-    const validatedPrompt = assertString(prompt, 'prompt', 10000);
-    mainLogger.info('main.sessions:create', { promptLength: validatedPrompt.length });
-    return sessionManager.createSession(validatedPrompt);
+  ipcMain.handle('sessions:create', (_event, payload: unknown) => {
+    let promptRaw: unknown;
+    let attachmentsRaw: unknown;
+    if (typeof payload === 'string') {
+      promptRaw = payload;
+    } else if (payload && typeof payload === 'object') {
+      promptRaw = (payload as { prompt?: unknown }).prompt;
+      attachmentsRaw = (payload as { attachments?: unknown }).attachments;
+    } else {
+      throw new Error('sessions:create payload must be a string or { prompt, attachments? }');
+    }
+    const validatedPrompt = assertString(promptRaw, 'prompt', 10000);
+    const attachments = assertAttachments(attachmentsRaw);
+    mainLogger.info('main.sessions:create', {
+      promptLength: validatedPrompt.length,
+      attachmentCount: attachments.length,
+      attachmentMeta: attachments.map((a) => ({ name: a.name, mime: a.mime, size: a.bytes.byteLength })),
+    });
+    const id = sessionManager.createSession(validatedPrompt);
+    if (attachments.length > 0) {
+      const turnIndex = sessionManager.getNextAttachmentTurnIndex(id);
+      for (const a of attachments) {
+        sessionManager.saveAttachment(id, a, turnIndex);
+      }
+    }
+    return id;
   });
 
   ipcMain.handle('sessions:start', async (_event, id: string) => {
@@ -456,10 +536,24 @@ app.whenReady().then(async () => {
     await startSessionWithAgent(validatedId);
   });
 
-  ipcMain.handle('sessions:resume', async (_event, { id, prompt }: { id: string; prompt: string }) => {
-    const validatedId = assertString(id, 'id', 100);
-    const validatedPrompt = assertString(prompt, 'prompt', 10000);
-    mainLogger.info('main.sessions:resume', { id: validatedId, promptLength: validatedPrompt.length });
+  ipcMain.handle('sessions:resume', async (_event, payload: { id: string; prompt: string; attachments?: unknown }) => {
+    const validatedId = assertString(payload?.id, 'id', 100);
+    const validatedPrompt = assertString(payload?.prompt, 'prompt', 10000);
+    const resumeAttachments = assertAttachments(payload?.attachments);
+    mainLogger.info('main.sessions:resume', {
+      id: validatedId,
+      promptLength: validatedPrompt.length,
+      attachmentCount: resumeAttachments.length,
+      attachmentMeta: resumeAttachments.map((a) => ({ name: a.name, mime: a.mime, size: a.bytes.byteLength })),
+    });
+
+    if (resumeAttachments.length > 0) {
+      const turnIndex = sessionManager.getNextAttachmentTurnIndex(validatedId);
+      for (const a of resumeAttachments) {
+        sessionManager.saveAttachment(validatedId, a, turnIndex);
+      }
+      mainLogger.info('main.sessions:resume.persistedAttachments', { id: validatedId, turnIndex, count: resumeAttachments.length });
+    }
 
     const apiKey = await getApiKey({ accountEmail: accountStore.load()?.email });
     if (!apiKey) {
@@ -497,6 +591,7 @@ app.whenReady().then(async () => {
       apiKey,
       signal: abortController.signal,
       priorMessages,
+      attachments: resumeAttachments.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
       drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
@@ -565,12 +660,17 @@ app.whenReady().then(async () => {
       return { error: msg };
     }
 
+    const rerunAttachments = sessionManager.loadAttachmentsForRun(validatedId);
+    if (rerunAttachments.length > 0) {
+      mainLogger.info('main.sessions:rerun.attachments', { id: validatedId, count: rerunAttachments.length });
+    }
     steerQueues.set(validatedId, []);
     runAgent({
       ctx,
       prompt: session.prompt,
       apiKey,
       signal: abortController.signal,
+      attachments: rerunAttachments.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
       drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
       onEvent: (event) => {
         if (event.type === 'done') {
@@ -654,10 +754,12 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('sessions:list', () => {
-    return sessionManager.listSessions().map((s) => ({
+    const list = sessionManager.listSessions().map((s) => ({
       ...s,
       hasBrowser: !!browserPool.getWebContents(s.id),
     }));
+    mainLogger.info('main.sessions:list', { returning: list.length, ids: list.map((s) => s.id) });
+    return list;
   });
 
   ipcMain.handle('sessions:list-all', () => {
@@ -942,7 +1044,6 @@ function buildApplicationMenu(): void {
       submenu: [
         {
           label: 'New Agent',
-          accelerator: 'CmdOrCtrl+K',
           click: () => {
             mainLogger.debug('menu.newAgent.togglePill');
             togglePill();

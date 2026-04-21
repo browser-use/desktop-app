@@ -14,10 +14,22 @@ function formatElapsed(createdAt: number): string {
   return `${hours}h`;
 }
 
+function isApiKeyError(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes('invalid_api_key') ||
+    lower.includes('invalid api key') ||
+    lower.includes('no api key') ||
+    lower.includes('authentication_error') ||
+    lower.includes('x-api-key') ||
+    lower.includes('401')
+  );
+}
+
 function friendlyError(raw: string): string {
   const lower = raw.toLowerCase();
   if (lower.includes('credit balance is too low') || lower.includes('insufficient_quota')) return 'API credits exhausted. Please add credits to your Anthropic account.';
-  if (lower.includes('invalid_api_key') || lower.includes('no api key')) return 'No API key configured. Add your key in Settings.';
+  if (isApiKeyError(raw)) return 'Anthropic API key is missing or invalid. Update it in Settings.';
   if (lower.includes('rate_limit') || lower.includes('rate limit')) return 'Rate limited. Too many requests — try again in a moment.';
   if (lower.includes('overloaded') || lower.includes('529')) return 'API is overloaded. Try again shortly.';
   if (lower.includes('cancelled')) return 'Task was cancelled.';
@@ -374,11 +386,12 @@ interface AgentPaneProps {
   onCancel?: (sessionId: string) => void;
   onSelect?: (sessionId: string) => void;
   onOpenFollowUp?: () => void;
+  onOpenSettings?: () => void;
   followUpShortcut?: string;
   cycleShortcut?: string;
 }
 
-export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, onCancel, onSelect, onOpenFollowUp, followUpShortcut, cycleShortcut }: AgentPaneProps): React.ReactElement {
+export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, onCancel, onSelect, onOpenFollowUp, onOpenSettings, followUpShortcut, cycleShortcut }: AgentPaneProps): React.ReactElement {
   useHydrateSession(session.id);
   const scrollRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -571,7 +584,14 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   const statusText = STATUS_LABEL[session.status] ?? session.status;
 
   return (
-    <div ref={paneRef} className={`pane pane--${session.status}${focused ? ' pane--focused' : ''}`} onClick={() => onSelect?.(session.id)}>
+    <div
+      ref={paneRef}
+      className={`pane pane--${session.status}${focused ? ' pane--focused' : ''}`}
+      onClick={() => onSelect?.(session.id)}
+      onMouseDown={(e) => {
+        if ((e.target as HTMLElement).closest('button')) e.preventDefault();
+      }}
+    >
       <div className="pane__header">
         <span className={`pane__dot pane__dot--${session.status}`} />
         <span className="pane__prompt">{session.prompt}</span>
@@ -724,21 +744,35 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
               <ErrorIcon />
             </div>
             <p className="pane__error-msg">{friendlyError(session.error)}</p>
+            <div className="pane__error-actions">
+              {isApiKeyError(session.error) && onOpenSettings && (
+                <button className="pane__rerun-btn" onClick={onOpenSettings}>
+                  <span>Open Settings</span>
+                </button>
+              )}
+              {onRerun && (
+                <button className="pane__rerun-btn" onClick={() => onRerun(session.id)}>
+                  <RerunIcon />
+                  <span>Rerun task</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {session.error && entries.length > 2 && (
+          <div className="pane__rerun">
+            <span className="pane__rerun-error">{friendlyError(session.error)}</span>
+            {isApiKeyError(session.error) && onOpenSettings && (
+              <button className="pane__rerun-btn" onClick={onOpenSettings}>
+                <span>Open Settings</span>
+              </button>
+            )}
             {onRerun && (
               <button className="pane__rerun-btn" onClick={() => onRerun(session.id)}>
                 <RerunIcon />
                 <span>Rerun task</span>
               </button>
             )}
-          </div>
-        )}
-        {session.error && entries.length > 2 && onRerun && (
-          <div className="pane__rerun">
-            <span className="pane__rerun-error">{friendlyError(session.error)}</span>
-            <button className="pane__rerun-btn" onClick={() => onRerun(session.id)}>
-              <RerunIcon />
-              <span>Rerun task</span>
-            </button>
           </div>
         )}
         {!session.error && session.status === 'stopped' && onRerun && (

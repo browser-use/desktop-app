@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Group } from '@visx/group';
 import { scaleLinear } from '@visx/scale';
 import { AreaClosed, LinePath } from '@visx/shape';
@@ -7,6 +7,7 @@ import { LinearGradient } from '@visx/gradient';
 import { ParentSize } from '@visx/responsive';
 import { STATUS_LABEL } from './constants';
 import { TaskInput } from './TaskInput';
+import type { TaskInputHandle } from './TaskInput';
 import { DashboardBackground } from './DashboardBackground';
 import type { AgentSession } from './types';
 
@@ -105,7 +106,7 @@ interface DashboardProps {
   sessions: AgentSession[];
   onSwitchToGrid: () => void;
   onSelectSession?: (id: string) => void;
-  onSubmitTask: (prompt: string) => void;
+  onSubmitTask: (input: import('./TaskInput').TaskInputSubmission) => void;
 }
 
 export function Dashboard({ sessions, onSwitchToGrid, onSelectSession, onSubmitTask }: DashboardProps): React.ReactElement {
@@ -118,12 +119,62 @@ export function Dashboard({ sessions, onSwitchToGrid, onSelectSession, onSubmitT
 
   const recentSessions = sessions.slice(0, 6);
 
+  const taskInputRef = useRef<TaskInputHandle>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+
+    const onEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragCounter.current += 1;
+      if (dragCounter.current === 1) setIsDragging(true);
+    };
+    const onOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragCounter.current = Math.max(0, dragCounter.current - 1);
+      if (dragCounter.current === 0) setIsDragging(false);
+    };
+    const onDropHandler = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter.current = 0;
+      setIsDragging(false);
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        void taskInputRef.current?.addFiles(files);
+        taskInputRef.current?.focus();
+      }
+    };
+    const onBlurHandler = () => { dragCounter.current = 0; setIsDragging(false); };
+
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('drop', onDropHandler);
+    window.addEventListener('blur', onBlurHandler);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('drop', onDropHandler);
+      window.removeEventListener('blur', onBlurHandler);
+    };
+  }, []);
+
   return (
-    <div className="dashboard">
+    <div className={`dashboard${isDragging ? ' dashboard--dragging' : ''}`}>
       <DashboardBackground />
       <div className="dashboard__hero">
-        <TaskInput onSubmit={onSubmitTask} />
+        <TaskInput ref={taskInputRef} onSubmit={onSubmitTask} />
       </div>
+      {isDragging && <div className="dashboard__drop-overlay" aria-label="Drop files to attach" />}
 
       <div className="dashboard__cards">
         <div className="dashboard__stat-card">

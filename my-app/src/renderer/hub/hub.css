@@ -1467,6 +1467,14 @@ button:focus:not(:focus-visible) {
   border-color: var(--color-border-strong);
 }
 
+.pane__error-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 /* ---------------------------------------------------------------------------
    FOLLOW-UP INPUT — terminal-style prompt on idle panes
 --------------------------------------------------------------------------- */
@@ -1530,8 +1538,8 @@ button:focus:not(:focus-visible) {
 
 .task-input__box {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
   background-color: var(--color-bg-base);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
@@ -1544,6 +1552,85 @@ button:focus:not(:focus-visible) {
 .task-input__box--focused {
   border-color: var(--color-border-default);
   box-shadow: var(--glow-accent-sm);
+}
+
+.task-input__box--drag {
+  border-color: var(--color-fg-primary);
+  border-style: dashed;
+}
+
+.task-input__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.task-input__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px 2px 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-secondary);
+  max-width: 220px;
+}
+
+.task-input__chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-input__chip-size {
+  color: var(--color-fg-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.task-input__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-tertiary);
+}
+
+.task-input__chip-remove:hover {
+  color: var(--color-fg-primary);
+  background-color: var(--color-bg-elevated);
+}
+
+.task-input__error {
+  font-size: var(--font-size-sm);
+  color: var(--color-status-error, #e5484d);
+}
+
+.task-input__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.task-input__attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  color: var(--color-fg-secondary);
+  background: transparent;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.task-input__attach:hover {
+  color: var(--color-fg-primary);
+  background-color: var(--color-bg-elevated);
 }
 
 .task-input__textarea {
@@ -1976,6 +2063,35 @@ button:focus:not(:focus-visible) {
   min-height: 0;
 }
 
+.dashboard--dragging > *:not(.dashboard__drop-overlay) {
+  filter: blur(4px) brightness(0.7);
+  transition: filter 120ms ease-out;
+  pointer-events: none;
+}
+
+.dashboard__drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard__drop-overlay::before {
+  content: 'Drop files to attach';
+  padding: var(--space-5) var(--space-8);
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-lg, 12px);
+  background: rgba(10, 10, 13, 0.85);
+  color: var(--color-fg-primary);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
 .dashboard__bg {
   position: absolute;
   inset: 0;
@@ -1986,7 +2102,7 @@ button:focus:not(:focus-visible) {
   display: block;
 }
 
-.dashboard > *:not(.dashboard__bg) {
+.dashboard > *:not(.dashboard__bg):not(.dashboard__drop-overlay) {
   position: relative;
   z-index: 1;
 }
@@ -2916,6 +3032,54 @@ button:focus:not(:focus-visible) {
 
 .conn-card__btn--secondary:hover {
   background-color: var(--color-surface-interactive-hover);
+}
+
+.conn-card__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.conn-card__icon--letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-bg-base);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-fg-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.conn-card__api-key-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 var(--space-1);
+}
+
+.conn-card__api-key-input {
+  flex: 1;
+  min-width: 240px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-base);
+  color: var(--color-fg-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  outline: none;
+}
+
+.conn-card__api-key-input:focus {
+  border-color: var(--color-fg-primary);
+}
+
+.conn-card__api-key-error {
+  flex-basis: 100%;
+  font-size: var(--font-size-xs);
+  color: var(--color-status-error);
 }
 
 /* ----------------------------------------------------------------------------

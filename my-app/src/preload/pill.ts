@@ -52,12 +52,16 @@ contextBridge.exposeInMainWorld('pillAPI', {
    * Submit a prompt to the agent.
    * Main process handles: get active CDP URL, generate task_id, send to daemon.
    */
-  submit: (prompt: string): Promise<{ task_id: string }> => {
+  submit: (
+    prompt: string,
+    attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+  ): Promise<{ task_id: string }> => {
     log.info('preload.pill.submit', {
       message: 'Invoking pill:submit',
       promptLength: prompt.length,
+      attachmentCount: attachments?.length ?? 0,
     });
-    return ipcRenderer.invoke('pill:submit', { prompt });
+    return ipcRenderer.invoke('pill:submit', { prompt, attachments });
   },
 
   listSessions: (): Promise<Array<{ id: string; prompt: string; status: string; createdAt: number }>> => {
@@ -68,8 +72,12 @@ contextBridge.exposeInMainWorld('pillAPI', {
     ipcRenderer.send('pill:select-session', id);
   },
 
-  followUpSubmit: (sessionId: string, prompt: string): Promise<{ resumed?: boolean; error?: string }> => {
-    return ipcRenderer.invoke('sessions:resume', { id: sessionId, prompt });
+  followUpSubmit: (
+    sessionId: string,
+    prompt: string,
+    attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+  ): Promise<{ resumed?: boolean; error?: string }> => {
+    return ipcRenderer.invoke('sessions:resume', { id: sessionId, prompt, attachments });
   },
 
   onFollowUpMode: (cb: (data: { sessionId: string; sessionPrompt: string }) => void): (() => void) => {

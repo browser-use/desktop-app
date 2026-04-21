@@ -379,7 +379,9 @@ export function HubApp(): React.ReactElement {
     }
   }, [focusIndex, sessions, gridColumns, gridPage]);
 
-  const handleCreateSession = useCallback(async (prompt: string) => {
+  const handleCreateSession = useCallback(async (input: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }> }) => {
+    const prompt = typeof input === 'string' ? input : input.prompt;
+    const attachments = typeof input === 'string' ? [] : (input.attachments ?? []);
     if (isMock) {
       const id = `session-${++sessionCounter}`;
       const now = Date.now();
@@ -415,8 +417,8 @@ export function HubApp(): React.ReactElement {
     if (!api) { console.error('[HubApp] electronAPI not available'); return; }
 
     try {
-      console.log('[HubApp] createSession (live)', { prompt });
-      const id = await api.sessions.create(prompt);
+      console.log('[HubApp] createSession (live)', { prompt, attachmentCount: attachments.length });
+      const id = await api.sessions.create(attachments.length > 0 ? { prompt, attachments } : prompt);
       console.log('[HubApp] session created', { id });
       pendingFocusIdRef.current = id;
       setViewMode('grid');
@@ -586,7 +588,7 @@ export function HubApp(): React.ReactElement {
         <Dashboard
           sessions={sessions}
           onSwitchToGrid={() => setViewMode('grid')}
-          onSubmitTask={(prompt) => { handleCreateSession(prompt); }}
+          onSubmitTask={(submission) => { handleCreateSession(submission); }}
           onSelectSession={(id) => {
             window.electronAPI?.sessions.unhide(id).catch(() => {});
             handleSelectSession(id);

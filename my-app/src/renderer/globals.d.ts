@@ -33,7 +33,9 @@ declare module '*.webp' {
 }
 
 interface ElectronSessionAPI {
-  create: (prompt: string) => Promise<string>;
+  create: (
+    promptOrPayload: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }> },
+  ) => Promise<string>;
   start: (id: string) => Promise<void>;
   cancel: (id: string) => Promise<void>;
   halt: (id: string) => Promise<void>;
@@ -42,7 +44,11 @@ interface ElectronSessionAPI {
   delete: (id: string) => Promise<void>;
   hide: (id: string) => Promise<void>;
   unhide: (id: string) => Promise<void>;
-  resume: (id: string, prompt: string) => Promise<{ resumed?: boolean; error?: string }>;
+  resume: (
+    id: string,
+    prompt: string,
+    attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+  ) => Promise<{ resumed?: boolean; error?: string }>;
   rerun: (id: string) => Promise<{ rerun?: boolean; error?: string }>;
   list: () => Promise<import('./hub/types').AgentSession[]>;
   listAll: () => Promise<import('./hub/types').AgentSession[]>;

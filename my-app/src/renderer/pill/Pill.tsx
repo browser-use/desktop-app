@@ -1,17 +1,47 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  classifyAttachmentMime,
+  maxBytesForAttachmentMime,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  formatBytes,
+} from '../../shared/attachments';
 
 declare global {
   interface Window {
     pillAPI: {
-      submit: (prompt: string) => Promise<{ task_id: string }>;
+      submit: (
+        prompt: string,
+        attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+      ) => Promise<{ task_id: string }>;
       hide: () => void;
       setExpanded: (expanded: boolean | number) => void;
       listSessions: () => Promise<Array<{ id: string; prompt: string; status: string; createdAt: number }>>;
       selectSession: (id: string) => void;
-      followUpSubmit: (sessionId: string, prompt: string) => Promise<{ resumed?: boolean; error?: string }>;
+      followUpSubmit: (
+        sessionId: string,
+        prompt: string,
+        attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+      ) => Promise<{ resumed?: boolean; error?: string }>;
       onFollowUpMode: (cb: (data: { sessionId: string; sessionPrompt: string }) => void) => () => void;
     };
   }
+}
+
+function PaperclipIcon(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M9.5 3.5L4.5 8.5a2 2 0 1 0 2.83 2.83L11.5 7.5a3 3 0 0 0-4.24-4.24L2.5 8.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PillCloseIcon(): React.ReactElement {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 interface SessionLite {
@@ -61,7 +91,10 @@ export function Pill(): React.ReactElement {
   const [sessions, setSessions] = useState<SessionLite[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [followUp, setFollowUp] = useState<{ sessionId: string; sessionPrompt: string } | null>(null);
+  const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; bytes: Uint8Array }>>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTimeout(() => ref.current?.focus(), 50);
@@ -69,6 +102,8 @@ export function Pill(): React.ReactElement {
     const unsub = window.pillAPI.onFollowUpMode((data) => {
       setFollowUp(data);
       setValue('');
+      setAttachments([]);
+      setAttachError(null);
       setTimeout(() => ref.current?.focus(), 50);
     });
     return unsub;
@@ -96,22 +131,71 @@ export function Pill(): React.ReactElement {
     const textareaHeight = ta ? Math.min(ta.scrollHeight, 240) : 28;
     const baseHeight = 82 + textareaHeight;
     const resultHeight = hasResults ? Math.min(results.length + 1, 9) * 36 + 2 : 0;
-    window.pillAPI.setExpanded(baseHeight + resultHeight);
-  }, [hasResults, results.length, value]);
+    // Chips row is ~24px; wraps every ~3 chips. Error row adds ~18px.
+    const chipsRows = attachments.length > 0 ? Math.ceil(attachments.length / 3) : 0;
+    const chipsHeight = chipsRows * 26;
+    const errorHeight = attachError ? 20 : 0;
+    window.pillAPI.setExpanded(baseHeight + resultHeight + chipsHeight + errorHeight);
+  }, [hasResults, results.length, value, attachments.length, attachError]);
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    setAttachError(null);
+    const list = Array.from(files);
+    const next = [...attachments];
+    let total = next.reduce((s, a) => s + a.bytes.byteLength, 0);
+    for (const f of list) {
+      if (next.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+        setAttachError(`Max ${MAX_ATTACHMENTS_PER_MESSAGE} files`);
+        break;
+      }
+      const mime = f.type || 'application/octet-stream';
+      if (classifyAttachmentMime(mime) === null) {
+        setAttachError(`Unsupported: ${mime || 'unknown'} (${f.name})`);
+        continue;
+      }
+      const max = maxBytesForAttachmentMime(mime) ?? 0;
+      if (f.size > max) {
+        setAttachError(`${f.name} exceeds ${formatBytes(max)}`);
+        continue;
+      }
+      if (f.size === 0) {
+        setAttachError(`${f.name} is empty`);
+        continue;
+      }
+      if (total + f.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+        setAttachError(`Total exceeds ${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)}`);
+        break;
+      }
+      const buf = await f.arrayBuffer();
+      next.push({ name: f.name, mime, bytes: new Uint8Array(buf) });
+      total += f.size;
+    }
+    setAttachments(next);
+  }, [attachments]);
+
+  const removeAttachment = useCallback((i: number) => {
+    setAttachments((prev) => prev.filter((_, idx) => idx !== i));
+  }, []);
 
   const submit = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed && attachments.length === 0) return;
     if (followUp) {
-      window.pillAPI.followUpSubmit(followUp.sessionId, trimmed);
+      window.pillAPI.followUpSubmit(followUp.sessionId, trimmed, attachments.length > 0 ? attachments : undefined);
       setValue('');
+      setAttachments([]);
+      setAttachError(null);
       setFollowUp(null);
       window.pillAPI.hide();
       return;
     }
+    if (!trimmed) return;
+    const attachArg = attachments.length > 0 ? attachments : undefined;
     if (hasResults && selectedIdx === 0) {
-      window.pillAPI.submit(trimmed);
+      window.pillAPI.submit(trimmed, attachArg);
       setValue('');
+      setAttachments([]);
+      setAttachError(null);
       return;
     }
     if (hasResults && selectedIdx > 0 && selectedIdx <= results.length) {
@@ -119,9 +203,11 @@ export function Pill(): React.ReactElement {
       setValue('');
       return;
     }
-    window.pillAPI.submit(trimmed);
+    window.pillAPI.submit(trimmed, attachArg);
     setValue('');
-  }, [value, hasResults, selectedIdx, results, followUp]);
+    setAttachments([]);
+    setAttachError(null);
+  }, [value, hasResults, selectedIdx, results, followUp, attachments]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -129,6 +215,8 @@ export function Pill(): React.ReactElement {
         e.preventDefault();
         setFollowUp(null);
         setValue('');
+        setAttachments([]);
+        setAttachError(null);
         window.pillAPI.hide();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -139,19 +227,85 @@ export function Pill(): React.ReactElement {
       } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         const trimmed = value.trim();
-        if (trimmed) { window.pillAPI.submit(trimmed); setValue(''); }
+        if (trimmed) {
+          const attachArg = attachments.length > 0 ? attachments : undefined;
+          window.pillAPI.submit(trimmed, attachArg);
+          setValue('');
+          setAttachments([]);
+          setAttachError(null);
+        }
       } else if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         submit();
       }
     },
-    [submit, value, results.length],
+    [submit, value, results.length, attachments],
   );
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  const onDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) setIsDragging(true);
+  }, []);
+
+  const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setIsDragging(false);
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      void addFiles(e.dataTransfer.files);
+      ref.current?.focus();
+    }
+  }, [addFiles]);
+
+  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
 
   return (
     <div className="cmdbar__scrim" onClick={() => window.pillAPI.hide()}>
-      <div className="cmdbar" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`cmdbar${isDragging ? ' cmdbar--dragging' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+      >
         <div className="cmdbar__drag-handle" />
+        {isDragging && (
+          <div className="cmdbar__drop-overlay">Drop files to attach</div>
+        )}
+        {attachments.length > 0 && (
+          <div className="cmdbar__chips">
+            {attachments.map((a, i) => (
+              <span key={`${a.name}-${i}`} className="cmdbar__chip" title={`${a.mime} · ${formatBytes(a.bytes.byteLength)}`}>
+                <span className="cmdbar__chip-name">{a.name}</span>
+                <button
+                  type="button"
+                  className="cmdbar__chip-remove"
+                  onClick={() => removeAttachment(i)}
+                  aria-label={`Remove ${a.name}`}
+                >
+                  <PillCloseIcon />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {attachError && <div className="cmdbar__error">{attachError}</div>}
         <div className="cmdbar__input-row">
           <textarea
             ref={ref}
@@ -164,9 +318,28 @@ export function Pill(): React.ReactElement {
             aria-label="Search or create"
           />
           <button
+            type="button"
+            className="cmdbar__attach"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach files"
+            title="Attach files"
+          >
+            <PaperclipIcon />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) void addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
             className="cmdbar__send"
             onClick={submit}
-            disabled={!value.trim()}
+            disabled={!value.trim() && attachments.length === 0}
             aria-label="Submit"
           >
             <ArrowUpIcon />

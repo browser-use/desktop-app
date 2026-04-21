@@ -1,8 +1,31 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { INPUT_PLACEHOLDER } from './constants';
+import {
+  classifyAttachmentMime,
+  maxBytesForAttachmentMime,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  formatBytes,
+} from '../../shared/attachments';
+
+export interface TaskInputAttachment {
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+}
+
+export interface TaskInputSubmission {
+  prompt: string;
+  attachments: TaskInputAttachment[];
+}
 
 interface TaskInputProps {
-  onSubmit: (prompt: string) => void;
+  onSubmit: (input: TaskInputSubmission) => void;
+}
+
+export interface TaskInputHandle {
+  addFiles: (files: FileList | File[]) => Promise<void>;
+  focus: () => void;
 }
 
 function ArrowUpIcon(): React.ReactElement {
@@ -13,38 +36,150 @@ function ArrowUpIcon(): React.ReactElement {
   );
 }
 
-export function TaskInput({ onSubmit }: TaskInputProps): React.ReactElement {
+function PaperclipIcon(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M9.5 3.5L4.5 8.5a2 2 0 1 0 2.83 2.83L11.5 7.5a3 3 0 0 0-4.24-4.24L2.5 8.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon(): React.ReactElement {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+async function readFileBytes(file: File): Promise<Uint8Array> {
+  const buf = await file.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function TaskInput({ onSubmit }, ref) {
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const [attachments, setAttachments] = useState<TaskInputAttachment[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    setErrorMsg(null);
+    const list = Array.from(files);
+    const next = [...attachments];
+    let total = next.reduce((s, a) => s + a.bytes.byteLength, 0);
+    for (const f of list) {
+      if (next.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+        setErrorMsg(`Max ${MAX_ATTACHMENTS_PER_MESSAGE} files per message`);
+        break;
+      }
+      const mime = f.type || 'application/octet-stream';
+      const kind = classifyAttachmentMime(mime);
+      if (kind === null) {
+        setErrorMsg(`Unsupported file type: ${mime || 'unknown'} (${f.name})`);
+        continue;
+      }
+      const max = maxBytesForAttachmentMime(mime) ?? 0;
+      if (f.size > max) {
+        setErrorMsg(`${f.name} is ${formatBytes(f.size)} — exceeds ${formatBytes(max)} ${kind} limit`);
+        continue;
+      }
+      if (f.size === 0) {
+        setErrorMsg(`${f.name} is empty`);
+        continue;
+      }
+      if (total + f.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+        setErrorMsg(`Total size would exceed ${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)}`);
+        break;
+      }
+      const bytes = await readFileBytes(f);
+      next.push({ name: f.name, mime, bytes });
+      total += f.size;
+      console.log('[TaskInput] attach', { name: f.name, mime, size: f.size });
+    }
+    setAttachments(next);
+  }, [attachments]);
+
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const submit = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed) return;
-    console.log('[TaskInput] submit', { prompt: trimmed });
-    onSubmit(trimmed);
+    if (!trimmed && attachments.length === 0) return;
+    console.log('[TaskInput] submit', { promptLength: trimmed.length, attachmentCount: attachments.length });
+    onSubmit({ prompt: trimmed, attachments });
     setValue('');
-    ref.current?.focus();
-  }, [value, onSubmit]);
+    setAttachments([]);
+    setErrorMsg(null);
+    textareaRef.current?.focus();
+  }, [value, attachments, onSubmit]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         submit();
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        ref.current?.blur();
+        textareaRef.current?.blur();
       }
     },
     [submit],
   );
 
+  const onDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDragActive(false);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        void addFiles(e.dataTransfer.files);
+      }
+    },
+    [addFiles],
+  );
+
+  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragActive(true);
+  }, []);
+
+  const onDragLeave = useCallback(() => setDragActive(false), []);
+
+  const canSubmit = value.trim().length > 0 || attachments.length > 0;
+
+  useImperativeHandle(ref, () => ({
+    addFiles: (files) => addFiles(files),
+    focus: () => textareaRef.current?.focus(),
+  }), [addFiles]);
+
   return (
     <div className="task-input">
       <div className={`task-input__box${focused ? ' task-input__box--focused' : ''}`}>
+        {attachments.length > 0 && (
+          <div className="task-input__chips">
+            {attachments.map((a, i) => (
+              <span key={`${a.name}-${i}`} className="task-input__chip" title={`${a.mime} · ${formatBytes(a.bytes.byteLength)}`}>
+                <span className="task-input__chip-name">{a.name}</span>
+                <span className="task-input__chip-size">{formatBytes(a.bytes.byteLength)}</span>
+                <button
+                  type="button"
+                  className="task-input__chip-remove"
+                  onClick={() => removeAttachment(i)}
+                  aria-label={`Remove ${a.name}`}
+                >
+                  <CloseIcon />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {errorMsg && <div className="task-input__error">{errorMsg}</div>}
         <textarea
-          ref={ref}
+          ref={textareaRef}
           className="task-input__textarea"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -55,18 +190,39 @@ export function TaskInput({ onSubmit }: TaskInputProps): React.ReactElement {
           rows={1}
           aria-label="New agent task"
         />
-        <button
-          className="task-input__send"
-          onClick={submit}
-          disabled={!value.trim()}
-          aria-label="Start agent"
-          title="Start agent (Enter)"
-        >
-          <ArrowUpIcon />
-        </button>
+        <div className="task-input__actions">
+          <button
+            type="button"
+            className="task-input__attach"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach files"
+            title="Attach files"
+          >
+            <PaperclipIcon />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) void addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
+            className="task-input__send"
+            onClick={submit}
+            disabled={!canSubmit}
+            aria-label="Start agent"
+            title="Start agent (Enter)"
+          >
+            <ArrowUpIcon />
+          </button>
+        </div>
       </div>
     </div>
   );
-}
+});
 
 export default TaskInput;

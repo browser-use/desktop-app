@@ -22,8 +22,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('pill:open-followup', sessionId, sessionPrompt);
     },
   },
+  settings: {
+    apiKey: {
+      getMasked: (): Promise<{ present: boolean; masked: string | null }> =>
+        ipcRenderer.invoke('settings:api-key:get-masked'),
+      save: (key: string): Promise<void> =>
+        ipcRenderer.invoke('settings:api-key:save', key),
+      test: (key: string): Promise<{ success: boolean; error?: string }> =>
+        ipcRenderer.invoke('settings:api-key:test', key),
+      delete: (): Promise<void> => ipcRenderer.invoke('settings:api-key:delete'),
+    },
+  },
   sessions: {
-    create: (prompt: string): Promise<string> => ipcRenderer.invoke('sessions:create', prompt),
+    create: (
+      promptOrPayload: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }> },
+    ): Promise<string> => ipcRenderer.invoke('sessions:create', promptOrPayload),
     start: (id: string): Promise<void> => ipcRenderer.invoke('sessions:start', id),
     cancel: (id: string): Promise<void> => ipcRenderer.invoke('sessions:cancel', id),
     halt: (id: string): Promise<void> => ipcRenderer.invoke('sessions:halt', id),
@@ -33,8 +46,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (id: string): Promise<void> => ipcRenderer.invoke('sessions:delete', id),
     hide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:hide', id),
     unhide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:unhide', id),
-    resume: (id: string, prompt: string): Promise<{ resumed?: boolean; error?: string }> =>
-      ipcRenderer.invoke('sessions:resume', { id, prompt }),
+    resume: (
+      id: string,
+      prompt: string,
+      attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+    ): Promise<{ resumed?: boolean; error?: string }> =>
+      ipcRenderer.invoke('sessions:resume', { id, prompt, attachments }),
     rerun: (id: string): Promise<{ rerun?: boolean; error?: string }> =>
       ipcRenderer.invoke('sessions:rerun', id),
     list: async (): Promise<AgentSession[]> => {

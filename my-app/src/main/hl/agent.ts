@@ -36,6 +36,12 @@ export type HlEvent =
   | { type: 'skill_written'; path: string; domain: string; topic: string; bytes: number }
   | { type: 'notify'; message: string; level: 'info' | 'blocking' };
 
+export interface AgentAttachment {
+  name: string;
+  mime: string;
+  bytes: Buffer | Uint8Array;
+}
+
 export interface RunAgentOptions {
   ctx: HlContext;
   prompt: string;
@@ -45,6 +51,7 @@ export interface RunAgentOptions {
   model?: string;
   priorMessages?: MessageParam[];
   drainQueue?: () => string | null;
+  attachments?: AgentAttachment[];
 }
 
 const SYSTEM_PROMPT = `You control a Chromium tab via CDP-backed tools AND have full local filesystem + shell access.
@@ -122,13 +129,47 @@ function asTools(): Tool[] {
   return tools;
 }
 
+type UserContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } };
+
+function buildFirstUserContent(prompt: string, attachments?: AgentAttachment[]): string | UserContentBlock[] {
+  if (!attachments || attachments.length === 0) return prompt;
+  const blocks: UserContentBlock[] = [];
+  const textPrefixParts: string[] = [];
+  for (const a of attachments) {
+    const buf = a.bytes instanceof Buffer ? a.bytes : Buffer.from(a.bytes);
+    if (a.mime === 'image/png' || a.mime === 'image/jpeg' || a.mime === 'image/gif' || a.mime === 'image/webp') {
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: a.mime, data: buf.toString('base64') } });
+    } else if (a.mime === 'application/pdf') {
+      blocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') } });
+    } else {
+      // Text-ish: inline as <file> block in the prompt prefix.
+      const text = buf.toString('utf-8');
+      textPrefixParts.push(`<file name="${a.name}" mime="${a.mime}">\n${text}\n</file>`);
+    }
+  }
+  const finalText = textPrefixParts.length > 0 ? `${textPrefixParts.join('\n\n')}\n\n${prompt}` : prompt;
+  blocks.push({ type: 'text', text: finalText });
+  return blocks;
+}
+
 export async function runAgent(opts: RunAgentOptions): Promise<MessageParam[]> {
   const { ctx, prompt, apiKey, signal, onEvent } = opts;
   const client = new Anthropic({ apiKey });
   const tools = asTools();
+  const firstContent = buildFirstUserContent(prompt, opts.attachments);
+  if (opts.attachments && opts.attachments.length > 0) {
+    mainLogger.info('hl.agent.attachments', {
+      count: opts.attachments.length,
+      mimes: opts.attachments.map((a) => a.mime),
+      totalBytes: opts.attachments.reduce((s, a) => s + (a.bytes instanceof Buffer ? a.bytes.byteLength : a.bytes.byteLength), 0),
+    });
+  }
   const messages: MessageParam[] = [
     ...(opts.priorMessages ?? []),
-    { role: 'user', content: prompt },
+    { role: 'user', content: firstContent as MessageParam['content'] },
   ];
   const model = opts.model ?? DEFAULT_MODEL;
 

@@ -12,6 +12,54 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
   const [waDetail, setWaDetail] = useState<string | undefined>();
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
+  const [keyPresent, setKeyPresent] = useState(false);
+  const [keyMasked, setKeyMasked] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftKey, setDraftKey] = useState('');
+  const [keyStatus, setKeyStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  const refreshKey = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.settings?.apiKey) return;
+    const r = await api.settings.apiKey.getMasked();
+    setKeyPresent(r.present);
+    setKeyMasked(r.masked);
+  }, []);
+
+  useEffect(() => {
+    refreshKey();
+  }, [refreshKey]);
+
+  const handleSaveKey = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.settings?.apiKey) return;
+    const trimmed = draftKey.trim();
+    if (!trimmed) return;
+    setKeyStatus('testing');
+    setKeyError(null);
+    const test = await api.settings.apiKey.test(trimmed);
+    if (!test.success) {
+      setKeyStatus('error');
+      setKeyError(test.error ?? 'Key rejected by Anthropic');
+      return;
+    }
+    await api.settings.apiKey.save(trimmed);
+    setKeyStatus('ok');
+    setDraftKey('');
+    setEditing(false);
+    await refreshKey();
+  }, [draftKey, refreshKey]);
+
+  const handleDeleteKey = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.settings?.apiKey) return;
+    await api.settings.apiKey.delete();
+    setKeyStatus('idle');
+    setKeyError(null);
+    await refreshKey();
+  }, [refreshKey]);
+
   useEffect(() => {
     const api = window.electronAPI;
     if (!api) return;
@@ -82,6 +130,71 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
   return (
     <div className={embedded ? 'conn-section' : 'conn-pane'}>
       {!embedded && <span className="conn-pane__title">Connections</span>}
+
+      <div className="conn-card">
+        <div className="conn-card__header">
+          <div className="conn-card__icon conn-card__icon--letter">A</div>
+          <div className="conn-card__info">
+            <div className="conn-card__title-row">
+              <span className="conn-card__name">Anthropic API key</span>
+              <span className={`conn-card__dot ${keyPresent ? 'conn-card__dot--connected' : 'conn-card__dot--disconnected'}`} />
+            </div>
+            <span className="conn-card__subtitle">
+              {editing
+                ? 'Enter a new key — it will be tested before saving'
+                : keyPresent && keyMasked
+                ? keyMasked
+                : 'No key configured'}
+            </span>
+          </div>
+          <div className="conn-card__actions">
+            {!editing && (
+              <button
+                className="conn-card__btn conn-card__btn--primary"
+                onClick={() => { setEditing(true); setDraftKey(''); setKeyStatus('idle'); setKeyError(null); }}
+              >
+                {keyPresent ? 'Change' : 'Add key'}
+              </button>
+            )}
+            {!editing && keyPresent && (
+              <button className="conn-card__btn conn-card__btn--secondary" onClick={handleDeleteKey}>
+                Remove
+              </button>
+            )}
+            {editing && (
+              <button
+                className="conn-card__btn conn-card__btn--secondary"
+                onClick={() => { setEditing(false); setDraftKey(''); setKeyError(null); setKeyStatus('idle'); }}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+        {editing && (
+          <div className="conn-card__api-key-edit">
+            <input
+              type="password"
+              className="conn-card__api-key-input"
+              placeholder="sk-ant-..."
+              value={draftKey}
+              onChange={(e) => { setDraftKey(e.target.value); setKeyStatus('idle'); setKeyError(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveKey(); }}
+              autoFocus
+            />
+            <button
+              className="conn-card__btn conn-card__btn--primary"
+              onClick={handleSaveKey}
+              disabled={!draftKey.trim() || keyStatus === 'testing'}
+            >
+              {keyStatus === 'testing' ? 'Testing...' : 'Save'}
+            </button>
+            {keyStatus === 'error' && keyError && (
+              <span className="conn-card__api-key-error">{keyError}</span>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="conn-card">
         <div className="conn-card__header">

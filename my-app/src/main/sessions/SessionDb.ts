@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { mainLogger } from '../logger';
-import { DB_SCHEMA_VERSION, RECOVERY_ERROR, VALID_STATUSES } from './db-constants';
+import { DB_SCHEMA_VERSION, RECOVERY_ERROR, VALID_STATUSES, MAX_ATTACHMENTS_PER_SESSION } from './db-constants';
 import type { HlEvent, SessionStatus } from '../../shared/session-schemas';
 
 interface SessionRow {
@@ -42,23 +42,21 @@ export class SessionDb {
     getEventCount: Database.Statement;
     recoverCrashed: Database.Statement;
     recoverIdle: Database.Statement;
+    insertAttachment: Database.Statement;
+    getAttachmentsMeta: Database.Statement;
+    getAttachmentBytes: Database.Statement;
+    getLatestTurnAttachments: Database.Statement;
+    getAttachmentTotalSize: Database.Statement;
+    getNextTurnIndex: Database.Statement;
+    getAttachmentCount: Database.Statement;
   };
 
   constructor(dbPath: string) {
-    try {
-      this.db = new Database(dbPath);
-      this.applyPragmas();
-      this.runMigrations();
-      this.prepareStatements();
-      mainLogger.info('SessionDb.open', { dbPath, version: this.getVersion() });
-    } catch (err) {
-      mainLogger.error('SessionDb.open.failed', { dbPath, error: (err as Error).message });
-      this.db = new Database(':memory:');
-      this.applyPragmas();
-      this.runMigrations();
-      this.prepareStatements();
-      mainLogger.warn('SessionDb.open.fallbackToMemory');
-    }
+    this.db = new Database(dbPath);
+    this.applyPragmas();
+    this.runMigrations();
+    this.prepareStatements();
+    mainLogger.info('SessionDb.open', { dbPath, version: this.getVersion() });
   }
 
   private applyPragmas(): void {
@@ -116,6 +114,30 @@ export class SessionDb {
       ),
       recoverIdle: this.db.prepare(
         "UPDATE sessions SET status = 'stopped', updated_at = ? WHERE status = 'idle'"
+      ),
+      insertAttachment: this.db.prepare(
+        'INSERT INTO session_attachments (session_id, name, mime, bytes, size, created_at, turn_index) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ),
+      getAttachmentsMeta: this.db.prepare(
+        'SELECT id, name, mime, size, created_at, turn_index FROM session_attachments WHERE session_id = ? ORDER BY id ASC'
+      ),
+      getAttachmentBytes: this.db.prepare(
+        'SELECT id, name, mime, bytes, size, turn_index FROM session_attachments WHERE session_id = ? ORDER BY id ASC'
+      ),
+      getLatestTurnAttachments: this.db.prepare(
+        `SELECT id, name, mime, bytes, size, turn_index FROM session_attachments
+         WHERE session_id = ? AND turn_index = (
+           SELECT COALESCE(MAX(turn_index), 0) FROM session_attachments WHERE session_id = ?
+         ) ORDER BY id ASC`
+      ),
+      getAttachmentTotalSize: this.db.prepare(
+        'SELECT COALESCE(SUM(size), 0) AS total FROM session_attachments WHERE session_id = ?'
+      ),
+      getNextTurnIndex: this.db.prepare(
+        'SELECT COALESCE(MAX(turn_index), -1) + 1 AS next FROM session_attachments WHERE session_id = ?'
+      ),
+      getAttachmentCount: this.db.prepare(
+        'SELECT COUNT(*) AS cnt FROM session_attachments WHERE session_id = ?'
       ),
     };
   }
@@ -199,6 +221,39 @@ export class SessionDb {
       mainLogger.info('SessionDb.migration.complete', { version: 4 });
     }
 
+    if (this.getVersion() < 5) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 5 });
+      this.db.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS session_attachments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            name        TEXT NOT NULL,
+            mime        TEXT NOT NULL,
+            bytes       BLOB NOT NULL,
+            size        INTEGER NOT NULL,
+            created_at  INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_attachments_session ON session_attachments(session_id);
+        `);
+        this.setVersion(5);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 5 });
+    }
+
+    if (this.getVersion() < 6) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 6 });
+      this.db.transaction(() => {
+        const cols = this.db.pragma('table_info(session_attachments)') as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === 'turn_index')) {
+          this.db.exec('ALTER TABLE session_attachments ADD COLUMN turn_index INTEGER NOT NULL DEFAULT 0');
+        }
+        this.db.exec('CREATE INDEX IF NOT EXISTS idx_attachments_session_turn ON session_attachments(session_id, turn_index)');
+        this.setVersion(6);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 6 });
+    }
+
     const final = this.getVersion();
     if (final !== DB_SCHEMA_VERSION) {
       const msg = `SessionDb migration did not reach expected version. Got ${final}, expected ${DB_SCHEMA_VERSION}.`;
@@ -214,11 +269,13 @@ export class SessionDb {
       throw new Error(`SessionDb.insertSession: invalid status "${session.status}". Valid: ${VALID_STATUSES.join(', ')}`);
     }
     const now = Date.now();
+    mainLogger.info('SessionDb.insertSession.attempt', { id: session.id, status: session.status, promptLength: session.prompt.length, closed: this.closed });
     try {
-      this.stmts.insertSession.run(session.id, session.prompt, session.status, session.createdAt, session.error ?? null, session.group ?? null, now, session.originChannel ?? null, session.originConversationId ?? null);
-      mainLogger.info('SessionDb.insertSession', { id: session.id, status: session.status, originChannel: session.originChannel ?? null });
+      const result = this.stmts.insertSession.run(session.id, session.prompt, session.status, session.createdAt, session.error ?? null, session.group ?? null, now, session.originChannel ?? null, session.originConversationId ?? null);
+      const totalRows = (this.db.prepare('SELECT COUNT(*) as c FROM sessions').get() as { c: number }).c;
+      mainLogger.info('SessionDb.insertSession.success', { id: session.id, status: session.status, changes: result.changes, totalRowsAfter: totalRows });
     } catch (err) {
-      mainLogger.error('SessionDb.insertSession.failed', { id: session.id, error: (err as Error).message });
+      mainLogger.error('SessionDb.insertSession.failed', { id: session.id, error: (err as Error).message, stack: (err as Error).stack });
       throw err;
     }
   }
@@ -374,6 +431,64 @@ export class SessionDb {
   getEventCount(sessionId: string): number {
     const row = this.stmts.getEventCount.get(sessionId) as { cnt: number };
     return row.cnt;
+  }
+
+  // -- Attachments ----------------------------------------------------------
+
+  getNextTurnIndex(sessionId: string): number {
+    const row = this.stmts.getNextTurnIndex.get(sessionId) as { next: number };
+    return row.next;
+  }
+
+  saveAttachment(
+    sessionId: string,
+    a: { name: string; mime: string; bytes: Buffer | Uint8Array },
+    turnIndex: number,
+  ): number {
+    if (this.closed) throw new Error('SessionDb is closed');
+    const buf = a.bytes instanceof Buffer ? a.bytes : Buffer.from(a.bytes);
+    const size = buf.byteLength;
+    const now = Date.now();
+    const existing = this.stmts.getAttachmentCount.get(sessionId) as { cnt: number };
+    if (existing.cnt >= MAX_ATTACHMENTS_PER_SESSION) {
+      mainLogger.warn('SessionDb.saveAttachment.capReached', { sessionId, cap: MAX_ATTACHMENTS_PER_SESSION });
+      throw new Error(`Attachment limit reached for session (max ${MAX_ATTACHMENTS_PER_SESSION})`);
+    }
+    try {
+      const result = this.stmts.insertAttachment.run(sessionId, a.name, a.mime, buf, size, now, turnIndex);
+      const id = Number(result.lastInsertRowid);
+      mainLogger.info('SessionDb.saveAttachment', { sessionId, attachmentId: id, name: a.name, mime: a.mime, size, turnIndex });
+      return id;
+    } catch (err) {
+      mainLogger.error('SessionDb.saveAttachment.failed', { sessionId, name: a.name, mime: a.mime, size, turnIndex, error: (err as Error).message });
+      throw err;
+    }
+  }
+
+  getAttachmentsMeta(sessionId: string): Array<{ id: number; name: string; mime: string; size: number; created_at: number; turn_index: number }> {
+    return this.stmts.getAttachmentsMeta.all(sessionId) as Array<{ id: number; name: string; mime: string; size: number; created_at: number; turn_index: number }>;
+  }
+
+  getAttachmentsWithBytes(sessionId: string): Array<{ id: number; name: string; mime: string; bytes: Buffer; size: number; turn_index: number }> {
+    const rows = this.stmts.getAttachmentBytes.all(sessionId) as Array<{ id: number; name: string; mime: string; bytes: Buffer; size: number; turn_index: number }>;
+    mainLogger.info('SessionDb.getAttachmentsWithBytes', { sessionId, count: rows.length, totalBytes: rows.reduce((a, r) => a + r.size, 0) });
+    return rows;
+  }
+
+  getLatestTurnAttachments(sessionId: string): Array<{ id: number; name: string; mime: string; bytes: Buffer; size: number; turn_index: number }> {
+    const rows = this.stmts.getLatestTurnAttachments.all(sessionId, sessionId) as Array<{ id: number; name: string; mime: string; bytes: Buffer; size: number; turn_index: number }>;
+    mainLogger.info('SessionDb.getLatestTurnAttachments', {
+      sessionId,
+      count: rows.length,
+      turnIndex: rows[0]?.turn_index ?? null,
+      totalBytes: rows.reduce((a, r) => a + r.size, 0),
+    });
+    return rows;
+  }
+
+  getAttachmentTotalSize(sessionId: string): number {
+    const row = this.stmts.getAttachmentTotalSize.get(sessionId) as { total: number };
+    return row.total ?? 0;
   }
 
   // -- Startup recovery -----------------------------------------------------

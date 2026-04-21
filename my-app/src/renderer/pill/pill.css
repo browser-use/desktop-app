@@ -30,6 +30,31 @@ html, body {
   overflow: hidden;
   color: var(--color-fg-primary);
   position: relative;
+  transition: box-shadow 120ms ease-out, filter 120ms ease-out;
+}
+
+.cmdbar--dragging {
+  box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.55), 0 0 24px rgba(122, 162, 247, 0.25);
+}
+
+.cmdbar--dragging > *:not(.cmdbar__drag-handle):not(.cmdbar__drop-overlay) {
+  filter: blur(3px) brightness(0.7);
+  pointer-events: none;
+}
+
+.cmdbar__drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--color-fg-primary);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  background: rgba(10, 10, 13, 0.45);
+  backdrop-filter: blur(1px);
 }
 
 .cmdbar__drag-handle {
@@ -186,4 +211,71 @@ html, body {
   text-align: center;
   flex-shrink: 0;
   color: var(--color-fg-disabled);
+}
+
+.cmdbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px 0;
+}
+
+.cmdbar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--color-bg-sunken, #1a1a1a);
+  border: 1px solid var(--color-border-subtle, #2a2a2a);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--color-fg-secondary, #c8c8c8);
+  max-width: 180px;
+}
+
+.cmdbar__chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdbar__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--color-fg-tertiary, #888);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.cmdbar__chip-remove:hover {
+  color: var(--color-fg-primary, #fff);
+}
+
+.cmdbar__error {
+  font-size: 11px;
+  color: #e5484d;
+  padding: 4px 12px 0;
+}
+
+.cmdbar__attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--color-fg-secondary, #c8c8c8);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cmdbar__attach:hover {
+  color: var(--color-fg-primary, #fff);
+  background-color: var(--color-bg-elevated, #222);
 }

@@ -23,7 +23,7 @@ export function useSessionsQuery() {
       const t0 = performance.now();
       const api = window.electronAPI;
       if (!api) return [];
-      const list = await api.sessions.list();
+      const list = await api.sessions.listAll();
       const hiddenCount = list.filter((s) => s.hidden).length;
       const visibleCount = list.filter((s) => !s.hidden).length;
       console.log('[useSessionsQuery] fetched sessions', {
