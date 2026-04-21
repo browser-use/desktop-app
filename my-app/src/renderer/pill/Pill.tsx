@@ -151,6 +151,7 @@ export function Pill(): React.ReactElement {
   return (
     <div className="cmdbar__scrim" onClick={() => window.pillAPI.hide()}>
       <div className="cmdbar" onClick={(e) => e.stopPropagation()}>
+        <div className="cmdbar__drag-handle" />
         <div className="cmdbar__input-row">
           <textarea
             ref={ref}

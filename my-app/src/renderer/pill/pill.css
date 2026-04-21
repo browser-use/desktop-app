@@ -29,6 +29,18 @@ html, body {
   background-color: var(--color-bg-overlay);
   overflow: hidden;
   color: var(--color-fg-primary);
+  position: relative;
+}
+
+.cmdbar__drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  -webkit-app-region: drag;
+  cursor: move;
+  z-index: 2;
 }
 
 .cmdbar__input-row {

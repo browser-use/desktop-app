@@ -1,75 +1,39 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useMemo } from 'react';
 import { Group } from '@visx/group';
-import { scaleTime, scaleLinear } from '@visx/scale';
-import { AreaClosed, LinePath, Line, Bar } from '@visx/shape';
+import { scaleLinear } from '@visx/scale';
+import { AreaClosed, LinePath } from '@visx/shape';
 import { curveMonotoneX } from '@visx/curve';
 import { LinearGradient } from '@visx/gradient';
-import { AxisBottom } from '@visx/axis';
 import { ParentSize } from '@visx/responsive';
 import { STATUS_LABEL } from './constants';
-import { generateActivityData, getStatusBreakdown, MOCK_STATS } from './mock-metrics';
+import { TaskInput } from './TaskInput';
+import { DashboardBackground } from './DashboardBackground';
 import type { AgentSession } from './types';
-import type { ActivityPoint } from './mock-metrics';
 
-interface StatusBreakdownEntry {
-  status: string;
-  count: number;
-  label: string;
-}
+const HOUR = 3600 * 1000;
+const DAY = 24 * HOUR;
 
-function deriveActivityFromSessions(sessions: AgentSession[]): ActivityPoint[] {
-  const now = Date.now();
-  const HOUR = 3600 * 1000;
-  const buckets = new Map<number, { sessions: number; tokens: number }>();
-
-  for (let i = 7 * 24; i >= 0; i--) {
-    const bucketTime = now - i * HOUR;
-    const bucketHour = Math.floor(bucketTime / HOUR) * HOUR;
-    buckets.set(bucketHour, { sessions: 0, tokens: 0 });
+// Cumulative count of sessions in `status` across sessions created within `windowMs`.
+// X-axis is session-index rank, so points spread evenly across the sparkline width.
+function buildStatusSeries(sessions: AgentSession[], status: string, windowMs: number): number[] {
+  const cutoff = Date.now() - windowMs;
+  const sorted = sessions.filter((s) => s.createdAt >= cutoff).sort((a, b) => a.createdAt - b.createdAt);
+  if (sorted.length === 0) return [0, 0];
+  const out: number[] = [0];
+  let count = 0;
+  for (const s of sorted) {
+    if (s.status === status) count += 1;
+    out.push(count);
   }
-
-  for (const s of sessions) {
-    const bucketHour = Math.floor(s.createdAt / HOUR) * HOUR;
-    const entry = buckets.get(bucketHour);
-    if (entry) {
-      entry.sessions += 1;
-    }
-  }
-
-  return Array.from(buckets, ([time, v]) => ({
-    time,
-    sessions: v.sessions,
-    tokens: v.tokens,
-  })).sort((a, b) => a.time - b.time);
+  return out;
 }
 
-function deriveBreakdown(sessions: AgentSession[]): StatusBreakdownEntry[] {
-  const counts: Record<string, number> = { stopped: 0, running: 0, stuck: 0, draft: 0, idle: 0 };
-  for (const s of sessions) {
-    if (s.status in counts) counts[s.status] += 1;
-  }
-  return [
-    { status: 'running', count: counts.running, label: 'Running' },
-    { status: 'idle', count: counts.idle, label: 'Idle' },
-    { status: 'stuck', count: counts.stuck, label: 'Stuck' },
-    { status: 'stopped', count: counts.stopped, label: 'Stopped' },
-    { status: 'draft', count: counts.draft, label: 'Draft' },
-  ];
-}
-
-function countSessionsToday(sessions: AgentSession[]): number {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const threshold = startOfDay.getTime();
-  return sessions.filter((s) => s.createdAt >= threshold).length;
-}
-
-const CHART_MARGIN = { top: 16, right: 0, bottom: 28, left: 0 };
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
+// Strictly monotonic cumulative total of sessions created within `windowMs`.
+function buildTotalSeries(sessions: AgentSession[], windowMs: number): number[] {
+  const cutoff = Date.now() - windowMs;
+  const sorted = sessions.filter((s) => s.createdAt >= cutoff).sort((a, b) => a.createdAt - b.createdAt);
+  if (sorted.length === 0) return [0, 0];
+  return [0, ...sorted.map((_, i) => i + 1)];
 }
 
 function formatElapsed(createdAt: number): string {
@@ -81,266 +45,149 @@ function formatElapsed(createdAt: number): string {
   return `${hours}h`;
 }
 
-function ActivityChart({ width, height, data }: { width: number; height: number; data: ActivityPoint[] }): React.ReactElement | null {
-  const [hover, setHover] = useState<ActivityPoint | null>(null);
-  const [hoverX, setHoverX] = useState(0);
+interface SparklineProps {
+  values: number[];
+  gradientId: string;
+  width: number;
+  height: number;
+  color: string;
+  fillFrom: string;
+  fillTo: string;
+}
 
-  const innerW = width - CHART_MARGIN.left - CHART_MARGIN.right;
-  const innerH = height - CHART_MARGIN.top - CHART_MARGIN.bottom;
-
-  const xScale = useMemo(() => scaleTime({
-    domain: [
-      Math.min(...data.map((d) => d.time)),
-      Math.max(...data.map((d) => d.time)),
-    ],
-    range: [0, Math.max(innerW, 1)],
-  }), [data, innerW]);
-
-  const yScale = useMemo(() => scaleLinear({
-    domain: [0, Math.max(...data.map((d) => d.sessions)) * 1.2],
-    range: [Math.max(innerH, 1), 0],
-    nice: true,
-  }), [data, innerH]);
-
-  const getX = useCallback((d: ActivityPoint) => xScale(d.time) ?? 0, [xScale]);
-  const getY = useCallback((d: ActivityPoint) => yScale(d.sessions) ?? 0, [yScale]);
-
-  const handleMouseMove = useCallback(
-    (event: React.MouseEvent<SVGRectElement>) => {
-      const svg = event.currentTarget.closest('svg');
-      if (!svg) return;
-      const pt = svg.createSVGPoint();
-      pt.x = event.clientX;
-      pt.y = event.clientY;
-      const svgPt = pt.matrixTransform(svg.getScreenCTM()?.inverse());
-      const x = svgPt.x - CHART_MARGIN.left;
-      const time = xScale.invert(x).getTime();
-      let closest = data[0];
-      let minDist = Infinity;
-      for (const d of data) {
-        const dist = Math.abs(d.time - time);
-        if (dist < minDist) { minDist = dist; closest = d; }
-      }
-      setHover(closest);
-      setHoverX(getX(closest));
-    },
-    [data, xScale],
+function Sparkline({ values, gradientId, width, height, color, fillFrom, fillTo }: SparklineProps): React.ReactElement | null {
+  const data = values.length > 0 ? values : [0, 0];
+  const xScale = useMemo(
+    () => scaleLinear({ domain: [0, data.length - 1], range: [0, width] }),
+    [data.length, width],
   );
-
-  if (width < 10 || height < 10) return null;
+  const yScale = useMemo(
+    () => scaleLinear({
+      domain: [Math.min(...data), Math.max(...data, 1) * 1.1],
+      range: [height - 2, 2],
+    }),
+    [data, height],
+  );
 
   return (
-    <div className="chart-wrapper">
-      <svg width={width} height={height}>
-        <LinearGradient id="area-gradient" from="rgba(109, 129, 150, 0.25)" to="rgba(109, 129, 150, 0)" />
-        <Group left={CHART_MARGIN.left} top={CHART_MARGIN.top}>
-          <AreaClosed
-            data={data}
-            x={getX}
-            y={getY}
-            yScale={yScale}
-            curve={curveMonotoneX}
-            fill="url(#area-gradient)"
-          />
-          <LinePath
-            data={data}
-            x={getX}
-            y={getY}
-            curve={curveMonotoneX}
-            stroke="var(--color-accent-default)"
-            strokeWidth={1.5}
-            strokeOpacity={0.8}
-          />
-          {hover && (
-            <>
-              <Line
-                from={{ x: hoverX, y: 0 }}
-                to={{ x: hoverX, y: innerH }}
-                stroke="var(--color-fg-disabled)"
-                strokeWidth={1}
-                strokeDasharray="3,3"
-              />
-              <circle
-                cx={hoverX}
-                cy={getY(hover)}
-                r={4}
-                fill="var(--color-accent-default)"
-                stroke="var(--color-bg-base)"
-                strokeWidth={2}
-              />
-            </>
-          )}
-          <Bar
-            x={0}
-            y={0}
-            width={innerW}
-            height={innerH}
-            fill="transparent"
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => setHover(null)}
-          />
-          <AxisBottom
-            top={innerH}
-            scale={xScale}
-            numTicks={7}
-            tickFormat={(v) => {
-              const d = new Date(v as number);
-              return d.toLocaleDateString([], { weekday: 'short' });
-            }}
-            stroke="var(--color-border-subtle)"
-            tickStroke="transparent"
-            tickLabelProps={() => ({
-              fill: 'var(--color-fg-disabled)',
-              fontSize: 10,
-              fontFamily: 'var(--font-ui)',
-              textAnchor: 'middle' as const,
-              dy: 4,
-            })}
-            hideTicks
-          />
-        </Group>
-      </svg>
-      {hover && (
-        <div
-          className="chart-tooltip"
-          style={{ left: hoverX + CHART_MARGIN.left }}
-        >
-          <span className="chart-tooltip__value">{hover.sessions} sessions</span>
-          <span className="chart-tooltip__label">
-            {new Date(hover.time).toLocaleDateString([], { weekday: 'short', hour: 'numeric' })}
-          </span>
-        </div>
-      )}
-    </div>
+    <svg width={width} height={height} className="sparkline">
+      <LinearGradient id={gradientId} from={fillFrom} to={fillTo} />
+      <Group>
+        <AreaClosed
+          data={data}
+          x={(_, i) => xScale(i) ?? 0}
+          y={(d) => yScale(d) ?? 0}
+          yScale={yScale}
+          curve={curveMonotoneX}
+          fill={`url(#${gradientId})`}
+        />
+        <LinePath
+          data={data}
+          x={(_, i) => xScale(i) ?? 0}
+          y={(d) => yScale(d) ?? 0}
+          curve={curveMonotoneX}
+          stroke={color}
+          strokeWidth={1.5}
+          strokeOpacity={0.9}
+        />
+      </Group>
+    </svg>
   );
 }
+
+const SPARK_COLORS = {
+  running:   { line: '#9ECE6A', from: 'rgba(158, 206, 106, 0.30)', to: 'rgba(158, 206, 106, 0)' },
+  completed: { line: '#E0AF68', from: 'rgba(224, 175, 104, 0.32)', to: 'rgba(224, 175, 104, 0)' },
+  today:     { line: '#7AA2F7', from: 'rgba(122, 162, 247, 0.32)', to: 'rgba(122, 162, 247, 0)' },
+};
 
 interface DashboardProps {
   sessions: AgentSession[];
   onSwitchToGrid: () => void;
   onSelectSession?: (id: string) => void;
+  onSubmitTask: (prompt: string) => void;
 }
 
-export function Dashboard({ sessions, onSwitchToGrid, onSelectSession }: DashboardProps): React.ReactElement {
-  const isMock = import.meta.env.VITE_MOCK_MODE === '1';
-
+export function Dashboard({ sessions, onSwitchToGrid, onSelectSession, onSubmitTask }: DashboardProps): React.ReactElement {
   const runningCount = sessions.filter((s) => s.status === 'running').length;
-  const stuckCount = sessions.filter((s) => s.status === 'stuck').length;
-  const stoppedCount = sessions.filter((s) => s.status === 'stopped').length;
+  const idleCount = sessions.filter((s) => s.status === 'idle').length;
 
-  const breakdown = useMemo(
-    () => isMock ? getStatusBreakdown(MOCK_STATS.totalSessions) : deriveBreakdown(sessions),
-    [isMock, sessions],
-  );
-  const total = breakdown.reduce((sum, b) => sum + b.count, 0);
+  const runningSeries = useMemo(() => buildStatusSeries(sessions, 'running', HOUR), [sessions]);
+  const idleSeries = useMemo(() => buildStatusSeries(sessions, 'idle', DAY), [sessions]);
+  const totalSeries = useMemo(() => buildTotalSeries(sessions, 7 * DAY), [sessions]);
 
-  const activityData = useMemo(
-    () => isMock ? generateActivityData(7) : deriveActivityFromSessions(sessions),
-    [isMock, sessions],
-  );
-
-  const todayCount = useMemo(
-    () => isMock ? MOCK_STATS.sessionsToday : countSessionsToday(sessions),
-    [isMock, sessions],
-  );
-
-  const recentSessions = sessions;
+  const recentSessions = sessions.slice(0, 6);
 
   return (
     <div className="dashboard">
-      <div className="dashboard__stats">
-        <div className="dashboard__stat dashboard__stat--live">
-          <span className="dashboard__stat-label">Running</span>
-          <span className="dashboard__stat-value">
-            <span className="dashboard__stat-dot dashboard__stat-dot--running" />
-            {runningCount}
-          </span>
+      <DashboardBackground />
+      <div className="dashboard__hero">
+        <TaskInput onSubmit={onSubmitTask} />
+      </div>
+
+      <div className="dashboard__cards">
+        <div className="dashboard__stat-card">
+          <div className="dashboard__stat-card-head">
+            <span className="dashboard__stat-card-label">Running now</span>
+          </div>
+          <span className="dashboard__stat-card-value">{runningCount}</span>
+          <div className="dashboard__stat-card-spark">
+            <ParentSize>{({ width }) => <Sparkline values={runningSeries} gradientId="spark-running" width={width} height={64} color={SPARK_COLORS.running.line} fillFrom={SPARK_COLORS.running.from} fillTo={SPARK_COLORS.running.to} />}</ParentSize>
+          </div>
         </div>
-        <div className="dashboard__stat">
-          <span className="dashboard__stat-label">Stuck</span>
-          <span className="dashboard__stat-value">
-            <span className="dashboard__stat-dot dashboard__stat-dot--stuck" />
-            {stuckCount}
-          </span>
+
+        <div className="dashboard__stat-card">
+          <div className="dashboard__stat-card-head">
+            <span className="dashboard__stat-card-label">Idle</span>
+          </div>
+          <span className="dashboard__stat-card-value">{idleCount}</span>
+          <div className="dashboard__stat-card-spark">
+            <ParentSize>{({ width }) => <Sparkline values={idleSeries} gradientId="spark-completed" width={width} height={64} color={SPARK_COLORS.completed.line} fillFrom={SPARK_COLORS.completed.from} fillTo={SPARK_COLORS.completed.to} />}</ParentSize>
+          </div>
         </div>
-        <div className="dashboard__stat">
-          <span className="dashboard__stat-label">Completed</span>
-          <span className="dashboard__stat-value">{stoppedCount}</span>
-        </div>
-        <div className="dashboard__stat">
-          <span className="dashboard__stat-label">Today</span>
-          <span className="dashboard__stat-value">{todayCount}</span>
+
+        <div className="dashboard__stat-card">
+          <div className="dashboard__stat-card-head">
+            <span className="dashboard__stat-card-label">Total sessions</span>
+          </div>
+          <span className="dashboard__stat-card-value">{sessions.length}</span>
+          <div className="dashboard__stat-card-spark">
+            <ParentSize>{({ width }) => <Sparkline values={totalSeries} gradientId="spark-today" width={width} height={64} color={SPARK_COLORS.today.line} fillFrom={SPARK_COLORS.today.from} fillTo={SPARK_COLORS.today.to} />}</ParentSize>
+          </div>
         </div>
       </div>
 
-      <div className="dashboard__grid">
-        <div className="dashboard__chart-card">
+      {recentSessions.length > 0 && (
+        <div className="dashboard__recent">
           <div className="dashboard__card-header">
-            <span className="dashboard__card-title">Sessions (7d)</span>
+            <span className="dashboard__card-title">Recent sessions</span>
+            <button className="dashboard__view-all" onClick={onSwitchToGrid}>
+              View all
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
           </div>
-          <div className="dashboard__chart-area">
-            <ParentSize>
-              {({ width, height }) => <ActivityChart width={width} height={height} data={activityData} />}
-            </ParentSize>
-          </div>
-        </div>
-
-        <div className="dashboard__breakdown-card">
-          <div className="dashboard__card-header">
-            <span className="dashboard__card-title">Status breakdown</span>
-            <span className="dashboard__card-count">{total} total</span>
-          </div>
-          <div className="dashboard__breakdown-bar">
-            {breakdown.map((b) => (
+          <div className="dashboard__recent-list">
+            {recentSessions.map((session) => (
               <div
-                key={b.status}
-                className={`dashboard__bar-segment dashboard__bar-segment--${b.status}`}
-                style={{ flex: b.count }}
-                title={`${b.label}: ${b.count}`}
-              />
-            ))}
-          </div>
-          <div className="dashboard__breakdown-legend">
-            {breakdown.map((b) => (
-              <div key={b.status} className="dashboard__legend-item">
-                <span className={`dashboard__legend-dot dashboard__legend-dot--${b.status}`} />
-                <span className="dashboard__legend-label">{b.label}</span>
-                <span className="dashboard__legend-count">{b.count}</span>
+                key={session.id}
+                className="dashboard__recent-row"
+                onClick={() => onSelectSession?.(session.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter') onSelectSession?.(session.id); }}
+              >
+                <span className={`dashboard__recent-dot dashboard__recent-dot--${session.status}`} />
+                <span className="dashboard__recent-status">{STATUS_LABEL[session.status]}</span>
+                {session.group && <span className="dashboard__recent-group">{session.group}</span>}
+                <span className="dashboard__recent-prompt">{session.prompt}</span>
+                <span className="dashboard__recent-elapsed">{formatElapsed(session.createdAt)}</span>
               </div>
             ))}
           </div>
         </div>
-      </div>
-
-      <div className="dashboard__recent">
-        <div className="dashboard__card-header">
-          <span className="dashboard__card-title">Recent sessions</span>
-          <button className="dashboard__view-all" onClick={onSwitchToGrid}>
-            View all
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
-        <div className="dashboard__recent-list">
-          {recentSessions.map((session) => (
-            <div
-              key={session.id}
-              className="dashboard__recent-row"
-              onClick={() => onSelectSession?.(session.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter') onSelectSession?.(session.id); }}
-            >
-              <span className={`dashboard__recent-dot dashboard__recent-dot--${session.status}`} />
-              <span className="dashboard__recent-status">{STATUS_LABEL[session.status]}</span>
-              {session.group && <span className="dashboard__recent-group">{session.group}</span>}
-              <span className="dashboard__recent-prompt">{session.prompt}</span>
-              <span className="dashboard__recent-elapsed">{formatElapsed(session.createdAt)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -75,6 +75,17 @@ interface ElectronOnAPI {
   whatsappQr?: (cb: (dataUrl: string) => void) => () => void;
   channelStatus?: (cb: (channelId: string, status: string, detail?: string) => void) => () => void;
   pillToggled?: (cb: () => void) => () => void;
+  globalCmdbarChanged?: (cb: (accelerator: string) => void) => () => void;
+}
+
+interface ElectronHotkeysAPI {
+  getGlobalCmdbar: () => Promise<string>;
+  setGlobalCmdbar: (accel: string) => Promise<{ ok: boolean; accelerator: string }>;
+}
+
+interface ElectronShellAPI {
+  getPlatform: () => Promise<string>;
+  setOverlay: (active: boolean) => void;
 }
 
 interface ElectronPillAPI {
@@ -87,6 +98,8 @@ interface ElectronAPI {
   pill: ElectronPillAPI;
   sessions: ElectronSessionAPI;
   channels: ElectronChannelsAPI;
+  hotkeys?: ElectronHotkeysAPI;
+  shell?: ElectronShellAPI;
   on: ElectronOnAPI;
 }
 

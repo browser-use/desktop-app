@@ -77,7 +77,7 @@ export function useDismissSession() {
   const qc = useQueryClient();
   return (id: string) => {
     qc.setQueryData<AgentSession[]>(SESSIONS_KEY, (prev = []) =>
-      prev.filter((s) => s.id !== id),
+      prev.map((s) => (s.id === id ? { ...s, hidden: true } : s)),
     );
   };
 }

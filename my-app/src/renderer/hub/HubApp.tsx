@@ -3,6 +3,7 @@ import { AgentPane } from './AgentPane';
 import { ListView } from './ListView';
 import { Dashboard } from './Dashboard';
 import { KeybindingsOverlay } from './KeybindingsOverlay';
+import { CommandBar } from './CommandBar';
 import { SettingsPane } from './SettingsPane';
 import { useVimKeys } from './useVimKeys';
 import { useSessionsQuery, useDismissSession, useUpdateSession } from './useSessionsQuery';
@@ -104,6 +105,13 @@ export function HubApp(): React.ReactElement {
   const [gridPage, setGridPage] = useState(0);
   const [zoomFactor, setZoomFactor] = useState(1.0);
   const [gridColumns, setGridColumns] = useState(4);
+  const [cmdBarVisible, setCmdBarVisible] = useState<boolean>(() => {
+    try { return window.localStorage.getItem('hub-cmdbar-visible') !== '0'; } catch { return true; }
+  });
+  const hideCmdBar = useCallback(() => {
+    setCmdBarVisible(false);
+    try { window.localStorage.setItem('hub-cmdbar-visible', '0'); } catch {}
+  }, []);
 
   const vimHandlers = useMemo<Partial<Record<ActionId, () => void>>>(() => ({
     'nav.down': () => {
@@ -146,6 +154,7 @@ export function HubApp(): React.ReactElement {
     'goto.settings': () => { window.electronAPI?.pill.hide(); hideBrowserViews(); setSettingsOpen(true); },
     'search.open': () => { window.electronAPI?.pill.toggle(); },
     'action.create': () => { window.electronAPI?.pill.toggle(); },
+    'action.createPane': () => { window.electronAPI?.pill.toggle(); },
     'action.dismiss': () => {
       const s = sessions[focusIndex];
       if (!s) return;
@@ -190,7 +199,7 @@ export function HubApp(): React.ReactElement {
       const el = document.querySelector('.hub-grid, .list-view__body, .dashboard');
       if (el) el.scrollBy({ top: -(el.clientHeight / 2), behavior: 'smooth' });
     },
-    'meta.help': () => { hideBrowserViews(); setHelpOpen((prev) => !prev); },
+    'meta.help': () => { window.electronAPI?.pill.hide(); hideBrowserViews(); setSettingsOpen(true); },
     'meta.commandPalette': () => { window.electronAPI?.pill.toggle(); },
     'meta.escape': () => {
       if (helpOpen) { setHelpOpen(false); showBrowserViews(); return; }
@@ -377,7 +386,6 @@ export function HubApp(): React.ReactElement {
     }
   }, [isMock, setViewMode]);
 
-  const hasNoSessions = sessions.length === 0;
 
   const handleFollowUp = useCallback(async (sessionId: string, prompt: string) => {
     if (!isMock) {
@@ -410,45 +418,43 @@ export function HubApp(): React.ReactElement {
           <MemoryIndicator onOpenSettings={() => { hideBrowserViews(); setSettingsOpen(true); }} />
         </div>
         <div className="hub-toolbar__right">
-          <button
-            className="hub-toolbar__new-btn"
-            onClick={() => openPill()}
-            aria-label="New agent"
-            data-tip={tip('New agent', 'action.create')}
-          >
-            <PlusIcon />
-            <span className="hub-toolbar__new-label">New agent</span>
-          </button>
-          {sessions.length > 0 && (
-            <>
-              <div className="hub-toolbar__view-toggle" role="radiogroup" aria-label="View mode">
-                <button
-                  className={`hub-toolbar__view-btn${viewMode === 'dashboard' ? ' hub-toolbar__view-btn--active' : ''}`}
-                  onClick={() => setViewMode('dashboard')}
-                  aria-label="Dashboard"
-                  data-tip={tip('Dashboard', 'goto.dashboard')}
-                >
-                  <DashboardIcon />
-                </button>
-                <button
-                  className={`hub-toolbar__view-btn${viewMode === 'grid' ? ' hub-toolbar__view-btn--active' : ''}`}
-                  onClick={() => setViewMode('grid')}
-                  aria-label="Grid view"
-                  data-tip={tip('Grid view', 'goto.agents')}
-                >
-                  <GridIcon />
-                </button>
-                <button
-                  className={`hub-toolbar__view-btn${viewMode === 'list' ? ' hub-toolbar__view-btn--active' : ''}`}
-                  onClick={() => setViewMode('list')}
-                  aria-label="List view"
-                  data-tip={tip('List view', 'goto.list')}
-                >
-                  <ListIcon />
-                </button>
-              </div>
-            </>
+          {viewMode !== 'dashboard' && (
+            <button
+              className="hub-toolbar__new-btn"
+              onClick={() => openPill()}
+              aria-label="New agent"
+              data-tip={tip('New agent', 'action.create')}
+            >
+              <PlusIcon />
+              <span className="hub-toolbar__new-label">New agent</span>
+            </button>
           )}
+          <div className="hub-toolbar__view-toggle" role="radiogroup" aria-label="View mode">
+            <button
+              className={`hub-toolbar__view-btn${viewMode === 'dashboard' ? ' hub-toolbar__view-btn--active' : ''}`}
+              onClick={() => setViewMode('dashboard')}
+              aria-label="Dashboard"
+              data-tip={tip('Dashboard', 'goto.dashboard')}
+            >
+              <DashboardIcon />
+            </button>
+            <button
+              className={`hub-toolbar__view-btn${viewMode === 'grid' ? ' hub-toolbar__view-btn--active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              aria-label="Grid view"
+              data-tip={tip('Grid view', 'goto.agents')}
+            >
+              <GridIcon />
+            </button>
+            <button
+              className={`hub-toolbar__view-btn${viewMode === 'list' ? ' hub-toolbar__view-btn--active' : ''}`}
+              onClick={() => setViewMode('list')}
+              aria-label="List view"
+              data-tip={tip('List view', 'goto.list')}
+            >
+              <ListIcon />
+            </button>
+          </div>
           {zoomFactor !== 1.0 && (
             <button
               className="hub-toolbar__zoom"
@@ -467,8 +473,46 @@ export function HubApp(): React.ReactElement {
 
       {viewMode === 'grid' && (() => {
         const visibleCount = sessions.filter((s) => !s.hidden).length;
+        const layoutPageSize = Math.max(1, gridColumns);
+        const layoutTotalPages = Math.max(1, Math.ceil(visibleCount / layoutPageSize));
+        const layoutSafePage = Math.min(gridPage, layoutTotalPages - 1);
+        const goToPage = (target: number) => {
+          const clamped = Math.max(0, Math.min(target, layoutTotalPages - 1));
+          const visible = sessions.filter((s) => !s.hidden);
+          const firstOnPage = visible[clamped * layoutPageSize];
+          if (firstOnPage) {
+            const globalIdx = sessions.findIndex((s) => s.id === firstOnPage.id);
+            if (globalIdx >= 0) setFocusIndex(globalIdx);
+          }
+          setGridPage(clamped);
+        };
         return (
         <div className="hub-layout-bar">
+          {layoutTotalPages > 1 && (
+            <div className="hub-layout-bar__pager" aria-label="Page navigation">
+              <button
+                className="hub-layout-bar__pager-btn"
+                onClick={() => goToPage(layoutSafePage - 1)}
+                disabled={layoutSafePage === 0}
+                aria-label="Previous page"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M7.5 2.5 4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <span className="hub-layout-bar__pager-label">{layoutSafePage + 1} / {layoutTotalPages}</span>
+              <button
+                className="hub-layout-bar__pager-btn"
+                onClick={() => goToPage(layoutSafePage + 1)}
+                disabled={layoutSafePage === layoutTotalPages - 1}
+                aria-label="Next page"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          )}
           <div className="hub-layout-bar__group">
             <button
               className={`hub-layout-bar__btn${gridColumns === 1 ? ' hub-layout-bar__btn--active' : ''}`}
@@ -517,20 +561,11 @@ export function HubApp(): React.ReactElement {
         );
       })()}
 
-      {hasNoSessions ? (
-        <div className="hub-empty-state" onClick={() => openPill()} style={{ cursor: 'pointer' }}>
-          <div className="hub-empty-state__icon" aria-hidden="true">
-            <PlusIcon />
-          </div>
-          <p className="hub-empty-state__title">Start your first agent session</p>
-          <p className="hub-empty-state__body">
-            Press <kbd className="hub-empty-state__kbd">{vim.keybindings.find((k) => k.id === 'action.create')?.keys[0] ?? 'c'}</kbd> to begin
-          </p>
-        </div>
-      ) : viewMode === 'dashboard' ? (
+      {viewMode === 'dashboard' ? (
         <Dashboard
           sessions={sessions}
           onSwitchToGrid={() => setViewMode('grid')}
+          onSubmitTask={(prompt) => { handleCreateSession(prompt); }}
           onSelectSession={(id) => {
             window.electronAPI?.sessions.unhide(id).catch(() => {});
             handleSelectSession(id);
@@ -546,6 +581,20 @@ export function HubApp(): React.ReactElement {
           const safePage = Math.min(gridPage, totalPages - 1);
           const pageStart = safePage * pageSize;
           const pageSessions = visibleSessions.slice(pageStart, pageStart + pageSize);
+          if (visibleSessions.length === 0) {
+            const shortcut = shortcutFor('action.createPane');
+            return (
+              <div className="hub-grid-container">
+                <button
+                  type="button"
+                  className="hub-grid__empty"
+                  onClick={() => window.electronAPI?.pill.toggle()}
+                >
+                  press {shortcut ? <kbd className="hub-grid__empty-kbd">{shortcut}</kbd> : 'the global command'} to start a new task
+                </button>
+              </div>
+            );
+          }
           return (
             <div className="hub-grid-container">
               <div className="hub-grid" data-count={String(gridColumns)}>
@@ -578,18 +627,6 @@ export function HubApp(): React.ReactElement {
                   );
                 })}
               </div>
-              {totalPages > 1 && (
-                <div className="hub-grid-pages">
-                  {Array.from({ length: totalPages }, (_, i) => (
-                    <button
-                      key={i}
-                      className={`hub-grid-pages__dot${i === safePage ? ' hub-grid-pages__dot--active' : ''}`}
-                      onClick={() => setGridPage(i)}
-                      aria-label={`Page ${i + 1}`}
-                    />
-                  ))}
-                </div>
-              )}
             </div>
           );
         })()
@@ -613,6 +650,15 @@ export function HubApp(): React.ReactElement {
           <kbd className="chord-indicator__key">{vim.chordPrefix}</kbd>
           <span className="chord-indicator__hint">...</span>
         </div>
+      )}
+
+      {cmdBarVisible && (
+        <CommandBar
+          screen={viewMode}
+          keybindings={vim.keybindings}
+          onClose={hideCmdBar}
+          onInvoke={(id) => vimHandlers[id]?.()}
+        />
       )}
 
       <KeybindingsOverlay

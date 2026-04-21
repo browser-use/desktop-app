@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_KEYBINDINGS } from './keybindings';
 import type { ActionId, KeyBinding } from './keybindings';
+import { DEFAULT_GLOBAL_CMDBAR_ACCELERATOR, acceleratorToRenderer, rendererToAccelerator } from '../../shared/hotkeys';
 
 export interface VimKeysReturn {
   chordPrefix: string | null;
@@ -25,6 +26,10 @@ function normalizeKey(e: KeyboardEvent): string {
 export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): VimKeysReturn {
   const [overrides, setOverrides] = useState<Record<string, string[]>>({});
   const [chordPrefix, setChordPrefix] = useState<string | null>(null);
+  const [platform, setPlatform] = useState<string>(() => {
+    if (typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)) return 'darwin';
+    return 'other';
+  });
   const chordTimer = useRef<ReturnType<typeof setTimeout>>();
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -33,6 +38,35 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
     ...kb,
     keys: overrides[kb.id] ?? kb.keys,
   }));
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    api?.shell?.getPlatform?.().then((p: string) => setPlatform(p)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.hotkeys?.getGlobalCmdbar) return;
+    let cancelled = false;
+    api.hotkeys.getGlobalCmdbar()
+      .then((accel: string) => {
+        if (cancelled) return;
+        const display = acceleratorToRenderer(accel || DEFAULT_GLOBAL_CMDBAR_ACCELERATOR, platform);
+        console.log('[useVimKeys] loaded global cmdbar accel', { accel, display });
+        setOverrides((prev) => ({ ...prev, 'action.createPane': [display] }));
+      })
+      .catch((err: Error) => console.warn('[useVimKeys] getGlobalCmdbar failed', err));
+    return () => { cancelled = true; };
+  }, [platform]);
+
+  useEffect(() => {
+    const unsub = window.electronAPI?.on?.globalCmdbarChanged?.((accel: string) => {
+      const display = acceleratorToRenderer(accel, platform);
+      console.log('[useVimKeys] global cmdbar changed', { accel, display });
+      setOverrides((prev) => ({ ...prev, 'action.createPane': [display] }));
+    });
+    return unsub;
+  }, [platform]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -72,10 +106,38 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
   }, [keybindings, chordPrefix]);
 
   const updateBinding = useCallback((id: ActionId, keys: string[]) => {
+    if (id === 'action.createPane') {
+      const api = window.electronAPI;
+      const accel = rendererToAccelerator(keys[0] ?? '');
+      if (!accel || !api?.hotkeys?.setGlobalCmdbar) {
+        console.warn('[useVimKeys] cannot set global cmdbar', { accel, hasApi: !!api });
+        return;
+      }
+      api.hotkeys.setGlobalCmdbar(accel)
+        .then((result: { ok: boolean; accelerator: string }) => {
+          console.log('[useVimKeys] setGlobalCmdbar result', result);
+          if (!result.ok) {
+            // rejected; keep existing override (broadcast will re-assert)
+          }
+          // Broadcast from main will update overrides; do nothing here.
+        })
+        .catch((err: Error) => console.warn('[useVimKeys] setGlobalCmdbar failed', err));
+      return;
+    }
     setOverrides((prev) => ({ ...prev, [id]: keys }));
   }, []);
 
   const resetBinding = useCallback((id: ActionId) => {
+    if (id === 'action.createPane') {
+      const api = window.electronAPI;
+      if (!api?.hotkeys?.setGlobalCmdbar) return;
+      api.hotkeys.setGlobalCmdbar(DEFAULT_GLOBAL_CMDBAR_ACCELERATOR)
+        .then((result: { ok: boolean; accelerator: string }) => {
+          console.log('[useVimKeys] resetGlobalCmdbar result', result);
+        })
+        .catch((err: Error) => console.warn('[useVimKeys] resetGlobalCmdbar failed', err));
+      return;
+    }
     setOverrides((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -83,7 +145,16 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
     });
   }, []);
 
-  const resetAll = useCallback(() => setOverrides({}), []);
+  const resetAll = useCallback(() => {
+    setOverrides((prev) => {
+      const preserved: Record<string, string[]> = {};
+      if (prev['action.createPane']) preserved['action.createPane'] = prev['action.createPane'];
+      return preserved;
+    });
+    const api = window.electronAPI;
+    api?.hotkeys?.setGlobalCmdbar?.(DEFAULT_GLOBAL_CMDBAR_ACCELERATOR)
+      .catch((err: Error) => console.warn('[useVimKeys] resetAll global cmdbar failed', err));
+  }, []);
 
   return { chordPrefix, keybindings, overrides, updateBinding, resetBinding, resetAll };
 }

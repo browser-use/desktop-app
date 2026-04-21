@@ -29,9 +29,12 @@ export function TaskInput({ onSubmit }: TaskInputProps): React.ReactElement {
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter') {
         e.preventDefault();
         submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        ref.current?.blur();
       }
     },
     [submit],
@@ -62,11 +65,6 @@ export function TaskInput({ onSubmit }: TaskInputProps): React.ReactElement {
           <ArrowUpIcon />
         </button>
       </div>
-      <span className="task-input__hint">
-        <kbd className="task-input__kbd">Enter</kbd> to send
-        <span className="task-input__hint-sep" />
-        <kbd className="task-input__kbd">Shift+Enter</kbd> for newline
-      </span>
     </div>
   );
 }

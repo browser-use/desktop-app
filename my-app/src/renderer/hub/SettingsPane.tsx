@@ -14,20 +14,15 @@ interface SettingsPaneProps {
 
 function captureKeyCombo(e: KeyboardEvent): string | null {
   if (e.key === 'Escape' || e.key === 'Tab') return null;
+  if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return null;
 
   const parts: string[] = [];
-  if (e.metaKey) parts.push('meta');
-  if (e.ctrlKey) parts.push('ctrl');
-  if (e.altKey) parts.push('alt');
+  if (e.metaKey) parts.push('Cmd');
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey && e.key.length > 1) parts.push('Shift');
 
-  let key = e.key.toLowerCase();
-  if (key === ' ') key = 'space';
-  if (['control', 'meta', 'alt', 'shift'].includes(key)) return null;
-
-  if (e.shiftKey && key.length === 1) {
-    parts.push('shift');
-  }
-
+  const key = e.key === ' ' ? 'Space' : e.key;
   parts.push(key);
   return parts.join('+');
 }

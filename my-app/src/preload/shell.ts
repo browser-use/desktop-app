@@ -77,6 +77,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       processCount: number;
     }> => ipcRenderer.invoke('sessions:memory'),
   },
+  hotkeys: {
+    getGlobalCmdbar: (): Promise<string> => ipcRenderer.invoke('hotkeys:get-global'),
+    setGlobalCmdbar: (accel: string): Promise<{ ok: boolean; accelerator: string }> =>
+      ipcRenderer.invoke('hotkeys:set-global', accel),
+  },
   channels: {
     whatsapp: {
       connect: (): Promise<{ status: string }> => ipcRenderer.invoke('channels:whatsapp:connect'),
@@ -137,6 +142,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('pill-toggled', handler);
       return () => ipcRenderer.removeListener('pill-toggled', handler);
+    },
+    globalCmdbarChanged: (cb: (accelerator: string) => void): (() => void) => {
+      const handler = (_event: unknown, accelerator: string) => cb(accelerator);
+      ipcRenderer.on('hotkeys:global-changed', handler);
+      return () => ipcRenderer.removeListener('hotkeys:global-changed', handler);
     },
   },
 });

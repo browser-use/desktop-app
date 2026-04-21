@@ -24,7 +24,7 @@ import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 // Track B — Pill + hotkeys
 import { createPillWindow, togglePill, showPill, hidePill, sendToPill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
-import { registerHotkeys, unregisterHotkeys } from './hotkeys';
+import { registerHotkeys, unregisterHotkeys, getGlobalCmdbarAccelerator, setGlobalCmdbarAccelerator } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
 import type { AgentEvent } from '../shared/types';
 // Identity
@@ -113,6 +113,7 @@ if (started) {
 // ---------------------------------------------------------------------------
 let shellWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
+let isQuitting = false;
 
 const sessionManager = new SessionManager(path.join(app.getPath('userData'), 'sessions.db'));
 const browserPool = new BrowserPool();
@@ -145,6 +146,17 @@ function openShellAndWire(): BrowserWindow {
     mainLogger.warn('main.hotkey', { msg: 'Global hotkey registration failed — another app may own it' });
   }
 
+  ipcMain.handle('hotkeys:get-global', () => getGlobalCmdbarAccelerator());
+  ipcMain.handle('hotkeys:set-global', (_e, accel: string) => {
+    const result = setGlobalCmdbarAccelerator(accel);
+    if (result.ok) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('hotkeys:global-changed', result.accelerator);
+      }
+    }
+    return result;
+  });
+
   // Cmd+K is handled by the hub renderer's own keydown listener (CommandBar).
   // No before-input-event intercept needed — let the key pass through to the DOM.
 
@@ -172,6 +184,15 @@ function openShellAndWire(): BrowserWindow {
       whatsAppAdapter.connect().catch((err) => {
         mainLogger.warn('main.whatsapp.autoReconnect.failed', { error: (err as Error).message });
       });
+    }
+  });
+
+  shellWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      shellWindow?.hide();
+      mainLogger.info('main.shellWindow.hidden', { msg: 'Window hidden (Cmd+Q to quit)' });
+      return;
     }
   });
 
@@ -831,6 +852,7 @@ app.whenReady().then(async () => {
   // Lifecycle hooks
   // ---------------------------------------------------------------------------
   app.on('before-quit', async () => {
+    isQuitting = true;
     mainLogger.info('main.beforeQuit', { msg: 'Aborting active agents' });
     for (const [task_id, ctrl] of activeAgents) {
       mainLogger.info('main.beforeQuit.abortAgent', { task_id });
