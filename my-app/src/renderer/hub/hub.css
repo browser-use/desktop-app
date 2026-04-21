@@ -39,6 +39,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .hub-toolbar__title {
@@ -68,7 +70,10 @@
 .hub-toolbar__right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-3);
+  flex: 1 1 0;
+  min-width: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -93,7 +98,7 @@
 .hub-toolbar__new-btn::after {
   content: attr(data-tip);
   position: absolute;
-  top: calc(100% + var(--space-2));
+  bottom: calc(100% + var(--space-2));
   left: 50%;
   transform: translateX(-50%);
   padding: var(--space-1) var(--space-3);
@@ -199,14 +204,19 @@
     background-color var(--duration-fast) var(--ease-out);
 }
 
-.hub-toolbar__view-btn:hover {
+.hub-toolbar__view-btn:hover:not(:disabled) {
   color: var(--color-fg-tertiary);
+}
+
+.hub-toolbar__view-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .hub-toolbar__view-btn::after {
   content: attr(data-tip);
   position: absolute;
-  top: calc(100% + var(--space-2));
+  bottom: calc(100% + var(--space-2));
   left: 50%;
   transform: translateX(-50%);
   padding: var(--space-1) var(--space-3);

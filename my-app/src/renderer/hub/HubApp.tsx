@@ -69,6 +69,47 @@ function DashboardIcon(): React.ReactElement {
   );
 }
 
+interface HubViewToggleProps {
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  tipDashboard: string;
+  tipGrid: string;
+  tipList: string;
+}
+
+const HubViewToggle = React.memo(function HubViewToggle({
+  viewMode, setViewMode, tipDashboard, tipGrid, tipList,
+}: HubViewToggleProps): React.ReactElement {
+  return (
+    <div className="hub-toolbar__view-toggle" role="radiogroup" aria-label="View mode">
+      <button
+        className={`hub-toolbar__view-btn${viewMode === 'dashboard' ? ' hub-toolbar__view-btn--active' : ''}`}
+        onClick={() => setViewMode('dashboard')}
+        aria-label="Dashboard"
+        data-tip={tipDashboard}
+      >
+        <DashboardIcon />
+      </button>
+      <button
+        className={`hub-toolbar__view-btn${viewMode === 'grid' ? ' hub-toolbar__view-btn--active' : ''}`}
+        onClick={() => setViewMode('grid')}
+        aria-label="Grid view"
+        data-tip={tipGrid}
+      >
+        <GridIcon />
+      </button>
+      <button
+        className={`hub-toolbar__view-btn${viewMode === 'list' ? ' hub-toolbar__view-btn--active' : ''}`}
+        onClick={() => setViewMode('list')}
+        aria-label="List view"
+        data-tip={tipList}
+      >
+        <ListIcon />
+      </button>
+    </div>
+  );
+});
+
 export function HubApp(): React.ReactElement {
   const isMock = import.meta.env.VITE_MOCK_MODE === '1';
   const [mockSessions, setMockSessions] = useState<AgentSession[]>(isMock ? MOCK_SESSIONS : []);
@@ -410,6 +451,21 @@ export function HubApp(): React.ReactElement {
     console.log('[HubApp] selectSession', { id });
   }, [sessions]);
 
+  const visibleCount = sessions.filter((s) => !s.hidden).length;
+  const gridPageSize = Math.max(1, gridColumns);
+  const gridTotalPages = Math.max(1, Math.ceil(visibleCount / gridPageSize));
+  const gridSafePage = Math.min(gridPage, gridTotalPages - 1);
+  const goToPage = useCallback((target: number) => {
+    const clamped = Math.max(0, Math.min(target, gridTotalPages - 1));
+    const visible = sessions.filter((s) => !s.hidden);
+    const firstOnPage = visible[clamped * gridPageSize];
+    if (firstOnPage) {
+      const globalIdx = sessions.findIndex((s) => s.id === firstOnPage.id);
+      if (globalIdx >= 0) setFocusIndex(globalIdx);
+    }
+    setGridPage(clamped);
+  }, [gridTotalPages, gridPageSize, sessions]);
+
   return (
     <div className="hub-root">
       <header className="hub-toolbar">
@@ -417,44 +473,99 @@ export function HubApp(): React.ReactElement {
           <span className="hub-toolbar__title">Browser Use</span>
           <MemoryIndicator onOpenSettings={() => { hideBrowserViews(); setSettingsOpen(true); }} />
         </div>
+        <div className="hub-toolbar__center">
+          <HubViewToggle
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            tipDashboard={tip('Dashboard', 'goto.dashboard')}
+            tipGrid={tip('Grid view', 'goto.agents')}
+            tipList={tip('List view', 'goto.list')}
+          />
+        </div>
         <div className="hub-toolbar__right">
+          {viewMode === 'grid' && (
+            <div className="hub-toolbar__density" role="radiogroup" aria-label="Grid density">
+              <button
+                className={`hub-toolbar__view-btn${gridColumns === 1 ? ' hub-toolbar__view-btn--active' : ''}`}
+                onClick={(e) => { setGridColumns(1); setGridPage(0); e.currentTarget.blur(); }}
+                aria-label="1x1 grid"
+                data-tip="1x1 grid"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="2" y="2" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              </button>
+              <button
+                className={`hub-toolbar__view-btn${gridColumns === 4 ? ' hub-toolbar__view-btn--active' : ''}`}
+                onClick={() => { setGridColumns(4); setGridPage(0); }}
+                disabled={visibleCount <= 1}
+                aria-label="2x2 grid"
+                data-tip="2x2 grid"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              </button>
+              <button
+                className={`hub-toolbar__view-btn${gridColumns === 9 ? ' hub-toolbar__view-btn--active' : ''}`}
+                onClick={() => { setGridColumns(9); setGridPage(0); }}
+                disabled={visibleCount <= 4}
+                aria-label="3x3 grid"
+                data-tip="3x3 grid"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="1" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="5.5" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="10" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="1" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="5.5" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="10" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="1" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="5.5" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                  <rect x="10" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              </button>
+            </div>
+          )}
+          {viewMode === 'grid' && (
+            <div className="hub-toolbar__pager" aria-label="Page navigation">
+              <button
+                className="hub-toolbar__pager-btn"
+                onClick={() => goToPage(gridSafePage - 1)}
+                disabled={gridSafePage === 0}
+                aria-label="Previous page"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M7.5 2.5 4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <span className="hub-toolbar__pager-label">{gridSafePage + 1} / {gridTotalPages}</span>
+              <button
+                className="hub-toolbar__pager-btn"
+                onClick={() => goToPage(gridSafePage + 1)}
+                disabled={gridSafePage === gridTotalPages - 1}
+                aria-label="Next page"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          )}
           {viewMode !== 'dashboard' && (
             <button
               className="hub-toolbar__new-btn"
               onClick={() => openPill()}
               aria-label="New agent"
-              data-tip={tip('New agent', 'action.create')}
+              data-tip={tip('New agent', 'action.createPane')}
             >
               <PlusIcon />
               <span className="hub-toolbar__new-label">New agent</span>
             </button>
           )}
-          <div className="hub-toolbar__view-toggle" role="radiogroup" aria-label="View mode">
-            <button
-              className={`hub-toolbar__view-btn${viewMode === 'dashboard' ? ' hub-toolbar__view-btn--active' : ''}`}
-              onClick={() => setViewMode('dashboard')}
-              aria-label="Dashboard"
-              data-tip={tip('Dashboard', 'goto.dashboard')}
-            >
-              <DashboardIcon />
-            </button>
-            <button
-              className={`hub-toolbar__view-btn${viewMode === 'grid' ? ' hub-toolbar__view-btn--active' : ''}`}
-              onClick={() => setViewMode('grid')}
-              aria-label="Grid view"
-              data-tip={tip('Grid view', 'goto.agents')}
-            >
-              <GridIcon />
-            </button>
-            <button
-              className={`hub-toolbar__view-btn${viewMode === 'list' ? ' hub-toolbar__view-btn--active' : ''}`}
-              onClick={() => setViewMode('list')}
-              aria-label="List view"
-              data-tip={tip('List view', 'goto.list')}
-            >
-              <ListIcon />
-            </button>
-          </div>
           {zoomFactor !== 1.0 && (
             <button
               className="hub-toolbar__zoom"
@@ -470,96 +581,6 @@ export function HubApp(): React.ReactElement {
           )}
         </div>
       </header>
-
-      {viewMode === 'grid' && (() => {
-        const visibleCount = sessions.filter((s) => !s.hidden).length;
-        const layoutPageSize = Math.max(1, gridColumns);
-        const layoutTotalPages = Math.max(1, Math.ceil(visibleCount / layoutPageSize));
-        const layoutSafePage = Math.min(gridPage, layoutTotalPages - 1);
-        const goToPage = (target: number) => {
-          const clamped = Math.max(0, Math.min(target, layoutTotalPages - 1));
-          const visible = sessions.filter((s) => !s.hidden);
-          const firstOnPage = visible[clamped * layoutPageSize];
-          if (firstOnPage) {
-            const globalIdx = sessions.findIndex((s) => s.id === firstOnPage.id);
-            if (globalIdx >= 0) setFocusIndex(globalIdx);
-          }
-          setGridPage(clamped);
-        };
-        return (
-        <div className="hub-layout-bar">
-          {layoutTotalPages > 1 && (
-            <div className="hub-layout-bar__pager" aria-label="Page navigation">
-              <button
-                className="hub-layout-bar__pager-btn"
-                onClick={() => goToPage(layoutSafePage - 1)}
-                disabled={layoutSafePage === 0}
-                aria-label="Previous page"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 2.5 4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <span className="hub-layout-bar__pager-label">{layoutSafePage + 1} / {layoutTotalPages}</span>
-              <button
-                className="hub-layout-bar__pager-btn"
-                onClick={() => goToPage(layoutSafePage + 1)}
-                disabled={layoutSafePage === layoutTotalPages - 1}
-                aria-label="Next page"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </div>
-          )}
-          <div className="hub-layout-bar__group">
-            <button
-              className={`hub-layout-bar__btn${gridColumns === 1 ? ' hub-layout-bar__btn--active' : ''}`}
-              onClick={(e) => { setGridColumns(1); setGridPage(0); e.currentTarget.blur(); }}
-              aria-label="1x1 layout"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <rect x="2" y="2" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-              </svg>
-            </button>
-            {visibleCount > 1 && (
-            <button
-              className={`hub-layout-bar__btn${gridColumns === 4 ? ' hub-layout-bar__btn--active' : ''}`}
-              onClick={() => { setGridColumns(4); setGridPage(0); }}
-              aria-label="2x2 layout"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                <rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                <rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                <rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-              </svg>
-            </button>
-            )}
-            {visibleCount > 4 && (
-            <button
-              className={`hub-layout-bar__btn${gridColumns === 9 ? ' hub-layout-bar__btn--active' : ''}`}
-              onClick={() => { setGridColumns(9); setGridPage(0); }}
-              aria-label="3x3 layout"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <rect x="1" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="5.5" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="10" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="1" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="5.5" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="10" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="1" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="5.5" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                <rect x="10" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-              </svg>
-            </button>
-            )}
-          </div>
-        </div>
-        );
-      })()}
 
       {viewMode === 'dashboard' ? (
         <Dashboard
