@@ -144,9 +144,13 @@ export function HubApp(): React.ReactElement {
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
-  const [gridPage, setGridPage] = useState(0);
   const [zoomFactor, setZoomFactor] = useState(1.0);
-  const [gridColumns, setGridColumns] = useState(4);
+  // Grid is permanently 1x1 (gridColumns = 1), but gridPage is real state —
+  // it's what selects WHICH session is currently rendered. We repurpose it
+  // as "which single session to render" and let the existing focusIndex-
+  // driven effect keep it in sync with the focused session.
+  const gridColumns = 1;
+  const [gridPage, setGridPage] = useState(0);
   const [cmdBarVisible, setCmdBarVisible] = useState<boolean>(() => {
     try { return window.localStorage.getItem('hub-cmdbar-visible') !== '0'; } catch { return true; }
   });
@@ -211,13 +215,7 @@ export function HubApp(): React.ReactElement {
       dismissSession(s.id);
       setFocusIndex((i) => Math.min(i, sessions.length - 2));
     },
-    'grid.nextPage': () => {
-      const totalPages = Math.max(1, Math.ceil(sessions.length / 4));
-      setGridPage((p) => Math.min(p + 1, totalPages - 1));
-    },
-    'grid.prevPage': () => {
-      setGridPage((p) => Math.max(p - 1, 0));
-    },
+    // grid.nextPage / grid.prevPage removed — single-pane layout, no paging.
     'action.cancel': () => {
       const s = sessions[focusIndex];
       if (!s || (s.status !== 'running' && s.status !== 'stuck')) return;
@@ -309,29 +307,7 @@ export function HubApp(): React.ReactElement {
     }
   }, []);
 
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      if (w < 600) setGridColumns(1);
-      else if (w < 900) setGridColumns(2);
-      else if (w < 1200) setGridColumns(3);
-      else setGridColumns(4);
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, [zoomFactor]);
-
-  useEffect(() => {
-    const visible = sessions.filter((s) => !s.hidden).length;
-    if (visible <= 1 && gridColumns !== 1) {
-      console.log('[HubApp] auto-clamp gridColumns -> 1', { visible });
-      setGridColumns(1);
-    } else if (visible <= 4 && gridColumns === 9) {
-      console.log('[HubApp] auto-clamp gridColumns -> 4', { visible });
-      setGridColumns(4);
-    }
-  }, [sessions, gridColumns]);
+  // Grid density auto-clamp removed — grid is always 1x1.
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -385,9 +361,10 @@ export function HubApp(): React.ReactElement {
     }
   }, [focusIndex, sessions, gridColumns, gridPage]);
 
-  const handleCreateSession = useCallback(async (input: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }> }) => {
+  const handleCreateSession = useCallback(async (input: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>; engine?: string }) => {
     const prompt = typeof input === 'string' ? input : input.prompt;
     const attachments = typeof input === 'string' ? [] : (input.attachments ?? []);
+    const engine = typeof input === 'string' ? undefined : input.engine;
     if (isMock) {
       const id = `session-${++sessionCounter}`;
       const now = Date.now();
@@ -424,7 +401,11 @@ export function HubApp(): React.ReactElement {
 
     try {
       console.log('[HubApp] createSession (live)', { prompt, attachmentCount: attachments.length });
-      const id = await api.sessions.create(attachments.length > 0 ? { prompt, attachments } : prompt);
+      const id = await api.sessions.create(
+        attachments.length > 0 || engine
+          ? { prompt, attachments, engine }
+          : prompt,
+      );
       console.log('[HubApp] session created', { id });
       pendingFocusIdRef.current = id;
       setViewMode('grid');
@@ -436,13 +417,17 @@ export function HubApp(): React.ReactElement {
   }, [isMock, setViewMode]);
 
 
-  const handleFollowUp = useCallback(async (sessionId: string, prompt: string) => {
+  const handleFollowUp = useCallback(async (
+    sessionId: string,
+    prompt: string,
+    attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+  ) => {
     if (!isMock) {
       const api = window.electronAPI;
       if (!api) return;
       try {
-        console.log('[HubApp] followUp', { sessionId, prompt });
-        const result = await api.sessions.resume(sessionId, prompt);
+        console.log('[HubApp] followUp', { sessionId, prompt, attachmentCount: attachments?.length ?? 0 });
+        const result = await api.sessions.resume(sessionId, prompt, attachments);
         if (result?.error) {
           console.warn('[HubApp] followUp error', { sessionId, error: result.error });
           updateSession(sessionId, { status: 'stopped' as const, error: result.error });
@@ -493,78 +478,7 @@ export function HubApp(): React.ReactElement {
           />
         </div>
         <div className="hub-toolbar__right">
-          {viewMode === 'grid' && (
-            <div className="hub-toolbar__density" role="radiogroup" aria-label="Grid density">
-              <button
-                className={`hub-toolbar__view-btn${gridColumns === 1 ? ' hub-toolbar__view-btn--active' : ''}`}
-                onClick={(e) => { setGridColumns(1); setGridPage(0); e.currentTarget.blur(); }}
-                aria-label="1x1 grid"
-                data-tip="1x1 grid"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <rect x="2" y="2" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-                </svg>
-              </button>
-              <button
-                className={`hub-toolbar__view-btn${gridColumns === 4 ? ' hub-toolbar__view-btn--active' : ''}`}
-                onClick={() => { setGridColumns(4); setGridPage(0); }}
-                disabled={visibleCount <= 1}
-                aria-label="2x2 grid"
-                data-tip="2x2 grid"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                  <rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                  <rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                  <rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                </svg>
-              </button>
-              <button
-                className={`hub-toolbar__view-btn${gridColumns === 9 ? ' hub-toolbar__view-btn--active' : ''}`}
-                onClick={() => { setGridColumns(9); setGridPage(0); }}
-                disabled={visibleCount <= 4}
-                aria-label="3x3 grid"
-                data-tip="3x3 grid"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <rect x="1" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="5.5" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="10" y="1" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="1" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="5.5" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="10" y="5.5" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="1" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="5.5" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                  <rect x="10" y="10" width="3" height="3" rx="0.5" stroke="currentColor" strokeWidth="1" />
-                </svg>
-              </button>
-            </div>
-          )}
-          {viewMode === 'grid' && (
-            <div className="hub-toolbar__pager" aria-label="Page navigation">
-              <button
-                className="hub-toolbar__pager-btn"
-                onClick={() => goToPage(gridSafePage - 1)}
-                disabled={gridSafePage === 0}
-                aria-label="Previous page"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 2.5 4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <span className="hub-toolbar__pager-label">{gridSafePage + 1} / {gridTotalPages}</span>
-              <button
-                className="hub-toolbar__pager-btn"
-                onClick={() => goToPage(gridSafePage + 1)}
-                disabled={gridSafePage === gridTotalPages - 1}
-                aria-label="Next page"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </div>
-          )}
+          {/* Grid density + pager removed — single-pane (1x1) layout. */}
           {viewMode !== 'dashboard' && (
             <button
               className="hub-toolbar__new-btn"
@@ -597,10 +511,36 @@ export function HubApp(): React.ReactElement {
         sessions={sessions}
         selectedId={selectedSessionId}
         onSelect={(id) => {
+          window.electronAPI?.sessions.unhide(id).catch(() => {});
+          updateSession(id, { hidden: false });
           handleSelectSession(id);
           if (viewMode === 'dashboard') setViewMode('grid');
         }}
         onNewAgent={() => openPill()}
+        onRowAction={(id, action) => {
+          console.log('[HubApp] sidebar row action', { id, action });
+          switch (action) {
+            case 'rerun':
+              window.electronAPI?.sessions.rerun(id).catch((err) => console.error('[HubApp] rerun failed', err));
+              break;
+            case 'stop':
+              window.electronAPI?.sessions.cancel(id).catch(() => {});
+              break;
+            case 'hide':
+              window.electronAPI?.sessions.viewDetach(id).catch(() => {});
+              window.electronAPI?.sessions.hide(id).catch(() => {});
+              updateSession(id, { hidden: true });
+              break;
+            case 'unhide':
+              window.electronAPI?.sessions.unhide(id).catch(() => {});
+              updateSession(id, { hidden: false });
+              break;
+            case 'delete':
+              window.electronAPI?.sessions.viewDetach(id).catch(() => {});
+              dismissSession(id);
+              break;
+          }
+        }}
       />
       <div className="hub-main">
       {viewMode === 'dashboard' ? (

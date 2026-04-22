@@ -4,7 +4,6 @@ export type ActionId =
   | 'search.open'
   | 'action.create' | 'action.createPane' | 'action.dismiss' | 'action.cancel' | 'action.followUp'
   | 'view.cycle'
-  | 'grid.nextPage' | 'grid.prevPage'
   | 'scroll.halfDown' | 'scroll.halfUp'
   | 'meta.help' | 'meta.commandPalette' | 'meta.escape';
 
@@ -32,8 +31,6 @@ export const DEFAULT_KEYBINDINGS: KeyBinding[] = [
   { id: 'action.cancel', label: 'Cancel session', keys: ['Ctrl+c'], category: 'Actions' },
   { id: 'action.followUp', label: 'Follow up', keys: ['f'], category: 'Actions' },
   { id: 'view.cycle', label: 'Cycle pane view', keys: ['v'], category: 'Actions' },
-  { id: 'grid.nextPage', label: 'Next page', keys: ['l'], category: 'Navigation' },
-  { id: 'grid.prevPage', label: 'Previous page', keys: ['h'], category: 'Navigation' },
   { id: 'scroll.halfDown', label: 'Scroll down', keys: ['Ctrl+d'], category: 'Scroll' },
   { id: 'scroll.halfUp', label: 'Scroll up', keys: ['Ctrl+u'], category: 'Scroll' },
   { id: 'meta.help', label: 'Keybindings help', keys: [], category: 'Meta' },

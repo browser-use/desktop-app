@@ -2,7 +2,14 @@ import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react'
 import { useHydrateSession } from './useSessionsQuery';
 import { STATUS_LABEL } from './constants';
 import { ContentRenderer, getPreview } from './ContentRenderer';
-import { Markdown } from './Markdown';
+import { Markdown, linkifyOutputPaths } from './Markdown';
+import { TerminalPane } from './TerminalPane';
+// Inline the SVG source so `fill="currentColor"` in the logos picks up the
+// menu's CSS color. `<img src=...>` renders in its own graphics context and
+// can't inherit text color.
+// @ts-expect-error — Vite raw-import modifier
+import cursorLogoSrc from './cursor-logo.svg?raw';
+import vscodeLogo from './vscode-logo.svg';
 import { adaptSession } from './types';
 import type { AgentSession, OutputEntry } from './types';
 
@@ -178,6 +185,170 @@ function ToolGroup({ entry }: { entry: OutputEntry }): React.ReactElement {
   );
 }
 
+// Cached editor list — fetched once per renderer load.
+// Filter out editors we don't want to expose (Xcode etc.) defensively here so
+// the UI updates without waiting for a main-process restart to flush its cache.
+const EDITOR_BLOCKLIST = new Set(['xcode']);
+let editorsPromise: Promise<Array<{ id: string; name: string }>> | null = null;
+function getEditors(): Promise<Array<{ id: string; name: string }>> {
+  if (!editorsPromise) {
+    const base = window.electronAPI?.sessions?.listEditors?.() ?? Promise.resolve([]);
+    editorsPromise = base.then((list) => list.filter((e) => !EDITOR_BLOCKLIST.has(e.id)));
+  }
+  return editorsPromise;
+}
+
+function formatFileSize(n: number | undefined): string {
+  if (n == null) return '';
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function EditorIcon({ id }: { id: string }): React.ReactElement {
+  if (id === 'cursor') {
+    return (
+      <span
+        className="editor-logo editor-logo--cursor"
+        dangerouslySetInnerHTML={{ __html: cursorLogoSrc as string }}
+      />
+    );
+  }
+  if (id === 'vscode' || id === 'vscode-insiders') {
+    return <img src={vscodeLogo} alt="" width={14} height={14} />;
+  }
+  if (id === 'zed' || id === 'zed-preview') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill="#9a62ff" />
+        <path d="M8 8h8L8 16h8" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" fill="none" />
+      </svg>
+    );
+  }
+  if (id === 'windsurf') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 16c4-3 6-3 8 0s6 3 8 0" stroke="#39c4b5" strokeWidth="2" strokeLinecap="round" fill="none" />
+        <path d="M4 10c4-3 6-3 8 0s6 3 8 0" stroke="#39c4b5" strokeWidth="2" strokeLinecap="round" fill="none" />
+      </svg>
+    );
+  }
+  if (id === 'sublime') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 5v14l14-4V1L5 5Z" fill="#FF9800" />
+      </svg>
+    );
+  }
+  // JetBrains family — generic ring
+  if (['webstorm', 'intellij', 'intellij-ce', 'pycharm', 'pycharm-ce', 'rider', 'goland'].includes(id)) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="2" y="2" width="20" height="20" rx="3" fill="#000" />
+        <path d="M7 17h6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  // Fallback: generic monitor icon.
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="1.5" y="2.5" width="11" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M5 11.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function FileOutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
+  const [editors, setEditors] = useState<Array<{ id: string; name: string }>>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { getEditors().then(setEditors).catch(() => setEditors([])); }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const onOpenInEditor = useCallback(async (editorId: string) => {
+    if (!entry.tool) return;
+    setMenuOpen(false);
+    try { await window.electronAPI?.sessions?.openInEditor?.(editorId, entry.tool); }
+    catch (err) { console.error('[file_output] openInEditor failed', err); }
+  }, [entry.tool]);
+
+  const onOpenWithDefault = useCallback(async () => {
+    if (!entry.tool) return;
+    setMenuOpen(false);
+    try { await window.electronAPI?.sessions?.downloadOutput?.(entry.tool); }
+    catch (err) { console.error('[file_output] openWithDefault failed', err); }
+  }, [entry.tool]);
+
+  const onRevealInFinder = useCallback(async () => {
+    if (!entry.tool) return;
+    setMenuOpen(false);
+    try { await window.electronAPI?.sessions?.revealOutput?.(entry.tool); }
+    catch (err) { console.error('[file_output] reveal failed', err); }
+  }, [entry.tool]);
+
+  return (
+    <div className="step step--file-output">
+      <span className="step__icon">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M8 1.5H4a1.5 1.5 0 00-1.5 1.5v8A1.5 1.5 0 004 12.5h6a1.5 1.5 0 001.5-1.5V5L8 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+          <path d="M8 1.5V5h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <span className="step__skill-label">Produced file</span>
+      <span className="step__skill-topic" title={entry.tool}>{entry.content}</span>
+      <span className="step__file-size">{formatFileSize(entry.fileSize)}</span>
+      <div className="step__file-ide" ref={menuRef}>
+        <button
+          className="step__file-download step__file-ide-toggle"
+          onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          Open in {'\u25BE'}
+        </button>
+        {menuOpen && (
+          <div className="step__file-ide-menu" role="menu">
+            {editors.map((ed) => (
+              <button
+                key={ed.id}
+                role="menuitem"
+                className="step__file-ide-menu-item"
+                onClick={() => onOpenInEditor(ed.id)}
+              >
+                <span className="step__file-ide-menu-icon"><EditorIcon id={ed.id} /></span>
+                <span>{ed.name}</span>
+              </button>
+            ))}
+            {editors.length > 0 && <div className="step__file-ide-menu-sep" />}
+            <button
+              role="menuitem"
+              className="step__file-ide-menu-item"
+              onClick={onRevealInFinder}
+              title="Show the file in Finder without opening it"
+            >
+              <span className="step__file-ide-menu-icon">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path d="M2 4.5v6A1.5 1.5 0 003.5 12h7A1.5 1.5 0 0012 10.5V5.5A1.5 1.5 0 0010.5 4H7L5.5 2.5h-2A1.5 1.5 0 002 4z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                </svg>
+              </span>
+              <span>Reveal in Finder</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
   const [open, setOpen] = useState(false);
   const toggle = () => setOpen((o) => !o);
@@ -186,7 +357,7 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
     return (
       <div className="step step--thinking">
         <div className="step__text">
-          <Markdown source={entry.content} variant="compact" />
+          <Markdown source={linkifyOutputPaths(entry.content)} />
         </div>
       </div>
     );
@@ -273,6 +444,10 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
     );
   }
 
+  if (entry.type === 'file_output') {
+    return <FileOutputRow entry={entry} />;
+  }
+
   if (entry.type === 'notify') {
     const isBlocking = entry.level === 'blocking';
     return (
@@ -292,14 +467,7 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
   }
 
   if (entry.type === 'done') {
-    return (
-      <div className="step step--done">
-        <div className="step__done-divider" />
-        <div className="step__done-text">
-          <Markdown source={entry.content} />
-        </div>
-      </div>
-    );
+    return null as unknown as React.ReactElement;
   }
 
   if (entry.type === 'error') {
@@ -365,9 +533,38 @@ function RerunIcon(): React.ReactElement {
   );
 }
 
-function FollowUpInput({ sessionId, onUserInput, autoFocus }: { sessionId: string; onUserInput: (text: string) => void; autoFocus?: boolean }): React.ReactElement {
+interface FollowUpAttachment { idx: number; name: string; mime: string; bytes: Uint8Array }
+
+async function fileToAttachment(file: File, idx: number): Promise<FollowUpAttachment> {
+  const buf = await file.arrayBuffer();
+  return {
+    idx,
+    name: file.name || `image-${idx}`,
+    mime: file.type || 'application/octet-stream',
+    bytes: new Uint8Array(buf),
+  };
+}
+
+function insertAtCaret(el: HTMLTextAreaElement, text: string): string {
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? el.value.length;
+  const before = el.value.slice(0, start);
+  const after = el.value.slice(end);
+  const next = before + text + after;
+  // Defer caret move to next tick once React re-renders with the new value.
+  queueMicrotask(() => {
+    el.selectionStart = el.selectionEnd = start + text.length;
+  });
+  return next;
+}
+
+function FollowUpInput({ sessionId, onUserInput, autoFocus }: { sessionId: string; onUserInput: (text: string, attachments?: FollowUpAttachment[]) => void; autoFocus?: boolean }): React.ReactElement {
   const [value, setValue] = useState('');
+  const [attachments, setAttachments] = useState<FollowUpAttachment[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const idxCounter = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (autoFocus && textareaRef.current) {
@@ -377,11 +574,20 @@ function FollowUpInput({ sessionId, onUserInput, autoFocus }: { sessionId: strin
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed) return;
-    console.log('[FollowUpInput] sending follow-up', { id: sessionId, prompt: trimmed });
-    onUserInput(trimmed);
+    // Only include attachments whose `[Image #N]` token still appears in the
+    // text — deleting the token from the input removes the attachment.
+    const presentIdx = new Set<number>();
+    const tokenRe = /\[Image #(\d+)\]/g;
+    let m: RegExpExecArray | null;
+    while ((m = tokenRe.exec(trimmed)) !== null) presentIdx.add(Number(m[1]));
+    const filtered = attachments.filter((a) => presentIdx.has(a.idx));
+    if (!trimmed && filtered.length === 0) return;
+    console.log('[FollowUpInput] sending follow-up', { id: sessionId, prompt: trimmed, attachmentCount: filtered.length });
+    onUserInput(trimmed, filtered.length > 0 ? filtered : undefined);
     setValue('');
-  }, [value, sessionId, onUserInput]);
+    setAttachments([]);
+    idxCounter.current = 0;
+  }, [value, sessionId, onUserInput, attachments]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -393,6 +599,53 @@ function FollowUpInput({ sessionId, onUserInput, autoFocus }: { sessionId: strin
     }
   }, [handleSubmit]);
 
+  const addFiles = useCallback(async (files: FileList | File[] | null) => {
+    if (!files) return;
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    const el = textareaRef.current;
+    const startIdx = idxCounter.current + 1;
+    idxCounter.current += list.length;
+    try {
+      const next = await Promise.all(list.map((f, i) => fileToAttachment(f, startIdx + i)));
+      setAttachments((prev) => [...prev, ...next]);
+      const tokens = next.map((a) => `[Image #${a.idx}]`).join(' ');
+      if (el) {
+        setValue((prev) => {
+          const pos = el.selectionStart ?? prev.length;
+          const before = prev.slice(0, pos);
+          const after = prev.slice(el.selectionEnd ?? prev.length);
+          const sep = before && !before.endsWith(' ') ? ' ' : '';
+          const inserted = sep + tokens + (after && !after.startsWith(' ') ? ' ' : '');
+          queueMicrotask(() => {
+            const newPos = before.length + inserted.length;
+            el.selectionStart = el.selectionEnd = newPos;
+            el.focus();
+          });
+          return before + inserted + after;
+        });
+      } else {
+        setValue((prev) => (prev ? prev + ' ' : '') + tokens);
+      }
+    } catch (err) {
+      console.error('[FollowUpInput] attach failed', err);
+    }
+  }, []);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0) {
+      e.preventDefault();
+      void addFiles(files);
+    }
+  }, [addFiles]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    void addFiles(e.dataTransfer?.files ?? null);
+  }, [addFiles]);
+
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -400,18 +653,43 @@ function FollowUpInput({ sessionId, onUserInput, autoFocus }: { sessionId: strin
     }
   }, [value]);
 
+  // Suppress unused warning for insertAtCaret if lint is strict; referenced for future direct-caret paths.
+  void insertAtCaret;
+
   return (
-    <div className="followup">
-      <span className="followup__chevron">&rsaquo;</span>
-      <textarea
-        ref={textareaRef}
-        className="followup__input"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Follow up..."
-        rows={1}
-      />
+    <div
+      className={`followup${dragOver ? ' followup--dragover' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
+      <div className="followup__row">
+        <span className="followup__chevron">&rsaquo;</span>
+        <textarea
+          ref={textareaRef}
+          className="followup__input"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          placeholder="Follow up..."
+          rows={1}
+        />
+        <button
+          type="button"
+          className="followup__attach-btn"
+          onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+          aria-label="Attach files"
+          title="Attach files"
+        >+</button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => { void addFiles(e.target.files); e.target.value = ''; }}
+        />
+      </div>
     </div>
   );
 }
@@ -428,7 +706,7 @@ interface AgentPaneProps {
   session: AgentSession;
   focused?: boolean;
   onRerun?: (sessionId: string) => void;
-  onFollowUp?: (sessionId: string, prompt: string) => void;
+  onFollowUp?: (sessionId: string, prompt: string, attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>) => void;
   onDismiss?: (sessionId: string) => void;
   onCancel?: (sessionId: string) => void;
   onSelect?: (sessionId: string) => void;
@@ -442,11 +720,12 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   useHydrateSession(session.id);
   const scrollRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  type PaneViewMode = 'output' | 'split' | 'browser';
-  const [viewMode, setViewMode] = useState<PaneViewMode>('split');
+  type PaneViewMode = 'output' | 'browser';
+  const [viewMode, setViewMode] = useState<PaneViewMode>('browser');
   const [browserDead, setBrowserDead] = useState(false);
-  const [splitPaddingLeft, setSplitPaddingLeft] = useState(0);
+  const [browserMissing, setBrowserMissing] = useState(false);
   const [frameRect, setFrameRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const { entries: rawEntries } = useMemo(() => adaptSession(session), [session]);
   const entries = useMemo<OutputEntry[]>(() => {
     if (!session.prompt) return rawEntries;
@@ -459,7 +738,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     return [promptEntry, ...rawEntries];
   }, [rawEntries, session.prompt, session.id, session.createdAt]);
 
-  const SPLIT_RATIO = 0.6;
   const BROWSER_CTA_RESERVE = 64;
   const showBrowserCta = session.status === 'idle' && !session.error && !!onOpenFollowUp;
 
@@ -468,7 +746,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     const fullWidth = Math.round(rect.width);
-    const slotWidth = mode === 'split' ? Math.round(fullWidth * SPLIT_RATIO) : fullWidth;
+    const slotWidth = fullWidth;
     const border = 1;
     const topReserve = mode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
     return {
@@ -486,7 +764,24 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     }
   }, [session.id, session.status]);
 
-  const browserNotReady = session.status === 'draft' || (session.status === 'running' && rawEntries.length === 0);
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.on?.sessionBrowserGone) return;
+    const off = api.on.sessionBrowserGone((id) => {
+      if (id === session.id) {
+        console.log('[AgentPane] browser-gone signal', { id });
+        setBrowserDead(true);
+        setFrameRect(null);
+      }
+    });
+    return off;
+  }, [session.id]);
+
+  // A running session always has a pool entry. Treat it as ready so the
+  // renderer calls viewAttach immediately — previously we also required
+  // rawEntries.length>0, which stalled the initial attach until the agent
+  // produced its first HlEvent.
+  const browserNotReady = session.status === 'draft';
 
   const updateFrameRect = useCallback((slotWidth: number, mode: PaneViewMode) => {
     const paneEl = paneRef.current;
@@ -510,7 +805,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     if (mode === 'output' || browserDead) {
       console.log('[AgentPane] detaching browser view', { id: session.id, mode });
       await api.sessions.viewDetach(session.id).catch(() => {});
-      setSplitPaddingLeft(0);
       setFrameRect(null);
       return;
     }
@@ -520,7 +814,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       await api.sessions.viewDetach(session.id).catch(() => {});
       const computed = computeBounds(mode);
       if (computed) {
-        setSplitPaddingLeft(mode === 'split' ? computed.slotWidth : 0);
         updateFrameRect(computed.slotWidth, mode);
       }
       return;
@@ -532,12 +825,11 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     console.log('[AgentPane] attaching browser view', { id: session.id, mode, bounds });
     const ok = await api.sessions.viewAttach(session.id, bounds);
     if (!ok) {
-      setBrowserDead(true);
-      setSplitPaddingLeft(0);
-      setFrameRect(null);
+      setBrowserMissing(true);
+      updateFrameRect(slotWidth, mode);
       return;
     }
-    setSplitPaddingLeft(mode === 'split' ? slotWidth : 0);
+    setBrowserMissing(false);
     updateFrameRect(slotWidth, mode);
   }, [session.id, browserDead, computeBounds, browserNotReady, updateFrameRect]);
 
@@ -546,8 +838,41 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       setViewMode('output');
       return;
     }
+    // Mutual exclusion: showing the inline xterm (output mode) while the
+    // floating logs window is open would duplicate the stream. Close logs.
+    if (mode === 'output' && logsOpen) {
+      window.electronAPI?.logs?.close?.();
+      setLogsOpen(false);
+    }
     setViewMode(mode);
-  }, [browserDead]);
+  }, [browserDead, logsOpen]);
+
+  const handleToggleLogs = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.logs) {
+      console.warn('[AgentPane] logs API unavailable');
+      return;
+    }
+    if (viewMode === 'output' && !browserDead) {
+      setViewMode('browser');
+    }
+    // Anchor the logs window to the pane's output rect so it sits INSIDE the
+    // browser area, not overlapping the command bar at the bottom of the hub.
+    const outEl = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
+    const rect = outEl?.getBoundingClientRect();
+    const anchor = rect
+      ? {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        }
+      : undefined;
+    console.log('[AgentPane] toggle logs', { sessionId: session.id, anchor });
+    const nowOpen = await api.logs.toggle(session.id, anchor);
+    console.log('[AgentPane] toggle logs result', { sessionId: session.id, nowOpen });
+    setLogsOpen(nowOpen);
+  }, [session.id, viewMode, browserDead]);
 
   useEffect(() => {
     if (browserDead) setViewMode('output');
@@ -562,7 +887,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         setViewMode('output');
         return;
       }
-      const order: PaneViewMode[] = ['output', 'split', 'browser'];
+      const order: PaneViewMode[] = ['output', 'browser'];
       setViewMode((curr) => {
         const next = order[(order.indexOf(curr) + 1) % order.length];
         console.log('[AgentPane] cycle view', { id: session.id, from: curr, to: next });
@@ -606,7 +931,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       } else {
         api.sessions.viewResize(session.id, bounds);
       }
-      setSplitPaddingLeft(viewMode === 'split' ? slotWidth : 0);
       const p = paneEl.getBoundingClientRect();
       const o = outEl.getBoundingClientRect();
       const topReserve = viewMode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
@@ -631,6 +955,13 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     // pane:layout-change when the session list or grid layout changes — we
     // re-read bounds across a few frames to catch any CSS transition.
     const onLayoutChange = () => {
+      // Layout just changed (grid columns, page, session list). Force the next
+      // bounds call through the viewAttach path so if the WebContentsView was
+      // silently detached (e.g. by temporarilyDetachAll for pill/settings), it
+      // gets re-added. Bounds are always set BEFORE addChildView so there's no
+      // stale-position flash.
+      hasAttached = false;
+      lastKey = '';
       updateBounds();
       requestAnimationFrame(updateBounds);
       setTimeout(updateBounds, 120);
@@ -696,14 +1027,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
                 <span>Output</span>
               </button>
               <button
-                className={`pane__action-btn${viewMode === 'split' ? ' pane__action-btn--active' : ''}`}
-                onClick={(e) => { e.stopPropagation(); handleSetMode('split'); }}
-                aria-label="Split view"
-              >
-                <SplitIcon />
-                <span>Split</span>
-              </button>
-              <button
                 className={`pane__action-btn${viewMode === 'browser' ? ' pane__action-btn--active' : ''}`}
                 onClick={(e) => { e.stopPropagation(); handleSetMode('browser'); }}
                 aria-label="Browser only"
@@ -713,6 +1036,15 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
               </button>
             </div>
           )}
+          <button
+            className={`pane__action-btn${logsOpen ? ' pane__action-btn--active' : ''}`}
+            onClick={(e) => { e.stopPropagation(); void handleToggleLogs(); }}
+            aria-label="Toggle logs overlay"
+            data-tip="Toggle logs overlay"
+          >
+            <SplitIcon />
+            <span>Logs</span>
+          </button>
           {onRerun && (
             <button
               className="pane__action-btn pane__action-btn--icon"
@@ -757,11 +1089,9 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         )}
       </div>
 
-      {session.status === 'running' && (
-        <div className="pane__progress">
-          <div className="pane__progress-bar" />
-        </div>
-      )}
+      <div className="pane__progress" aria-hidden="true">
+        {session.status === 'running' && <div className="pane__progress-bar" />}
+      </div>
 
       {frameRect && viewMode !== 'output' && (
         <div
@@ -775,15 +1105,24 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
           aria-hidden="true"
         >
           <div className="pane__browser-starting">
-            <span className="pane__spinner" />
-            <span>Browser starting…</span>
+            {browserMissing ? (
+              <span>
+                {session.status === 'stopped' || session.status === 'idle' || session.status === 'stuck'
+                  ? 'Browser stopped'
+                  : 'No browser started yet'}
+              </span>
+            ) : (
+              <>
+                <span className="pane__spinner" />
+                <span>Browser starting…</span>
+              </>
+            )}
           </div>
         </div>
       )}
       <div
-        className={`pane__output${viewMode === 'split' ? ' pane__output--split' : ''}`}
+        className="pane__output"
         ref={scrollRef}
-        style={viewMode === 'split' && splitPaddingLeft > 0 ? { paddingLeft: splitPaddingLeft } : undefined}
       >
         {viewMode === 'browser' && showBrowserCta && (
           <button
@@ -794,28 +1133,23 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
             Press <kbd className="pane__followup-kbd">{followUpShortcut || 'f'}</kbd> to follow up
           </button>
         )}
-        {viewMode !== 'browser' && entries.map((entry) => (
-          <OutputRow key={entry.id} entry={entry} />
-        ))}
-        {session.status === 'running' && rawEntries.length === 0 && (
-          <div className="pane__output-starting">
-            <span className="pane__spinner" />
-            <span className="pane__output-empty-text">Agent starting…</span>
+        {viewMode !== 'browser' && (
+          <div className="pane__term-wrap">
+            <TerminalPane sessionId={session.id} />
           </div>
         )}
-        {session.status === 'running' && rawEntries.length > 0 && (
-          <div className="pane__cursor-row">
-            <span className="pane__cursor" />
+        {viewMode !== 'browser' && entries.some((e) => e.type === 'file_output') && (
+          <div className="pane__file-outputs">
+            {entries.filter((e) => e.type === 'file_output').map((entry) => (
+              <OutputRow key={entry.id} entry={entry} />
+            ))}
           </div>
         )}
-        {viewMode !== 'browser' && session.status === 'idle' && !session.error && onOpenFollowUp && (
-          <button
-            type="button"
-            className="pane__followup-hint"
-            onClick={(e) => { e.stopPropagation(); onOpenFollowUp(); }}
-          >
-            Press <kbd className="pane__followup-kbd">{followUpShortcut || 'f'}</kbd> to follow up
-          </button>
+        {viewMode !== 'browser' && session.status === 'idle' && !session.error && onFollowUp && (
+          <FollowUpInput
+            sessionId={session.id}
+            onUserInput={(text, attachments) => onFollowUp(session.id, text, attachments)}
+          />
         )}
         {session.error && entries.length <= 2 && (
           <div className="pane__error-center">
