@@ -16,7 +16,7 @@ import path from 'node:path';
 // dev-time fallback.
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage, shell } from 'electron';
 
 app.setName('Browser Use');
 
@@ -24,6 +24,7 @@ import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 // Track B — Pill + hotkeys
 import { createPillWindow, togglePill, showPill, hidePill, sendToPill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
+import { createLogsWindow, attachToHub as attachLogsToHub, toggleLogs, hideLogs, sendToLogs, getLogsWindow } from './logsPill';
 import { sendSessionNotification } from './notifications';
 import { registerHotkeys, unregisterHotkeys, getGlobalCmdbarAccelerator, setGlobalCmdbarAccelerator } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
@@ -44,12 +45,11 @@ import {
   resolveCdpPort,
   setAnnouncedCdpPort,
 } from './startup/cli';
-import { getApiKey } from './agentApiKey';
 import { assertString, assertAttachments } from './ipc-validators';
-// Wave HL — in-process TS agent
-import { runAgent } from './hl/agent';
-import { bootstrapHarness } from './hl/harness';
-import { createContext } from './hl/context';
+// Agent loop: CLI subprocess driving the browser harness. Engine is
+// pluggable (claude-code, codex, …) — see src/main/hl/engines/.
+import { bootstrapHarness, harnessDir } from './hl/harness';
+import { runEngine, DEFAULT_ENGINE_ID } from './hl/engines';
 import { getEngine, setEngine, type EngineId } from './hl/engine';
 import { forwardAgentEvent } from './pill';
 // Session management
@@ -123,6 +123,13 @@ const sessionManager = new SessionManager(path.join(app.getPath('userData'), 'se
 // to <userData>/harness/ on first run, preserves user edits on subsequent runs.
 bootstrapHarness();
 const browserPool = new BrowserPool();
+// Push browser-gone notifications to the shell renderer so the UI can stop
+// showing "Browser starting…" when a WebContents is destroyed or crashes.
+browserPool.setOnGone((sessionId) => {
+  if (shellWindow && !shellWindow.isDestroyed()) {
+    shellWindow.webContents.send('sessions:browser-gone', sessionId);
+  }
+});
 const accountStore = new AccountStore();
 const oauthClient = new OAuthClient({
   clientId: process.env.GOOGLE_CLIENT_ID ?? '42357852543-62lvdghq5hatidr3ovmq1rig9q5r5mcg.apps.googleusercontent.com',
@@ -141,6 +148,9 @@ function openShellAndWire(): BrowserWindow {
 
   // Create pill window (hidden) and register global hotkey
   createPillWindow();
+  // Create logs overlay window (hidden) and anchor it to the hub
+  createLogsWindow();
+  attachLogsToHub(shellWindow);
   const togglePillAndNotify = () => {
     togglePill();
     if (shellWindow && !shellWindow.isDestroyed()) {
@@ -364,6 +374,24 @@ app.whenReady().then(async () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Logs overlay IPC
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('logs:toggle', (_evt, sessionId: string, anchor?: { x: number; y: number; width: number; height: number }) => {
+    mainLogger.info('main.logs:toggle', { sessionId, anchor });
+    return toggleLogs(sessionId, anchor ?? null);
+  });
+  ipcMain.handle('logs:close', () => {
+    mainLogger.info('main.logs:close');
+    hideLogs();
+  });
+  ipcMain.on('logs:close', () => {
+    mainLogger.info('main.logs:close (send)');
+    hideLogs();
+  });
+  // Avoid unused-import lint: sendToLogs is re-exported for external callers.
+  void sendToLogs;
+
+  // ---------------------------------------------------------------------------
   // HL engine IPC
   // ---------------------------------------------------------------------------
   ipcMain.handle('hl:get-engine', () => getEngine());
@@ -381,6 +409,7 @@ app.whenReady().then(async () => {
   const notifiedStarted = new Set<string>();
   sessionManager.onEvent('session-updated', (session) => {
     shellWindow?.webContents.send('session-updated', session);
+    sendToPill('session-updated', session);
     if (session.status === 'running' && !notifiedStarted.has(session.id)) {
       notifiedStarted.add(session.id);
       sendSessionNotification({
@@ -427,6 +456,25 @@ app.whenReady().then(async () => {
   });
   sessionManager.onEvent('session-output', (id, line) => {
     shellWindow?.webContents.send('session-output', id, line);
+    sendToPill('session-output', { id, line });
+  });
+  sessionManager.onEvent('session-output-term', (id, bytes) => {
+    shellWindow?.webContents.send('session-output-term', id, bytes);
+    sendToPill('session-output-term', { id, bytes });
+    const logsWin = getLogsWindow();
+    if (logsWin && !logsWin.isDestroyed()) {
+      mainLogger.debug('main.session-output-term.forward-logs', {
+        id,
+        byteLen: bytes?.length ?? 0,
+        logsWebContentsId: logsWin.webContents.id,
+      });
+      logsWin.webContents.send('session-output-term', id, bytes);
+    } else {
+      mainLogger.debug('main.session-output-term.no-logs-window', { id });
+    }
+  });
+  ipcMain.handle('sessions:get-term-replay', (_evt, id: string) => {
+    return sessionManager.getTermReplay(id);
   });
 
   async function startSessionWithAgent(id: string): Promise<void> {
@@ -441,14 +489,6 @@ app.whenReady().then(async () => {
     const abortController = sessionManager.startSession(id);
     mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'startSession', ms: Date.now() - t0 });
 
-    const apiKey = await getApiKey({ accountEmail: accountStore.load()?.email });
-    mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'getApiKey', ms: Date.now() - t0 });
-    if (!apiKey) {
-      sessionManager.failSession(id, 'No API key configured');
-      mainLogger.warn('main.startSessionWithAgent.noApiKey', { id });
-      return;
-    }
-
     const view = browserPool.create(id);
     mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'poolCreate', ms: Date.now() - t0 });
     if (!view) {
@@ -458,38 +498,33 @@ app.whenReady().then(async () => {
     }
 
     if (shellWindow && !shellWindow.isDestroyed()) {
-      browserPool.attachToWindow(id, shellWindow, { x: 0, y: 0, width: 0, height: 0 });
+      // Detach existing views — only one session is visible at a time.
+      // We DON'T attach here: main doesn't know the exact pane rect.
+      // The renderer (AgentPane) is authoritative for bounds and will call
+      // sessions:view-attach with the exact .pane__output getBoundingClientRect.
+      browserPool.detachAll(shellWindow);
+      mainLogger.info('main.startSessionWithAgent.detachedAwaitingRenderer', { id });
     }
     mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'attach', ms: Date.now() - t0 });
 
     await view.webContents.loadURL('about:blank');
     mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'loadBlank', ms: Date.now() - t0 });
 
-    let ctx;
-    try {
-      ctx = await createContext({ name: id, webContents: view.webContents });
-      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'cdpAttach', ms: Date.now() - t0 });
-      mainLogger.info('main.startSessionWithAgent.cdpAttached', { id, transport: ctx.cdp.transport });
-    } catch (err) {
-      const msg = `CDP context creation failed: ${(err as Error).message}`;
-      mainLogger.warn('main.startSessionWithAgent.noCdp', { id, error: msg });
-      browserPool.destroy(id, shellWindow ?? undefined);
-      sessionManager.failSession(id, msg);
-      return;
-    }
-
     const attachmentsForRun = sessionManager.loadAttachmentsForRun(id);
     if (attachmentsForRun.length > 0) {
       mainLogger.info('main.startSessionWithAgent.attachments', { id, count: attachmentsForRun.length, totalBytes: attachmentsForRun.reduce((s, a) => s + a.size, 0) });
     }
     steerQueues.set(id, []);
-    runAgent({
-      ctx,
+    runEngine({
+      engineId: sessionManager.getSessionEngine(id) ?? DEFAULT_ENGINE_ID,
+      harnessDir: harnessDir(),
+      sessionId: id,
       prompt: sessionManager.getSession(id)!.prompt,
-      apiKey,
-      signal: abortController.signal,
       attachments: attachmentsForRun.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
-      drainQueue: () => { const q = steerQueues.get(id); if (!q?.length) return null; return q.shift()!; },
+      webContents: view.webContents,
+      cdpPort: resolvedCdp.port,
+      signal: abortController.signal,
+      onSessionId: (sid) => sessionManager.setClaudeSessionId(id, sid),
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(id, event);
@@ -501,10 +536,6 @@ app.whenReady().then(async () => {
           sessionManager.appendOutput(id, event);
         }
       },
-    }).then((msgs) => {
-      if (msgs) {
-        sessionManager.saveMessages(id, msgs);
-      }
     }).catch((err: Error) => {
       mainLogger.error('main.startSessionWithAgent.agentError', { id, error: err.message });
       sessionManager.failSession(id, err.message);
@@ -521,22 +552,27 @@ app.whenReady().then(async () => {
   ipcMain.handle('sessions:create', (_event, payload: unknown) => {
     let promptRaw: unknown;
     let attachmentsRaw: unknown;
+    let engineRaw: unknown;
     if (typeof payload === 'string') {
       promptRaw = payload;
     } else if (payload && typeof payload === 'object') {
       promptRaw = (payload as { prompt?: unknown }).prompt;
       attachmentsRaw = (payload as { attachments?: unknown }).attachments;
+      engineRaw = (payload as { engine?: unknown }).engine;
     } else {
-      throw new Error('sessions:create payload must be a string or { prompt, attachments? }');
+      throw new Error('sessions:create payload must be a string or { prompt, attachments?, engine? }');
     }
     const validatedPrompt = assertString(promptRaw, 'prompt', 10000);
     const attachments = assertAttachments(attachmentsRaw);
+    const engineId = engineRaw == null ? DEFAULT_ENGINE_ID : assertString(engineRaw, 'engine', 50);
     mainLogger.info('main.sessions:create', {
       promptLength: validatedPrompt.length,
       attachmentCount: attachments.length,
+      engineId,
       attachmentMeta: attachments.map((a) => ({ name: a.name, mime: a.mime, size: a.bytes.byteLength })),
     });
     const id = sessionManager.createSession(validatedPrompt);
+    sessionManager.setSessionEngine(id, engineId);
     if (attachments.length > 0) {
       const turnIndex = sessionManager.getNextAttachmentTurnIndex(id);
       for (const a of attachments) {
@@ -570,12 +606,6 @@ app.whenReady().then(async () => {
       mainLogger.info('main.sessions:resume.persistedAttachments', { id: validatedId, turnIndex, count: resumeAttachments.length });
     }
 
-    const apiKey = await getApiKey({ accountEmail: accountStore.load()?.email });
-    if (!apiKey) {
-      mainLogger.warn('main.sessions:resume.noApiKey', { id: validatedId });
-      return { error: 'No API key configured' };
-    }
-
     const webContents = browserPool.getWebContents(validatedId);
     if (!webContents) {
       mainLogger.warn('main.sessions:resume.noBrowser', { id: validatedId });
@@ -583,31 +613,22 @@ app.whenReady().then(async () => {
     }
 
     const abortController = sessionManager.resumeSession(validatedId, validatedPrompt);
-
-    let ctx;
-    try {
-      ctx = await createContext({ name: validatedId, webContents });
-      mainLogger.info('main.sessions:resume.cdpAttached', { id: validatedId, transport: ctx.cdp.transport });
-    } catch (err) {
-      const msg = `CDP context creation failed: ${(err as Error).message}`;
-      mainLogger.warn('main.sessions:resume.noCdp', { id: validatedId, error: msg });
-      sessionManager.failSession(validatedId, msg);
-      return { error: msg };
+    if (resumeAttachments.length > 0) {
+      mainLogger.info('main.sessions:resume.attachments', { id: validatedId, count: resumeAttachments.length });
     }
 
-    const fromDb = sessionManager.getMessages(validatedId);
-    const priorMessages = fromDb as import('@anthropic-ai/sdk/resources/messages').MessageParam[] | undefined;
-    mainLogger.info('main.sessions:resume.context', { id: validatedId, priorMessageCount: priorMessages?.length ?? 0 });
-
     steerQueues.set(validatedId, []);
-    runAgent({
-      ctx,
+    runEngine({
+      engineId: sessionManager.getSessionEngine(validatedId) ?? DEFAULT_ENGINE_ID,
+      harnessDir: harnessDir(),
+      sessionId: validatedId,
       prompt: validatedPrompt,
-      apiKey,
-      signal: abortController.signal,
-      priorMessages,
       attachments: resumeAttachments.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
-      drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
+      webContents,
+      cdpPort: resolvedCdp.port,
+      signal: abortController.signal,
+      resumeSessionId: sessionManager.getClaudeSessionId(validatedId),
+      onSessionId: (sid) => sessionManager.setClaudeSessionId(validatedId, sid),
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -619,10 +640,6 @@ app.whenReady().then(async () => {
           sessionManager.appendOutput(validatedId, event);
         }
       },
-    }).then((msgs) => {
-      if (msgs) {
-        sessionManager.saveMessages(validatedId, msgs);
-      }
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:resume.agentError', { id: validatedId, error: err.message });
       sessionManager.failSession(validatedId, err.message);
@@ -639,9 +656,6 @@ app.whenReady().then(async () => {
     const validatedId = assertString(id, 'id', 100);
     mainLogger.info('main.sessions:rerun', { id: validatedId });
 
-    const apiKey = await getApiKey({ accountEmail: accountStore.load()?.email });
-    if (!apiKey) return { error: 'No API key configured' };
-
     const session = sessionManager.getSession(validatedId);
     if (!session) return { error: 'Session not found' };
 
@@ -656,7 +670,9 @@ app.whenReady().then(async () => {
     }
 
     if (shellWindow && !shellWindow.isDestroyed()) {
-      browserPool.attachToWindow(validatedId, shellWindow, { x: 0, y: 0, width: 0, height: 0 });
+      // See startSessionWithAgent comment — renderer is authoritative for bounds.
+      browserPool.detachAll(shellWindow);
+      mainLogger.info('main.sessions:rerun.detachedAwaitingRenderer', { id: validatedId });
     }
 
     try {
@@ -665,28 +681,23 @@ app.whenReady().then(async () => {
       mainLogger.warn('main.sessions:rerun.loadBlank.failed', { id: validatedId, error: (err as Error).message });
     }
 
-    let ctx;
-    try {
-      ctx = await createContext({ name: validatedId, webContents: view.webContents });
-    } catch (err) {
-      const msg = `CDP context creation failed: ${(err as Error).message}`;
-      browserPool.destroy(validatedId, shellWindow ?? undefined);
-      sessionManager.failSession(validatedId, msg);
-      return { error: msg };
-    }
-
     const rerunAttachments = sessionManager.loadAttachmentsForRun(validatedId);
     if (rerunAttachments.length > 0) {
       mainLogger.info('main.sessions:rerun.attachments', { id: validatedId, count: rerunAttachments.length });
     }
     steerQueues.set(validatedId, []);
-    runAgent({
-      ctx,
+    runEngine({
+      engineId: sessionManager.getSessionEngine(validatedId) ?? DEFAULT_ENGINE_ID,
+      harnessDir: harnessDir(),
+      sessionId: validatedId,
       prompt: session.prompt,
-      apiKey,
-      signal: abortController.signal,
       attachments: rerunAttachments.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
-      drainQueue: () => { const q = steerQueues.get(validatedId); if (!q?.length) return null; return q.shift()!; },
+      webContents: view.webContents,
+      cdpPort: resolvedCdp.port,
+      signal: abortController.signal,
+      // Rerun intentionally starts a fresh conversation; SessionManager.rerunSession
+      // already cleared any stored resume id.
+      onSessionId: (sid) => sessionManager.setClaudeSessionId(validatedId, sid),
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -698,10 +709,6 @@ app.whenReady().then(async () => {
           sessionManager.appendOutput(validatedId, event);
         }
       },
-    }).then((msgs) => {
-      if (msgs) {
-        sessionManager.saveMessages(validatedId, msgs);
-      }
     }).catch((err: Error) => {
       mainLogger.error('main.sessions:rerun.agentError', { id: validatedId, error: err.message });
       sessionManager.failSession(validatedId, err.message);
@@ -768,6 +775,86 @@ app.whenReady().then(async () => {
     sessionManager.unhideSession(validatedId);
   });
 
+  /**
+   * Open an agent-produced file (from <harnessDir>/outputs/<sessionId>/) in
+   * its default OS handler. Path-traversal guarded: only paths rooted inside
+   * the outputs directory are allowed.
+   */
+  ipcMain.handle('sessions:download-output', async (_event, filePath: string) => {
+    const validated = assertString(filePath, 'filePath', 2000);
+    // Accept either an absolute path or a harness-relative path like
+    // `outputs/<session>/<file>` (what Claude's narration uses).
+    const resolvedPath = path.isAbsolute(validated)
+      ? path.resolve(validated)
+      : path.resolve(harnessDir(), validated);
+    const outputsRoot = path.resolve(harnessDir(), 'outputs');
+    if (!resolvedPath.startsWith(outputsRoot + path.sep)) {
+      mainLogger.warn('main.sessions:download-output.rejected', { filePath: validated });
+      throw new Error('refused: path outside outputs dir');
+    }
+    const err = await shell.openPath(resolvedPath);
+    if (err) {
+      mainLogger.warn('main.sessions:download-output.openFailed', { path: resolvedPath, error: err });
+      throw new Error(err);
+    }
+    mainLogger.info('main.sessions:download-output.ok', { path: resolvedPath });
+    return { opened: true };
+  });
+
+  ipcMain.handle('sessions:list-editors', async () => {
+    const { detectEditors } = await import('./editors');
+    return detectEditors();
+  });
+
+  ipcMain.handle('sessions:list-engines', async () => {
+    const { listAdapters } = await import('./hl/engines');
+    return listAdapters().map((a) => ({ id: a.id, displayName: a.displayName, binaryName: a.binaryName }));
+  });
+
+  ipcMain.handle('sessions:engine-status', async (_event, engineId: string) => {
+    const validated = assertString(engineId, 'engineId', 50);
+    const { getAdapter } = await import('./hl/engines');
+    const adapter = getAdapter(validated);
+    if (!adapter) throw new Error(`unknown engine: ${validated}`);
+    const [installed, authed] = await Promise.all([adapter.probeInstalled(), adapter.probeAuthed()]);
+    return { id: adapter.id, displayName: adapter.displayName, installed, authed };
+  });
+
+  ipcMain.handle('sessions:engine-login', async (_event, engineId: string) => {
+    const validated = assertString(engineId, 'engineId', 50);
+    const { getAdapter } = await import('./hl/engines');
+    const adapter = getAdapter(validated);
+    if (!adapter) throw new Error(`unknown engine: ${validated}`);
+    return adapter.openLoginInTerminal();
+  });
+
+  ipcMain.handle('sessions:reveal-output', async (_event, filePath: string) => {
+    const validated = assertString(filePath, 'filePath', 2000);
+    const resolvedPath = path.isAbsolute(validated)
+      ? path.resolve(validated)
+      : path.resolve(harnessDir(), validated);
+    const outputsRoot = path.resolve(harnessDir(), 'outputs');
+    if (!resolvedPath.startsWith(outputsRoot + path.sep)) {
+      throw new Error('refused: path outside outputs dir');
+    }
+    shell.showItemInFolder(resolvedPath);
+    mainLogger.info('main.sessions:reveal-output', { path: resolvedPath });
+    return { revealed: true };
+  });
+
+  ipcMain.handle('sessions:open-in-editor', async (_event, payload: { editorId: string; filePath: string }) => {
+    const editorId = assertString(payload?.editorId, 'editorId', 50);
+    const filePath = assertString(payload?.filePath, 'filePath', 2000);
+    const resolvedPath = path.resolve(filePath);
+    const outputsRoot = path.resolve(harnessDir(), 'outputs');
+    if (!resolvedPath.startsWith(outputsRoot + path.sep)) {
+      throw new Error('refused: path outside outputs dir');
+    }
+    const { openInEditor } = await import('./editors');
+    await openInEditor(editorId, resolvedPath);
+    return { opened: true };
+  });
+
   ipcMain.handle('sessions:list', () => {
     const list = sessionManager.listSessions().map((s) => ({
       ...s,
@@ -796,7 +883,16 @@ app.whenReady().then(async () => {
     const validatedId = assertString(id, 'id', 100);
     if (!shellWindow) return false;
     mainLogger.info('main.sessions:view-attach', { id: validatedId, bounds });
-    return browserPool.attachToWindow(validatedId, shellWindow, bounds);
+    const ok = browserPool.attachToWindow(validatedId, shellWindow, bounds);
+    if (ok) {
+      // Give focus so clicks work immediately after attach (previously handled
+      // by startSessionWithAgent / rerun, which no longer attach).
+      const attachedView = browserPool.getView(validatedId);
+      if (attachedView && !attachedView.webContents.isDestroyed()) {
+        attachedView.webContents.focus();
+      }
+    }
+    return ok;
   });
 
   ipcMain.handle('sessions:view-detach', (_event, id: string) => {
@@ -807,12 +903,19 @@ app.whenReady().then(async () => {
   });
 
   // Fast path: fire-and-forget. Called on every frame during window resize /
-  // layout reflow, so we skip logging and only do the minimum work — just
-  // setBounds on the already-attached WebContentsView.
+  // layout reflow — just setBounds, plus a cheap orphan check: if the view is
+  // no longer a child of the shell's contentView (e.g. because temporarilyDetachAll
+  // removed it without clearing entry.attached, leaving the renderer seeing a
+  // phantom "Browser starting…" state), re-add it here so recovery is automatic.
   ipcMain.on('sessions:view-resize', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }) => {
     if (!shellWindow) return;
     const view = browserPool.getView(id);
-    if (view) view.setBounds(bounds);
+    if (!view) return;
+    view.setBounds(bounds);
+    const children = shellWindow.contentView.children;
+    if (!children.includes(view)) {
+      shellWindow.contentView.addChildView(view);
+    }
   });
 
   ipcMain.handle('sessions:view-is-attached', (_event, id: string) => {
