@@ -8,6 +8,7 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
 import { mainLogger } from './logger';
+import { registerViteDepStaleHeal } from './viteDepStaleHeal';
 
 const log = {
   info: (c: string, x: object) => mainLogger.info(c, x as Record<string, unknown>),
@@ -184,15 +185,21 @@ export function createLogsWindow(): BrowserWindow {
   const preloadPath = path.join(__dirname, 'logs.js');
   log.info('logs.preload.path', { preloadPath });
 
-  if (typeof LOGS_VITE_DEV_SERVER_URL !== 'undefined' && LOGS_VITE_DEV_SERVER_URL) {
-    const devUrl = `${LOGS_VITE_DEV_SERVER_URL}/logs.html`;
-    log.info('logs.load.dev', { url: devUrl });
-    logsWindow.loadURL(devUrl);
-  } else {
-    const htmlPath = path.join(__dirname, '../renderer/logs/logs.html');
-    log.info('logs.load.file', { htmlPath });
-    logsWindow.loadFile(htmlPath);
-  }
+  const isDev = typeof LOGS_VITE_DEV_SERVER_URL !== 'undefined' && LOGS_VITE_DEV_SERVER_URL;
+  const devUrl = isDev ? `${LOGS_VITE_DEV_SERVER_URL}/logs.html` : null;
+  const htmlPath = isDev ? null : path.join(__dirname, '../renderer/logs/logs.html');
+
+  const loadLogs = (): void => {
+    if (!logsWindow || logsWindow.isDestroyed()) return;
+    if (devUrl) {
+      log.info('logs.load.dev', { url: devUrl });
+      logsWindow.loadURL(devUrl).catch((err) => log.error('logs.loadURL.reject', { url: devUrl, error: (err as Error).message }));
+    } else if (htmlPath) {
+      log.info('logs.load.file', { htmlPath });
+      logsWindow.loadFile(htmlPath).catch((err) => log.error('logs.loadFile.reject', { htmlPath, error: (err as Error).message }));
+    }
+  };
+  loadLogs();
 
   logsWindow.webContents.setZoomFactor(1);
   logsWindow.webContents.setVisualZoomLevelLimits(1, 1);
@@ -208,9 +215,21 @@ export function createLogsWindow(): BrowserWindow {
     logsWindow?.webContents.send('logs:mode-changed', mode);
     flushPending();
   });
-  logsWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
-    log.error('logs.did-fail-load', { code, desc, url });
+  // Retry did-fail-load on the dev-mode Vite race — matches the hub window
+  // pattern. Without this, if the logs window loads before Vite is listening,
+  // the overlay opens as an empty gray panel because its renderer never ran.
+  let logsRetriesLeft = isDev ? 10 : 0;
+  logsWindow.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    log.warn('logs.did-fail-load', { code, desc, url, retriesLeft: logsRetriesLeft });
+    if (logsRetriesLeft > 0 && (code === -102 || code === -105 || code === -2)) {
+      logsRetriesLeft -= 1;
+      setTimeout(loadLogs, 400);
+    }
   });
+  // Auto-heal stale Vite dep cache 504s via the shared session listener.
+  // See viteDepStaleHeal for why this must be shared across windows.
+  if (isDev) registerViteDepStaleHeal(logsWindow, 'logs');
   logsWindow.webContents.on('render-process-gone', (_e, details) => {
     log.error('logs.render-process-gone', { reason: details.reason, exitCode: details.exitCode });
   });

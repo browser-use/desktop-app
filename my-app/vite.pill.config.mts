@@ -7,6 +7,7 @@ import path from 'node:path';
 // Vite root is src/renderer/pill; HTML entry is pill.html.
 export default defineConfig({
   root: path.resolve(__dirname, 'src/renderer/pill'),
+  cacheDir: path.resolve(__dirname, 'node_modules/.vite/pill'),
   plugins: [react()],
   resolve: {
     alias: {

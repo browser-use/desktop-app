@@ -7,6 +7,7 @@ import { BrowserWindow, app, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { mainLogger } from './logger';
+import { registerViteDepStaleHeal } from './viteDepStaleHeal';
 
 declare const SHELL_VITE_DEV_SERVER_URL: string | undefined;
 
@@ -151,6 +152,12 @@ export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     mainLogger.info('hubRenderer.console', { level, message, line, sourceId });
   });
+
+  // Dev only: if Vite serves a 504 for an optimized dep (stale .vite/deps
+  // cache racing re-optimization on a fresh `task up`), the renderer's
+  // import chain throws before React mounts and the window looks blank.
+  // Register this window for shared 504 auto-reload (see viteDepStaleHeal).
+  if (isDev) registerViteDepStaleHeal(win, 'hub');
 
   loadHub();
 
