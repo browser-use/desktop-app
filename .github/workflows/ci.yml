@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 # We use yarn locally (yarn.lock is the source of truth). npm ci fights
 # the @visx React-19 peer mismatch unless legacy-peer-deps is set, and
