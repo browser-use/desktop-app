@@ -1156,6 +1156,57 @@ html, body {
   color: var(--color-status-error);
 }
 
+.pref-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.pref-row:first-of-type {
+  border-top: none;
+}
+
+.pref-row-toggle {
+  cursor: pointer;
+}
+
+.pref-row-toggle input[type="checkbox"] {
+  flex-shrink: 0;
+  margin: 2px 0 0 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent-default, #6366f1);
+  cursor: pointer;
+}
+
+.pref-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pref-row-title {
+  font-size: 14px;
+  color: var(--color-fg-primary);
+  margin-bottom: 2px;
+}
+
+.pref-row-desc {
+  font-size: 12px;
+  color: var(--color-fg-secondary);
+  line-height: 1.5;
+}
+
+.pref-row-desc a {
+  color: var(--color-accent-default, #6366f1);
+  text-decoration: underline;
+}
+
+.pref-row-action {
+  flex-shrink: 0;
+}
+
 /* WhatsApp onboarding step */
 
 .wa-qr {

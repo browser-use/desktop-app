@@ -2,6 +2,80 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ConnectionsPane } from './ConnectionsPane';
 import type { ActionId, KeyBinding } from './keybindings';
 
+type ElectronPrivacyAPI = {
+  get: () => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
+  setTelemetry: (optedIn: boolean) => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
+  openSystemNotifications: () => Promise<{ ok: boolean; error?: string }>;
+};
+
+function PrivacySection(): React.ReactElement {
+  const [telemetry, setTelemetry] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const api = (window as unknown as { electronAPI: { settings: { privacy: ElectronPrivacyAPI } } }).electronAPI.settings.privacy;
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get().then((state) => {
+      if (!cancelled) setTelemetry(state.telemetry);
+    }).catch(() => { if (!cancelled) setTelemetry(false); });
+    return () => { cancelled = true; };
+  }, [api]);
+
+  const handleToggle = useCallback(async () => {
+    if (telemetry === null || saving) return;
+    const next = !telemetry;
+    setSaving(true);
+    setTelemetry(next); // optimistic
+    try {
+      const res = await api.setTelemetry(next);
+      setTelemetry(res.telemetry);
+    } catch {
+      setTelemetry(!next); // revert
+    } finally {
+      setSaving(false);
+    }
+  }, [telemetry, saving, api]);
+
+  return (
+    <div className="settings-pane__section">
+      <span className="settings-pane__section-title">Privacy</span>
+      <p className="settings-pane__hint">
+        Control what leaves your machine. No prompts, credentials, or file contents are ever collected.
+      </p>
+
+      <div className="settings-pane__row">
+        <div>
+          <div className="settings-pane__label">Allow telemetry to help us make this app better</div>
+          <div className="settings-pane__sublabel">Anonymous only — app version, OS, feature usage, and crash reports.</div>
+        </div>
+        <button
+          className="settings-pane__toggle"
+          role="switch"
+          aria-checked={telemetry === true}
+          data-on={telemetry === true}
+          onClick={handleToggle}
+          disabled={telemetry === null || saving}
+        >
+          <span className="settings-pane__toggle-thumb" />
+        </button>
+      </div>
+
+      <div className="settings-pane__row">
+        <div>
+          <div className="settings-pane__label">System notifications</div>
+          <div className="settings-pane__sublabel">Managed by your operating system.</div>
+        </div>
+        <button
+          className="conn-card__btn conn-card__btn--secondary"
+          onClick={() => { void api.openSystemNotifications(); }}
+        >
+          Open system settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface SettingsPaneProps {
   open: boolean;
   onClose: () => void;
@@ -141,6 +215,7 @@ export function SettingsPane({ open, onClose, keybindings, overrides, onUpdateBi
             <span className="settings-pane__section-title">Connections</span>
             <ConnectionsPane embedded />
           </div>
+          <PrivacySection />
           <div className="settings-pane__section">
             <div className="settings-pane__section-header">
               <span className="settings-pane__section-title">Keybindings</span>

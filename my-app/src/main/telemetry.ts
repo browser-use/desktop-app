@@ -19,6 +19,8 @@ import { EventEmitter } from 'events';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isTelemetryConsented } from './consent';
+import { getInstallId } from './installId';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -27,6 +29,13 @@ import os from 'node:os';
 const LOG_PREFIX = '[Telemetry]';
 const JSONL_FILENAME = 'telemetry.jsonl';
 const MAX_HISTOGRAM_SAMPLES = 10_000;
+
+// Public PostHog project key — safe to commit. It's a write-only token that
+// can only ingest events; it cannot read analytics. See PostHog docs:
+// https://posthog.com/questions/is-it-ok-to-expose-the-posthog-project-api-key-to-the-public
+// Forks can override by changing these constants and rebuilding.
+const POSTHOG_PUBLIC_KEY = 'phc_F8JMNjW1i2KbGUTaW1unnDdLSPCoyc52SGRU0JecaUh';
+const POSTHOG_HOST = 'https://eu.i.posthog.com';
 
 // ---------------------------------------------------------------------------
 // Metric thresholds (plan §8.4)
@@ -110,7 +119,7 @@ export class TelemetryEmitter extends EventEmitter {
   } = {}) {
     super();
 
-    // Default to ~/Library/Application Support/AgenticBrowser when running in
+    // Default to ~/Library/Application Support/Browser Use when running in
     // Electron; fall back to a temp dir when unit-tested outside Electron.
     this.userDataPath =
       opts.userDataPath ??
@@ -120,12 +129,18 @@ export class TelemetryEmitter extends EventEmitter {
           const { app } = require('electron');
           return app.getPath('userData');
         } catch {
-          return path.join(os.tmpdir(), 'AgenticBrowser');
+          return path.join(os.tmpdir(), 'Browser Use');
         }
       })();
 
-    this.mode = opts.mode ?? (process.env['POSTHOG_API_KEY'] ? 'remote' : 'local');
-    this.localLogEnabled = this.mode === 'local';
+    // Remote vs local is decided per-emission by checking consent — the
+    // singleton exists regardless. `mode` here only controls whether we flush
+    // the local JSONL log (always on for debuggability) vs *additionally*
+    // attempting a PostHog POST (gated on user consent at send time).
+    this.mode = opts.mode ?? 'remote';
+    // Local JSONL log is always on — device-local debugging aid, never
+    // leaves the machine, not gated on consent.
+    this.localLogEnabled = true;
     this.localLogPath = path.join(this.userDataPath, JSONL_FILENAME);
 
     if (this.localLogEnabled) {
@@ -133,7 +148,8 @@ export class TelemetryEmitter extends EventEmitter {
     }
 
     console.log(
-      `${LOG_PREFIX} Initialized mode=${this.mode} localLog=${this.localLogPath}`,
+      `${LOG_PREFIX} Initialized mode=${this.mode} localLog=${this.localLogPath} ` +
+      `posthog=${POSTHOG_HOST} keyPrefix=${POSTHOG_PUBLIC_KEY.slice(0, 8)}…`,
     );
   }
 
@@ -322,24 +338,43 @@ export class TelemetryEmitter extends EventEmitter {
     tags?: Record<string, string>,
   ): void {
     if (this.mode !== 'remote') return;
-    const apiKey = process.env['POSTHOG_API_KEY'];
-    if (!apiKey) return;
+    // Gate every send on current consent. Reading on each call (rather than
+    // caching) means a user who toggles off in Settings stops emitting
+    // immediately, no restart needed.
+    if (!isTelemetryConsented()) {
+      console.log(`${LOG_PREFIX} posthog.skip reason=no-consent metric=${metric}`);
+      return;
+    }
 
-    // PostHog capture — fire-and-forget with error suppression
+    const eventName = `metric.${metric}`;
+    const url = `${POSTHOG_HOST}/capture/`;
     const body = JSON.stringify({
-      api_key: apiKey,
-      event: `metric.${metric}`,
+      api_key: POSTHOG_PUBLIC_KEY,
+      event: eventName,
       properties: { kind, value, ...tags },
       timestamp: new Date().toISOString(),
     });
 
-    fetch('https://app.posthog.com/capture/', {
+    console.log(`${LOG_PREFIX} posthog.send event=${eventName} host=${POSTHOG_HOST}`);
+    const sentAt = Date.now();
+
+    fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-    }).catch((err: unknown) => {
-      console.error(`${LOG_PREFIX} PostHog send failed: ${(err as Error).message}`);
-    });
+    })
+      .then((res) => {
+        const ms = Date.now() - sentAt;
+        if (res.ok) {
+          console.log(`${LOG_PREFIX} posthog.ok event=${eventName} status=${res.status} ms=${ms}`);
+        } else {
+          console.warn(`${LOG_PREFIX} posthog.error event=${eventName} status=${res.status} ms=${ms}`);
+        }
+      })
+      .catch((err: unknown) => {
+        const ms = Date.now() - sentAt;
+        console.error(`${LOG_PREFIX} posthog.fail event=${eventName} ms=${ms} err=${(err as Error).message}`);
+      });
   }
 }
 
@@ -348,3 +383,69 @@ export class TelemetryEmitter extends EventEmitter {
 // ---------------------------------------------------------------------------
 
 export const telemetry = new TelemetryEmitter();
+
+// ---------------------------------------------------------------------------
+// Product events (discrete captures, separate from the numeric metrics above)
+// ---------------------------------------------------------------------------
+
+/**
+ * Emit a discrete product event to PostHog. Use for funnels, feature usage,
+ * and any "something happened" signal. Numeric performance series still go
+ * through `telemetry.observe/increment/gauge`.
+ *
+ * Gated on consent on every call — flipping off the Settings toggle stops
+ * sends immediately without a restart.
+ */
+export function captureEvent(
+  eventName: string,
+  properties?: Record<string, string | number | boolean>,
+): void {
+  if (!isTelemetryConsented()) {
+    console.log(`${LOG_PREFIX} posthog.skip reason=no-consent event=${eventName}`);
+    return;
+  }
+
+  let appVersion = 'unknown';
+  let platform = process.platform;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { app } = require('electron');
+    appVersion = app.getVersion?.() ?? 'unknown';
+  } catch {
+    // Not running inside Electron (e.g. tests) — fall back to defaults.
+  }
+
+  const url = `${POSTHOG_HOST}/capture/`;
+  const body = JSON.stringify({
+    api_key: POSTHOG_PUBLIC_KEY,
+    event: eventName,
+    distinct_id: getInstallId(),
+    properties: {
+      app_version: appVersion,
+      platform,
+      ...properties,
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`${LOG_PREFIX} posthog.send event=${eventName}`);
+  const sentAt = Date.now();
+
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  })
+    .then((res) => {
+      const ms = Date.now() - sentAt;
+      if (res.ok) {
+        console.log(`${LOG_PREFIX} posthog.ok event=${eventName} status=${res.status} ms=${ms}`);
+      } else {
+        console.warn(`${LOG_PREFIX} posthog.error event=${eventName} status=${res.status} ms=${ms}`);
+      }
+    })
+    .catch((err: unknown) => {
+      const ms = Date.now() - sentAt;
+      console.error(`${LOG_PREFIX} posthog.fail event=${eventName} ms=${ms} err=${(err as Error).message}`);
+    });
+}

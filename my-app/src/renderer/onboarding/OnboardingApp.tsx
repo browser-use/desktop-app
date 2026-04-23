@@ -41,6 +41,7 @@ declare global {
         error?: string | null;
       }>;
       useClaudeCode: () => Promise<{ subscriptionType: string | null }>;
+      runClaudeLogin: () => Promise<{ ok: boolean; error?: string; stdout?: string }>;
       openClaudeLoginTerminal: () => Promise<{ opened: boolean; error?: string }>;
       detectCodex: () => Promise<{
         available: boolean;
@@ -59,6 +60,9 @@ declare global {
       onTaskSubmitted: (cb: () => void) => () => void;
       onPillShown: (cb: () => void) => () => void;
       onPillHidden: (cb: () => void) => () => void;
+      getConsent: () => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
+      setTelemetryConsent: (optedIn: boolean) => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
+      capture: (name: string, props?: Record<string, string | number | boolean>) => void;
       complete: () => Promise<void>;
       whatsapp: {
         connect: () => Promise<{ status: string }>;
@@ -101,7 +105,7 @@ function buildAccelerator(e: KeyboardEvent): string | null {
   return [...mods, key].join('+');
 }
 
-function NotificationsStep({
+function PreferencesStep({
   onContinue,
   onBack,
 }: {
@@ -110,6 +114,8 @@ function NotificationsStep({
 }) {
   const [requested, setRequested] = useState(false);
   const [supported, setSupported] = useState(true);
+  const [telemetryOptIn, setTelemetryOptIn] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleEnable = useCallback(async () => {
     try {
@@ -122,45 +128,87 @@ function NotificationsStep({
     }
   }, []);
 
+  const handleContinue = useCallback(async () => {
+    setSaving(true);
+    try {
+      // Always persist the telemetry choice — including an explicit "no" —
+      // so we have a dated consent record and don't re-prompt on next launch.
+      await window.onboardingAPI.setTelemetryConsent(telemetryOptIn);
+    } catch (err) {
+      console.error('[onboarding] setTelemetryConsent failed', err);
+    } finally {
+      setSaving(false);
+      onContinue();
+    }
+  }, [telemetryOptIn, onContinue]);
+
+  const handlePrivacyLink = useCallback(() => {
+    window.onboardingAPI.openExternal?.('https://browser-use.com/privacy');
+  }, []);
+
   return (
     <div className="step-panel">
-      <h1 className="step-title">Turn on notifications</h1>
+      <h1 className="step-title">Preferences</h1>
       <p className="step-subtitle">
-        Get alerts when agents finish tasks, get stuck, or need your input.
+        A couple of defaults you can change anytime in Settings.
       </p>
 
-      {requested && supported && (
-        <p className="notif-status">
-          Check the system dialog to allow notifications from Browser Use Desktop.
-        </p>
-      )}
-      {requested && !supported && (
-        <p className="notif-status notif-status-error">
-          Notifications aren&rsquo;t supported in this environment.
-        </p>
-      )}
+      <div className="pref-row">
+        <div className="pref-row-body">
+          <div className="pref-row-title">Notifications</div>
+          <div className="pref-row-desc">
+            Get alerts when agents finish tasks, get stuck, or need your input.
+          </div>
+          {requested && supported && (
+            <p className="notif-status">
+              Check the system dialog to allow notifications.
+            </p>
+          )}
+          {requested && !supported && (
+            <p className="notif-status notif-status-error">
+              Notifications aren&rsquo;t supported in this environment.
+            </p>
+          )}
+        </div>
+        <button
+          className="btn btn-secondary pref-row-action"
+          onClick={handleEnable}
+          disabled={requested}
+        >
+          {requested ? 'Requested' : 'Enable'}
+        </button>
+      </div>
+
+      <label className="pref-row pref-row-toggle">
+        <input
+          type="checkbox"
+          checked={telemetryOptIn}
+          onChange={(e) => setTelemetryOptIn(e.target.checked)}
+        />
+        <div className="pref-row-body">
+          <div className="pref-row-title">Allow telemetry to help us make this app better</div>
+          <div className="pref-row-desc">
+            Anonymous usage only — no prompts, credentials, or file contents.{' '}
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); handlePrivacyLink(); }}
+            >
+              Learn more
+            </a>
+          </div>
+        </div>
+      </label>
 
       <div className="apikey-actions">
-        {!requested ? (
-          <button className="btn btn-primary" onClick={handleEnable}>
-            Enable notifications
-          </button>
-        ) : (
-          <button className="btn btn-primary" onClick={onContinue}>
-            Continue
-          </button>
-        )}
+        <button className="btn btn-primary" onClick={handleContinue} disabled={saving}>
+          {saving ? 'Saving…' : 'Continue'}
+        </button>
       </div>
 
       <div className="step-subactions">
         <button className="back-btn" onClick={onBack}>
           Back
         </button>
-        {!requested && (
-          <button className="back-btn back-btn-link" onClick={onContinue}>
-            Skip for now
-          </button>
-        )}
       </div>
     </div>
   );
@@ -168,6 +216,18 @@ function NotificationsStep({
 
 export function OnboardingApp() {
   const [step, setStep] = useState<Step>('intro');
+
+  // Fire once on mount — the denominator for the onboarding funnel. Every
+  // subsequent drop-off is measured against this event count.
+  useEffect(() => {
+    window.onboardingAPI.capture?.('onboarding_started');
+  }, []);
+
+  // Capture every step transition so PostHog can build a stepwise funnel.
+  useEffect(() => {
+    window.onboardingAPI.capture?.('onboarding_step_viewed', { step });
+  }, [step]);
+
   const [profiles, setProfiles] = useState<ChromeProfile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);
@@ -283,6 +343,7 @@ export function OnboardingApp() {
       console.log('[onboarding] handleUseCodex: ok', res);
       setUsingCodex(true);
       setUsingClaudeCode(false);
+      window.onboardingAPI.capture?.('onboarding_provider_selected', { provider: 'codex' });
     } catch (err) {
       console.error('[onboarding] handleUseCodex: useCodex threw', err);
     }
@@ -304,7 +365,7 @@ export function OnboardingApp() {
     }
   }, []);
 
-  // Poll while waiting for user to finish `claude login` in Terminal.
+  // Poll while waiting for Claude Code to finish browser-based login.
   // Stops when authed becomes true or after a cap.
   useEffect(() => {
     if (!waitingForLogin) return;
@@ -330,6 +391,7 @@ export function OnboardingApp() {
       console.log('[onboarding] handleUseClaudeCode: ok');
       setUsingClaudeCode(true);
       setUsingCodex(false);
+      window.onboardingAPI.capture?.('onboarding_provider_selected', { provider: 'claude-code' });
     } catch (err) {
       console.error('[onboarding] handleUseClaudeCode: threw', err);
     }
@@ -338,16 +400,18 @@ export function OnboardingApp() {
   const handleStartClaudeLogin = useCallback(async () => {
     setWaitingForLogin(true);
     try {
-      const res = await window.onboardingAPI.openClaudeLoginTerminal();
-      if (!res.opened) {
-        console.warn('[onboarding] openClaudeLoginTerminal failed', res.error);
+      const res = await window.onboardingAPI.runClaudeLogin();
+      if (!res.ok) {
+        console.warn('[onboarding] runClaudeLogin failed', res.error);
         setWaitingForLogin(false);
+      } else {
+        void refreshClaudeStatus();
       }
     } catch (err) {
-      console.error('[onboarding] openClaudeLoginTerminal threw', err);
+      console.error('[onboarding] runClaudeLogin threw', err);
       setWaitingForLogin(false);
     }
-  }, []);
+  }, [refreshClaudeStatus]);
 
   const handleInstallClaudeCode = useCallback(() => {
     window.onboardingAPI.openExternal?.('https://docs.anthropic.com/en/docs/claude-code/overview');
@@ -480,6 +544,12 @@ export function OnboardingApp() {
         console.log('[onboarding] handleStepSaveAndContinue: saving', ops.length, 'key(s)');
         await Promise.all(ops);
       }
+      if (apiKey.trim()) {
+        window.onboardingAPI.capture?.('onboarding_provider_selected', { provider: 'anthropic-key' });
+      }
+      if (openaiKey.trim()) {
+        window.onboardingAPI.capture?.('onboarding_provider_selected', { provider: 'openai-key' });
+      }
       console.log('[onboarding] handleStepSaveAndContinue: advancing to whatsapp step');
       setStep('whatsapp');
     } catch (err) {
@@ -495,6 +565,7 @@ export function OnboardingApp() {
   }, []);
 
   const handleFinish = useCallback(async () => {
+    window.onboardingAPI.capture?.('onboarding_completed');
     try {
       await window.onboardingAPI.complete();
     } catch (err) {
@@ -539,7 +610,7 @@ export function OnboardingApp() {
       // grid (agent pane) so they can see the running session, not the empty
       // dashboard. Without a submitted task the hub's default 'dashboard'
       // view stands.
-      try { window.localStorage.setItem('hub-view-mode', 'grid'); } catch {}
+      try { window.localStorage.setItem('hub-view-mode', 'grid'); } catch { /* ignore storage failures */ }
       console.log('[onboarding] task submitted during onboarding → hub→grid');
       void window.onboardingAPI.complete();
     });
@@ -738,7 +809,7 @@ export function OnboardingApp() {
               </div>
             )}
 
-            {/* Installed but not authed → offer to run `claude login` */}
+            {/* Installed but not authed → offer to start the Claude sign-in flow */}
             {claudeCode?.installed && !claudeCode?.authed && !usingClaudeCode && (
               <button
                 type="button"
@@ -751,12 +822,12 @@ export function OnboardingApp() {
                 </div>
                 <div className="claude-code-card__text">
                   <div className="claude-code-card__title">
-                    {waitingForLogin ? 'Waiting for login…' : 'Log in to Claude'}
+                    {waitingForLogin ? 'Waiting for login…' : 'Click to log in'}
                   </div>
                   <div className="claude-code-card__sub">
                     {waitingForLogin
-                      ? 'Finish the browser flow in Terminal. We\u2019ll detect it automatically.'
-                      : 'Opens Terminal with `claude login` — sign in once, we\u2019ll detect it.'}
+                      ? 'Finish the browser sign-in. We’ll detect it automatically.'
+                      : 'Opens the Claude sign-in flow in your browser. Sign in once and we’ll detect it.'}
                   </div>
                 </div>
                 <div className="claude-code-card__chevron">{waitingForLogin ? '\u2026' : '\u203A'}</div>
@@ -919,7 +990,7 @@ export function OnboardingApp() {
               <h1 className="step-title">Connect WhatsApp</h1>
             </div>
             <p className="step-subtitle">
-              Receive agent notifications and trigger tasks from WhatsApp.
+              Receive agent notifications and auto-configure WhatsApp so texting yourself can start sessions and send results back to you.
             </p>
 
             {waStatus === 'connected' && (
@@ -930,7 +1001,7 @@ export function OnboardingApp() {
                   </svg>
                 </div>
                 <p className="wa-connected__text">
-                  Connected as {waIdentity ?? 'WhatsApp'}
+                  Connected as {waIdentity ?? 'WhatsApp'}. Text yourself on WhatsApp to start sessions and get agent notifications back in the same chat.
                 </p>
               </div>
             )}
@@ -943,7 +1014,7 @@ export function OnboardingApp() {
                   <div className="wa-qr__loading">Generating QR...</div>
                 )}
                 <p className="wa-qr__hint">
-                  Open WhatsApp on your phone, go to Linked Devices, and scan this code
+                  Open WhatsApp on your phone, go to Linked Devices, and scan this code. Once connected, texting yourself will trigger sessions and send notifications back to that chat.
                 </p>
               </div>
             )}
@@ -1049,7 +1120,7 @@ export function OnboardingApp() {
         )}
 
         {step === 'notifications' && (
-          <NotificationsStep
+          <PreferencesStep
             onContinue={() => setStep('shortcut')}
             onBack={() => setStep('whatsapp')}
           />

@@ -40,6 +40,9 @@ const onboardingAPI = {
   useClaudeCode: (): Promise<{ subscriptionType: string | null }> =>
     ipcRenderer.invoke('onboarding:use-claude-code'),
 
+  runClaudeLogin: (): Promise<{ ok: boolean; error?: string; stdout?: string }> =>
+    ipcRenderer.invoke('onboarding:run-claude-login'),
+
   openClaudeLoginTerminal: (): Promise<{ opened: boolean; error?: string }> =>
     ipcRenderer.invoke('onboarding:open-claude-login-terminal'),
 
@@ -101,6 +104,22 @@ const onboardingAPI = {
 
   requestNotifications: (): Promise<{ supported: boolean }> =>
     ipcRenderer.invoke('onboarding:request-notifications'),
+
+  getConsent: (): Promise<{
+    telemetry: boolean;
+    telemetryUpdatedAt: string | null;
+    version: number;
+  }> => ipcRenderer.invoke('consent:get'),
+
+  setTelemetryConsent: (optedIn: boolean): Promise<{
+    telemetry: boolean;
+    telemetryUpdatedAt: string | null;
+    version: number;
+  }> => ipcRenderer.invoke('consent:set-telemetry', optedIn),
+
+  capture: (name: string, props?: Record<string, string | number | boolean>): void => {
+    ipcRenderer.invoke('telemetry:capture', name, props);
+  },
 
   complete: (): Promise<void> =>
     ipcRenderer.invoke('onboarding:complete'),
