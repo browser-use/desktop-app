@@ -33,6 +33,9 @@ jobs:
           cache: yarn
           cache-dependency-path: my-app/yarn.lock
 
+      - name: Rewrite git+ssh → https (transitive deps use ssh://git@github.com)
+        run: git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+
       - name: Install dependencies
         working-directory: my-app
         run: yarn install --frozen-lockfile
@@ -55,6 +58,9 @@ jobs:
           cache: yarn
           cache-dependency-path: my-app/yarn.lock
 
+      - name: Rewrite git+ssh → https (transitive deps use ssh://git@github.com)
+        run: git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+
       - name: Install dependencies
         working-directory: my-app
         run: yarn install --frozen-lockfile
@@ -75,6 +81,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
           cache-dependency-path: my-app/yarn.lock
+
+      - name: Rewrite git+ssh → https (transitive deps use ssh://git@github.com)
+        run: git config --global url."https://github.com/".insteadOf ssh://git@github.com/
 
       - name: Install dependencies
         working-directory: my-app
