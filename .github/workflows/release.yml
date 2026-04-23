@@ -87,12 +87,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: my-app/package-lock.json
 
       - name: Install JS dependencies
         working-directory: my-app
-        run: npm ci --no-audit --no-fund --legacy-peer-deps
+        # Repo intentionally doesn't commit package-lock.json, so use install
+        # instead of ci. --legacy-peer-deps matches forge.config.ts hook.
+        run: npm install --no-audit --no-fund --legacy-peer-deps
 
       # Decide signed vs unsigned. The rule:
       #   - `workflow_dispatch` respects the `skip-signing` input (default true).
