@@ -63,6 +63,8 @@ import { createOnboardingWindow } from './identity/onboardingWindow';
 import { registerOnboardingHandlers, unregisterOnboardingHandlers } from './identity/onboardingHandlers';
 import { registerApiKeyHandlers } from './settings/apiKeyIpc';
 import { registerConsentHandlers } from './consentIpc';
+import { registerTelemetryHandlers } from './telemetryIpc';
+import { captureEvent } from './telemetry';
 import { registerChromeImportHandlers, unregisterChromeImportHandlers } from './chrome-import/ipc';
 import { mainLogger } from './logger';
 import {
@@ -156,6 +158,12 @@ browserPool.setOnGone((sessionId) => {
   }
   takeoverOverlay.hide(sessionId, shellWindow);
 });
+// Keep each session's primarySite in sync with the actual page — the
+// browser is the source of truth. Covers agent-driven navigation and
+// any clicks the user makes inside the attached view.
+browserPool.setOnNavigate((sessionId, url) => {
+  sessionManager.updatePrimarySiteFromUrl(sessionId, url);
+});
 const accountStore = new AccountStore();
 const whatsAppAdapter = new WhatsAppAdapter();
 const channelRouter = new ChannelRouter(sessionManager, whatsAppAdapter);
@@ -186,6 +194,8 @@ function openShellAndWire(): BrowserWindow {
 
   registerApiKeyHandlers();
   registerConsentHandlers();
+  registerTelemetryHandlers();
+  captureEvent('app_launched');
 
   ipcMain.handle('hotkeys:get-global', () => getGlobalCmdbarAccelerator());
   ipcMain.handle('hotkeys:set-global', (_e, accel: string) => {
@@ -318,6 +328,17 @@ app.whenReady().then(async () => {
     hidePill();
 
     const id = sessionManager.createSession(validatedPrompt);
+    // Stamp the engine so the hub card shows the provider icon. Respect
+    // an explicit engine from the pill payload, else default to the
+    // canonical per-session default. getEngine() returns the legacy
+    // global ('hl-inprocess') which isn't a valid per-session engine id.
+    const pillEngineRaw = typeof payload === 'object' && payload !== null
+      ? (payload as { engine?: unknown }).engine
+      : undefined;
+    const pillEngineId = typeof pillEngineRaw === 'string' && pillEngineRaw.length > 0
+      ? pillEngineRaw
+      : DEFAULT_ENGINE_ID;
+    sessionManager.setSessionEngine(id, pillEngineId);
     if (attachments.length > 0) {
       const turnIndex = sessionManager.getNextAttachmentTurnIndex(id);
       for (const a of attachments) {
@@ -478,6 +499,11 @@ app.whenReady().then(async () => {
       (e: { type: string }) => e.type === 'done',
     ) as { type: string; summary?: string } | undefined;
     const summary = doneEvent?.summary ?? 'Task completed';
+    captureEvent('session_completed', {
+      engine: (session as { engineId?: string }).engineId ?? 'unknown',
+      success: Boolean(doneEvent),
+      has_summary: Boolean(doneEvent?.summary),
+    });
     sendSessionNotification({
       title: 'Session done',
       body: `"${session.prompt.slice(0, 60)}" — ${summary.slice(0, 80)}`,
@@ -517,6 +543,23 @@ app.whenReady().then(async () => {
     return sessionManager.getTermReplay(id);
   });
 
+  async function assertSessionEngineReady(id: string): Promise<string> {
+    const engineId = sessionManager.getSessionEngine(id) ?? DEFAULT_ENGINE_ID;
+    const { getAdapter } = await import('./hl/engines');
+    const adapter = getAdapter(engineId);
+    if (!adapter) throw new Error(`unknown engine: ${engineId}`);
+
+    const [installed, authed] = await Promise.all([adapter.probeInstalled(), adapter.probeAuthed()]);
+    if (!installed.installed) {
+      throw new Error(`${adapter.displayName} is not installed. Install ${adapter.displayName} and try again.`);
+    }
+    if (!authed.authed) {
+      throw new Error(`You aren't authenticated into ${adapter.displayName}. Please re-authenticate to ${adapter.displayName} and try again.`);
+    }
+
+    return engineId;
+  }
+
   async function startSessionWithAgent(id: string): Promise<void> {
     if (startingSessionIds.has(id)) {
       mainLogger.warn('main.startSessionWithAgent.alreadyStarting', { id });
@@ -525,66 +568,85 @@ app.whenReady().then(async () => {
     startingSessionIds.add(id);
     const t0 = Date.now();
     mainLogger.info('main.startSessionWithAgent', { id });
+    let launched = false;
+    let view: ReturnType<typeof browserPool.create> | null = null;
 
-    const abortController = sessionManager.startSession(id);
-    mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'startSession', ms: Date.now() - t0 });
+    try {
+      const engineId = await assertSessionEngineReady(id);
+      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'enginePreflight', ms: Date.now() - t0, engineId });
 
-    const view = browserPool.create(id);
-    mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'poolCreate', ms: Date.now() - t0 });
-    if (!view) {
-      sessionManager.failSession(id, `Browser pool full (max ${browserPool.activeCount}), session queued`);
-      mainLogger.warn('main.startSessionWithAgent.poolFull', { id, stats: browserPool.getStats() });
-      return;
+      const abortController = sessionManager.startSession(id);
+      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'startSession', ms: Date.now() - t0 });
+
+      view = browserPool.create(id);
+      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'poolCreate', ms: Date.now() - t0 });
+      if (!view) {
+        sessionManager.failSession(id, `Browser pool full (max ${browserPool.activeCount}), session queued`);
+        mainLogger.warn('main.startSessionWithAgent.poolFull', { id, stats: browserPool.getStats() });
+        return;
+      }
+
+      if (shellWindow && !shellWindow.isDestroyed()) {
+        // Detach existing views — only one session is visible at a time.
+        // We DON'T attach here: main doesn't know the exact pane rect.
+        // The renderer (AgentPane) is authoritative for bounds and will call
+        // sessions:view-attach with the exact .pane__output getBoundingClientRect.
+        browserPool.detachAll(shellWindow);
+        mainLogger.info('main.startSessionWithAgent.detachedAwaitingRenderer', { id });
+      }
+      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'attach', ms: Date.now() - t0 });
+
+      await view.webContents.loadURL('about:blank');
+      mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'loadBlank', ms: Date.now() - t0 });
+
+      const attachmentsForRun = sessionManager.loadAttachmentsForRun(id);
+      if (attachmentsForRun.length > 0) {
+        mainLogger.info('main.startSessionWithAgent.attachments', { id, count: attachmentsForRun.length, totalBytes: attachmentsForRun.reduce((s, a) => s + a.size, 0) });
+      }
+      steerQueues.set(id, []);
+      launched = true;
+      runEngine({
+        engineId,
+        harnessDir: harnessDir(),
+        sessionId: id,
+        prompt: sessionManager.getSession(id)!.prompt,
+        attachments: attachmentsForRun.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
+        webContents: view.webContents,
+        cdpPort: resolvedCdp.port,
+        signal: abortController.signal,
+        onSessionId: (sid) => sessionManager.setClaudeSessionId(id, sid),
+        onEvent: (event) => {
+          if (event.type === 'done') {
+            sessionManager.appendOutput(id, event);
+            sessionManager.completeSession(id);
+          } else if (event.type === 'error') {
+            sessionManager.failSession(id, event.message);
+            browserPool.destroy(id, shellWindow ?? undefined);
+          } else {
+            sessionManager.appendOutput(id, event);
+          }
+        },
+      }).catch((err: Error) => {
+        mainLogger.error('main.startSessionWithAgent.agentError', { id, error: err.message });
+        sessionManager.failSession(id, err.message);
+        browserPool.destroy(id, shellWindow ?? undefined);
+      }).finally(() => {
+        steerQueues.delete(id);
+        startingSessionIds.delete(id);
+        mainLogger.info('main.startSessionWithAgent.finished', { id, poolStats: browserPool.getStats() });
+      });
+    } catch (err) {
+      const message = (err as Error).message ?? 'Session start failed';
+      mainLogger.warn('main.startSessionWithAgent.preflightFailed', { id, error: message });
+      sessionManager.failSession(id, message);
+      if (view) browserPool.destroy(id, shellWindow ?? undefined);
+      throw err;
+    } finally {
+      if (!launched) {
+        steerQueues.delete(id);
+        startingSessionIds.delete(id);
+      }
     }
-
-    if (shellWindow && !shellWindow.isDestroyed()) {
-      // Detach existing views — only one session is visible at a time.
-      // We DON'T attach here: main doesn't know the exact pane rect.
-      // The renderer (AgentPane) is authoritative for bounds and will call
-      // sessions:view-attach with the exact .pane__output getBoundingClientRect.
-      browserPool.detachAll(shellWindow);
-      mainLogger.info('main.startSessionWithAgent.detachedAwaitingRenderer', { id });
-    }
-    mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'attach', ms: Date.now() - t0 });
-
-    await view.webContents.loadURL('about:blank');
-    mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'loadBlank', ms: Date.now() - t0 });
-
-    const attachmentsForRun = sessionManager.loadAttachmentsForRun(id);
-    if (attachmentsForRun.length > 0) {
-      mainLogger.info('main.startSessionWithAgent.attachments', { id, count: attachmentsForRun.length, totalBytes: attachmentsForRun.reduce((s, a) => s + a.size, 0) });
-    }
-    steerQueues.set(id, []);
-    runEngine({
-      engineId: sessionManager.getSessionEngine(id) ?? DEFAULT_ENGINE_ID,
-      harnessDir: harnessDir(),
-      sessionId: id,
-      prompt: sessionManager.getSession(id)!.prompt,
-      attachments: attachmentsForRun.map((a) => ({ name: a.name, mime: a.mime, bytes: a.bytes })),
-      webContents: view.webContents,
-      cdpPort: resolvedCdp.port,
-      signal: abortController.signal,
-      onSessionId: (sid) => sessionManager.setClaudeSessionId(id, sid),
-      onEvent: (event) => {
-        if (event.type === 'done') {
-          sessionManager.appendOutput(id, event);
-          sessionManager.completeSession(id);
-        } else if (event.type === 'error') {
-          sessionManager.failSession(id, event.message);
-          browserPool.destroy(id, shellWindow ?? undefined);
-        } else {
-          sessionManager.appendOutput(id, event);
-        }
-      },
-    }).catch((err: Error) => {
-      mainLogger.error('main.startSessionWithAgent.agentError', { id, error: err.message });
-      sessionManager.failSession(id, err.message);
-      browserPool.destroy(id, shellWindow ?? undefined);
-    }).finally(() => {
-      steerQueues.delete(id);
-      startingSessionIds.delete(id);
-      mainLogger.info('main.startSessionWithAgent.finished', { id, poolStats: browserPool.getStats() });
-    });
   }
 
   channelRouter.setStartSession(startSessionWithAgent);
@@ -619,6 +681,11 @@ app.whenReady().then(async () => {
         sessionManager.saveAttachment(id, a, turnIndex);
       }
     }
+    captureEvent('session_created', {
+      engine: engineId,
+      prompt_length: validatedPrompt.length,
+      attachments_count: attachments.length,
+    });
     return id;
   });
 

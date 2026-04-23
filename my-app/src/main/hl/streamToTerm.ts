@@ -59,10 +59,14 @@ function stringifyArgs(args: unknown): string {
  */
 export interface TermTranslatorState {
   inThinking: boolean;
+  /** Has anything been emitted yet? Used to skip the leading newline on
+   *  the first user_input so the initial prompt doesn't start on a blank
+   *  row. */
+  hasEmitted: boolean;
 }
 
 export function createTermTranslatorState(): TermTranslatorState {
-  return { inThinking: false };
+  return { inThinking: false, hasEmitted: false };
 }
 
 /**
@@ -72,6 +76,14 @@ export function createTermTranslatorState(): TermTranslatorState {
  */
 export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): string {
   const out: string[] = [];
+  // Mark state.hasEmitted true whenever we actually produce bytes, so the
+  // next user_input knows whether a leading newline is needed. Cases use
+  // `return finish()` in place of `return out.join('')`.
+  const finish = (): string => {
+    const result = out.join('');
+    if (result) state.hasEmitted = true;
+    return result;
+  };
 
   // Close an active `thinking` run when any other event arrives.
   if (state.inThinking && event.type !== 'thinking') {
@@ -86,19 +98,26 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
       if (first) out.push(DIM);
       // Thinking deltas may contain \n; convert to CRLF for correct line feeds in xterm.
       out.push(event.text.replace(/\r?\n/g, '\r\n'));
-      return out.join('');
+      return finish();
     }
 
-    case 'user_input':
-      out.push(`${BOLD}${FG.brightCyan}› ${event.text}${RESET}\r\n`);
-      return out.join('');
+    case 'user_input': {
+      // Follow-up prompts need a leading newline so they start on their
+      // own line — previous events (`done`, summaries) suppress their
+      // trailing newline to avoid a blank row. But the very first prompt
+      // is the top of the stream; a leading newline there would leave an
+      // empty first row.
+      const leading = state.hasEmitted ? '\r\n' : '';
+      out.push(`${leading}${BOLD}${FG.brightCyan}› ${event.text}${RESET}\r\n`);
+      return finish();
+    }
 
     case 'tool_call': {
       const args = truncate(stringifyArgs(event.args), 160);
       out.push(`${FG.cyan}⏺ ${event.name}${RESET}`);
       if (args) out.push(` ${FG.grey}${args}${RESET}`);
       out.push('\r\n');
-      return out.join('');
+      return finish();
     }
 
     case 'tool_result': {
@@ -108,32 +127,32 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
       if (preview) out.push(` ${FG.grey}${preview}${RESET}`);
       if (event.ms > 0) out.push(` ${FG.grey}(${formatDurationMs(event.ms)})${RESET}`);
       out.push('\r\n');
-      return out.join('');
+      return finish();
     }
 
     case 'skill_written':
       out.push(`${FG.magenta}★ learned ${event.domain}/${event.topic}${RESET}\r\n`);
-      return out.join('');
+      return finish();
 
     case 'skill_used':
       out.push(`${FG.magenta}☆ skill ${event.domain ?? ''}${event.domain ? '/' : ''}${event.topic}${RESET}\r\n`);
-      return out.join('');
+      return finish();
 
     case 'harness_edited': {
       const verb = event.action === 'patch' ? 'patched' : 'updated';
       const target = event.target === 'helpers' ? 'helpers.js' : 'TOOLS.json';
       out.push(`${FG.yellow}✎ ${verb} harness ${target}${RESET}\r\n`);
-      return out.join('');
+      return finish();
     }
 
     case 'file_output':
       out.push(`${FG.yellow}⬇ ${event.name}${RESET} ${FG.grey}(${event.size} bytes)${RESET}\r\n`);
-      return out.join('');
+      return finish();
 
     case 'notify': {
       const color = event.level === 'blocking' ? FG.brightRed : FG.blue;
       out.push(`${color}! ${event.message}${RESET}\r\n`);
-      return out.join('');
+      return finish();
     }
 
     case 'done': {
@@ -147,12 +166,12 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
         const formatted = summary.replace(/\r?\n/g, '\r\n');
         out.push(`\r\n${formatted}`);
       }
-      return out.join('');
+      return finish();
     }
 
     case 'error':
       out.push(`${BOLD}${FG.brightRed}✗ ${event.message}${RESET}\r\n`);
-      return out.join('');
+      return finish();
   }
 
   return out.join('');

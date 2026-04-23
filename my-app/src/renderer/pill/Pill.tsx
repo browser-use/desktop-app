@@ -6,6 +6,7 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES,
   formatBytes,
 } from '../../shared/attachments';
+import { EnginePicker } from '../hub/EnginePicker';
 
 declare global {
   interface Window {
@@ -13,6 +14,7 @@ declare global {
       submit: (
         prompt: string,
         attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+        engine?: string,
       ) => Promise<{ task_id: string }>;
       hide: () => void;
       setExpanded: (expanded: boolean | number) => void;
@@ -99,6 +101,8 @@ export function Pill(): React.ReactElement {
   const [sessions, setSessions] = useState<SessionLite[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [followUp, setFollowUp] = useState<{ sessionId: string; sessionPrompt: string } | null>(null);
+  const [engine, setEngine] = useState<string>('claude-code');
+  const [engineMenuOpen, setEngineMenuOpen] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; bytes: Uint8Array }>>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -200,7 +204,7 @@ export function Pill(): React.ReactElement {
     if (!trimmed) return;
     const attachArg = attachments.length > 0 ? attachments : undefined;
     if (hasResults && selectedIdx === 0) {
-      window.pillAPI.submit(trimmed, attachArg);
+      window.pillAPI.submit(trimmed, attachArg, engine);
       setValue('');
       setAttachments([]);
       setAttachError(null);
@@ -211,11 +215,11 @@ export function Pill(): React.ReactElement {
       setValue('');
       return;
     }
-    window.pillAPI.submit(trimmed, attachArg);
+    window.pillAPI.submit(trimmed, attachArg, engine);
     setValue('');
     setAttachments([]);
     setAttachError(null);
-  }, [value, hasResults, selectedIdx, results, followUp, attachments]);
+  }, [value, hasResults, selectedIdx, results, followUp, attachments, engine]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -237,7 +241,7 @@ export function Pill(): React.ReactElement {
         const trimmed = value.trim();
         if (trimmed) {
           const attachArg = attachments.length > 0 ? attachments : undefined;
-          window.pillAPI.submit(trimmed, attachArg);
+          window.pillAPI.submit(trimmed, attachArg, engine);
           setValue('');
           setAttachments([]);
           setAttachError(null);
@@ -247,7 +251,7 @@ export function Pill(): React.ReactElement {
         submit();
       }
     },
-    [submit, value, results.length, attachments],
+    [submit, value, results.length, attachments, engine],
   );
 
   const [isDragging, setIsDragging] = useState(false);
@@ -344,6 +348,11 @@ export function Pill(): React.ReactElement {
               e.target.value = '';
             }}
           />
+          {!followUp && (
+            <div className="cmdbar__engine-picker">
+              <EnginePicker value={engine} onChange={setEngine} onOpenChange={setEngineMenuOpen} />
+            </div>
+          )}
           <button
             className="cmdbar__send"
             onClick={submit}

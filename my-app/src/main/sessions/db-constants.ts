@@ -1,4 +1,4 @@
-export const DB_SCHEMA_VERSION = 7;
+export const DB_SCHEMA_VERSION = 8;
 
 // Hard cap on attachments per session to prevent DB bloat from runaway
 // follow-up uploads. Enforced in SessionDb.saveAttachment.

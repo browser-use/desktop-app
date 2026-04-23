@@ -58,13 +58,15 @@ contextBridge.exposeInMainWorld('pillAPI', {
   submit: (
     prompt: string,
     attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
+    engine?: string,
   ): Promise<{ task_id: string }> => {
     log.info('preload.pill.submit', {
       message: 'Invoking pill:submit',
       promptLength: prompt.length,
       attachmentCount: attachments?.length ?? 0,
+      engine: engine ?? '(default)',
     });
-    return ipcRenderer.invoke('pill:submit', { prompt, attachments });
+    return ipcRenderer.invoke('pill:submit', { prompt, attachments, engine });
   },
 
   selectSession: (id: string): void => {
@@ -219,6 +221,24 @@ contextBridge.exposeInMainWorld('pillAPI', {
       ipcRenderer.invoke('pill:get-tabs'),
     activate: (tab_id: string): Promise<void> =>
       ipcRenderer.invoke('pill:activate-tab', { tab_id }),
+  },
+});
+
+// Minimal `electronAPI.sessions` subset so shared components (EnginePicker)
+// used inside the pill renderer can reach the same engine IPCs the hub uses.
+// Only the three calls EnginePicker needs — don't grow this without a reason.
+contextBridge.exposeInMainWorld('electronAPI', {
+  sessions: {
+    listEngines: (): Promise<Array<{ id: string; displayName: string; binaryName: string }>> =>
+      ipcRenderer.invoke('sessions:list-engines'),
+    engineStatus: (engineId: string): Promise<{
+      id: string;
+      displayName: string;
+      installed: { installed: boolean; version?: string; error?: string };
+      authed: { authed: boolean; error?: string };
+    }> => ipcRenderer.invoke('sessions:engine-status', engineId),
+    engineLogin: (engineId: string): Promise<{ opened: boolean; error?: string }> =>
+      ipcRenderer.invoke('sessions:engine-login', engineId),
   },
 });
 

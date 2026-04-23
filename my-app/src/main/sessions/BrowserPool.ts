@@ -27,6 +27,7 @@ export class BrowserPool {
   private maxConcurrent: number;
   private queue: string[] = [];
   private onGone?: (sessionId: string) => void;
+  private onNavigate?: (sessionId: string, url: string) => void;
 
   constructor(maxConcurrent = DEFAULT_MAX_CONCURRENT) {
     this.maxConcurrent = maxConcurrent;
@@ -40,9 +41,22 @@ export class BrowserPool {
     this.onGone = listener;
   }
 
+  /** Register a listener that fires on every top-frame navigation (including
+   *  in-page hash/pushState). Used by SessionManager to keep session.primarySite
+   *  in sync with the actual browser — the source of truth, not tool-call args. */
+  setOnNavigate(listener: (sessionId: string, url: string) => void): void {
+    this.onNavigate = listener;
+  }
+
   private notifyGone(sessionId: string): void {
     try { this.onGone?.(sessionId); } catch (err) {
       mainLogger.warn('BrowserPool.notifyGone.listenerError', { sessionId, error: (err as Error).message });
+    }
+  }
+
+  private notifyNavigate(sessionId: string, url: string): void {
+    try { this.onNavigate?.(sessionId, url); } catch (err) {
+      mainLogger.warn('BrowserPool.notifyNavigate.listenerError', { sessionId, error: (err as Error).message });
     }
   }
 
@@ -155,6 +169,18 @@ export class BrowserPool {
     wc.on('render-process-gone', (_event, details) => {
       mainLogger.warn('BrowserPool.wc.renderProcessGone', { sessionId, reason: details.reason });
       this.notifyGone(sessionId);
+    });
+    // Top-frame navigation — full page load. Covers agent-driven goto(),
+    // user clicks on links, form submits, history back/forward, etc.
+    wc.on('did-navigate', (_event, url) => {
+      this.notifyNavigate(sessionId, url);
+    });
+    // SPA/hash navigation — pushState, replaceState, hash changes. Many
+    // sites (x.com, linkedin, gmail) never fire did-navigate after the
+    // initial load, so without this the primarySite gets stuck on the
+    // first URL and misses SPA route changes.
+    wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+      if (isMainFrame) this.notifyNavigate(sessionId, url);
     });
 
     mainLogger.info('BrowserPool.create', {

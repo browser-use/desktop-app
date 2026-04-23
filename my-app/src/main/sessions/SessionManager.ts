@@ -69,6 +69,10 @@ export class SessionManager extends EventEmitter {
         primarySite: row.primary_site ?? null,
         lastActivityAt: row.updated_at,
       };
+      if (row.engine) {
+        (session as AgentSession & { engine?: string }).engine = row.engine;
+        this.sessionEngines.set(row.id, row.engine);
+      }
       this.sessions.set(row.id, session);
     }
 
@@ -193,8 +197,6 @@ export class SessionManager extends EventEmitter {
     const seq = session.output.length - 1;
     this.db.appendEvent(id, seq, event);
 
-    this.maybeUpdatePrimarySite(session, event);
-
     if (session.status === 'stuck') {
       session.status = 'running';
       this.db.updateSessionStatus(id, 'running');
@@ -235,11 +237,12 @@ export class SessionManager extends EventEmitter {
     return eventsToTermBytes(events);
   }
 
-  private maybeUpdatePrimarySite(session: AgentSession, event: HlEvent): void {
-    if (event.type !== 'tool_call') return;
-    const args = event.args as { url?: unknown } | null;
-    const url = typeof args?.url === 'string' ? args.url : null;
-    if (!url) return;
+  /** Update the session's primarySite to match the domain of the given URL.
+   *  Called by index.ts when BrowserPool fires a navigation event — the
+   *  browser is the source of truth for what page the session is on. */
+  updatePrimarySiteFromUrl(id: string, url: string): void {
+    const session = this.sessions.get(id);
+    if (!session) return;
     const domain = extractRegistrableDomain(url);
     if (!domain) return;
     if (session.primarySite === domain) return;
@@ -247,7 +250,7 @@ export class SessionManager extends EventEmitter {
     session.primarySite = domain;
     session.lastActivityAt = Date.now();
     this.db.updatePrimarySite(session.id, domain);
-    mainLogger.info('SessionManager.primarySite.update', { id: session.id, from, to: domain, tool: event.name });
+    mainLogger.info('SessionManager.primarySite.update', { id: session.id, from, to: domain, url });
     this.emitEvent('session-updated', { ...session });
   }
 
@@ -458,6 +461,7 @@ export class SessionManager extends EventEmitter {
     const session = this.sessions.get(id);
     if (session) {
       (session as AgentSession & { engine?: string }).engine = engineId;
+      this.db.updateEngine(id, engineId);
       this.emitEvent('session-updated', { ...session });
     }
   }

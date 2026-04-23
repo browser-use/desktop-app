@@ -44,14 +44,19 @@ function ChevronIcon(): React.ReactElement {
 interface EnginePickerProps {
   value: string;
   onChange: (engineId: string) => void;
+  /** Fires when the dropdown opens/closes. Used by hosts (e.g. the pill
+   *  renderer) that need to grow their window so the menu isn't clipped. */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function EnginePicker({ value, onChange }: EnginePickerProps): React.ReactElement {
+export function EnginePicker({ value, onChange, onOpenChange }: EnginePickerProps): React.ReactElement {
   const [engines, setEngines] = useState<EngineInfo[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EngineStatus>>({});
   const [open, setOpen] = useState(false);
   const [loggingIn, setLoggingIn] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
 
   const refreshStatus = useCallback(async (ids: string[]) => {
     const updates = await Promise.all(
@@ -81,8 +86,8 @@ export function EnginePicker({ value, onChange }: EnginePickerProps): React.Reac
     return () => { cancelled = true; };
   }, [refreshStatus]);
 
-  // Re-probe auth whenever the menu opens so a just-completed `codex login` or
-  // `claude login` is reflected without needing to re-mount the component.
+  // Re-probe auth whenever the menu opens so a just-completed login flow is
+  // reflected without needing to re-mount the component.
   useEffect(() => {
     if (!open) return;
     if (engines.length === 0) return;
@@ -181,7 +186,7 @@ export function EnginePicker({ value, onChange }: EnginePickerProps): React.Reac
                     className="engine-picker__item-login"
                     onClick={() => onLoginClick(e.id)}
                     disabled={loggingIn === e.id}
-                    title={st?.authed?.error ?? 'Run the CLI login in Terminal'}
+                    title={st?.authed?.error ?? 'Start the login flow'}
                   >
                     {loggingIn === e.id ? 'Waiting…' : 'Log in'}
                   </button>

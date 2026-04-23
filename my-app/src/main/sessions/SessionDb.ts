@@ -15,6 +15,7 @@ interface SessionRow {
   origin_channel: string | null;
   origin_conversation_id: string | null;
   primary_site: string | null;
+  engine: string | null;
 }
 
 export class SessionDb {
@@ -26,6 +27,7 @@ export class SessionDb {
     updatePrompt: Database.Statement;
     updateCreatedAt: Database.Statement;
     updatePrimarySite: Database.Statement;
+    updateEngine: Database.Statement;
     getSession: Database.Statement;
     getSessionOrigin: Database.Statement;
     listAll: Database.Statement;
@@ -91,6 +93,9 @@ export class SessionDb {
       ),
       updatePrimarySite: this.db.prepare(
         'UPDATE sessions SET primary_site = ?, updated_at = ? WHERE id = ?'
+      ),
+      updateEngine: this.db.prepare(
+        'UPDATE sessions SET engine = ?, updated_at = ? WHERE id = ?'
       ),
       getSession: this.db.prepare('SELECT * FROM sessions WHERE id = ?'),
       getSessionOrigin: this.db.prepare('SELECT origin_channel, origin_conversation_id FROM sessions WHERE id = ?'),
@@ -271,6 +276,18 @@ export class SessionDb {
       mainLogger.info('SessionDb.migration.complete', { version: 7 });
     }
 
+    if (this.getVersion() < 8) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 8 });
+      this.db.transaction(() => {
+        const cols = this.db.pragma('table_info(sessions)') as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === 'engine')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN engine TEXT');
+        }
+        this.setVersion(8);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 8 });
+    }
+
     const final = this.getVersion();
     if (final !== DB_SCHEMA_VERSION) {
       const msg = `SessionDb migration did not reach expected version. Got ${final}, expected ${DB_SCHEMA_VERSION}.`;
@@ -337,6 +354,20 @@ export class SessionDb {
       }
     } catch (err) {
       mainLogger.error('SessionDb.updatePrimarySite.failed', { id, site, error: (err as Error).message });
+      throw err;
+    }
+  }
+
+  updateEngine(id: string, engine: string | null): void {
+    if (this.closed) return;
+    const now = Date.now();
+    try {
+      const result = this.stmts.updateEngine.run(engine, now, id);
+      if (result.changes === 0) {
+        mainLogger.warn('SessionDb.updateEngine.notFound', { id, engine });
+      }
+    } catch (err) {
+      mainLogger.error('SessionDb.updateEngine.failed', { id, engine, error: (err as Error).message });
       throw err;
     }
   }
