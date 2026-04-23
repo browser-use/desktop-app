@@ -136,13 +136,19 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
       return out.join('');
     }
 
-    case 'done':
-      // Summary is intentionally omitted: the assistant's final text already
-      // streamed via `thinking` deltas, so printing it again duplicates.
-      // No trailing newline — done is always the last event, and the extra
-      // line would leave a visible blank row with the cursor under "done".
+    case 'done': {
       out.push(`${DIM}${FG.green}● done${RESET}`);
+      // Print the summary below the done marker when it's a real message
+      // (not the "(done)" placeholder used when an engine like Claude
+      // already streamed its final text via `thinking` deltas). Plain
+      // white (no color code) so long-form summaries read as body copy.
+      const summary = event.summary?.trim();
+      if (summary && summary !== '(done)') {
+        const formatted = summary.replace(/\r?\n/g, '\r\n');
+        out.push(`\r\n${formatted}`);
+      }
       return out.join('');
+    }
 
     case 'error':
       out.push(`${BOLD}${FG.brightRed}✗ ${event.message}${RESET}\r\n`);

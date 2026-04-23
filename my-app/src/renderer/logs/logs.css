@@ -133,16 +133,29 @@ html, body {
   letter-spacing: 0.04em;
 }
 
-/* File outputs row. Scrolls horizontally if more than a few. */
+/* File outputs row. Scrolls horizontally when files overflow the window
+   width. The per-row "Open in…" popover menu clips at the scroll edges;
+   if that becomes a real issue, switch the menu to position: fixed with
+   JS-computed coords so it can escape the scroll container. */
 .logs-files {
   flex: 0 0 auto;
   display: flex;
   gap: 4px;
   padding: 4px 6px;
-  /* overflow: visible so the file-row popover menu can escape upward;
-     horizontal scroll is achieved via child wrap width instead. */
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
   border-top: 1px solid var(--color-border-subtle, #1f232a);
+}
+.logs-files::-webkit-scrollbar {
+  height: 6px;
+}
+.logs-files::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle, #1f232a);
+  border-radius: 3px;
+}
+.logs-files::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border, #2a2f36);
 }
 
 .logs-file-row {

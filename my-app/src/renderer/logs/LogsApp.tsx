@@ -445,11 +445,6 @@ export function LogsApp(): React.ReactElement {
           {cappedFiles.map((f, i) => <FileRow key={`${f.path}-${i}`} entry={f} />)}
         </div>
       )}
-      {(errorMsg || (done && sessionStatus !== 'running')) && (
-        <div className={`logs-summary${errorMsg ? ' logs-summary--error' : ''}`}>
-          {errorMsg ?? done?.summary}
-        </div>
-      )}
       {sessionStatus === 'stopped' ? (
         <div className="logs-followup logs-followup--ended" aria-live="polite">
           <span className="logs-followup__ended-label">Session ended</span>
