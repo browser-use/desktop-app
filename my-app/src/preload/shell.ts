@@ -18,9 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pill: {
     toggle: (): Promise<void> => ipcRenderer.invoke('pill:toggle'),
     hide: (): Promise<void> => ipcRenderer.invoke('pill:hide'),
-    openFollowUp: (sessionId: string, sessionPrompt: string): void => {
-      ipcRenderer.send('pill:open-followup', sessionId, sessionPrompt);
-    },
   },
   logs: {
     toggle: (
@@ -32,6 +29,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       anchor?: { x: number; y: number; width: number; height: number },
     ): Promise<boolean> => ipcRenderer.invoke('logs:show', sessionId, anchor),
     close: (): Promise<void> => ipcRenderer.invoke('logs:close'),
+    focusFollowUp: (
+      sessionId: string,
+      anchor?: { x: number; y: number; width: number; height: number },
+    ): Promise<void> => ipcRenderer.invoke('logs:focus-followup', sessionId, anchor),
     // Fire-and-forget during rapid hub resize — keeps dot/normal/full bounds
     // aligned to the pane rect without an invoke round-trip per frame.
     updateAnchor: (anchor: { x: number; y: number; width: number; height: number }): void => {

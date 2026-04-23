@@ -227,8 +227,8 @@ export function HubApp(): React.ReactElement {
     'action.followUp': () => {
       const s = sessions[focusIndex];
       if (!s || s.status !== 'idle') return;
-      console.log('[VimKeys] follow up', s.id);
-      window.electronAPI?.pill.openFollowUp(s.id, s.prompt);
+      console.log('[VimKeys] follow up → logs focus', s.id);
+      window.electronAPI?.logs.focusFollowUp(s.id);
     },
     'scroll.halfDown': () => {
       const el = document.querySelector('.hub-grid, .list-view__body, .dashboard');
@@ -603,7 +603,7 @@ export function HubApp(): React.ReactElement {
                       }}
                       onSelect={handleSelectSession}
                       onOpenFollowUp={() => {
-                        window.electronAPI?.pill.openFollowUp(session.id, session.prompt);
+                        window.electronAPI?.logs.focusFollowUp(session.id);
                       }}
                       onOpenSettings={() => {
                         window.electronAPI?.pill.hide();

@@ -112,7 +112,6 @@ interface ElectronShellAPI {
 interface ElectronPillAPI {
   toggle: () => Promise<void>;
   hide: () => Promise<void>;
-  openFollowUp: (sessionId: string, sessionPrompt: string) => void;
 }
 
 interface ElectronLogsAPI {
@@ -125,6 +124,10 @@ interface ElectronLogsAPI {
     anchor?: { x: number; y: number; width: number; height: number },
   ) => Promise<boolean>;
   close: () => Promise<void>;
+  focusFollowUp: (
+    sessionId: string,
+    anchor?: { x: number; y: number; width: number; height: number },
+  ) => Promise<void>;
   updateAnchor: (anchor: { x: number; y: number; width: number; height: number }) => void;
 }
 

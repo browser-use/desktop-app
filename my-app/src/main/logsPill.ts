@@ -343,6 +343,27 @@ export function showLogs(sessionId: string, anchor: PaneAnchor | null = null): v
   safeSend('logs:active-session-changed', sessionId);
 }
 
+/**
+ * Activate the logs window for the given session and focus its follow-up
+ * input. Replaces the old "follow-up pill popup" path: pressing 'f' on a
+ * card should land the cursor in the logs overlay's textarea, not open a
+ * separate window.
+ *
+ * Mode rules:
+ *   dot    → promoted to normal (user is about to type; dot has no input)
+ *   normal → stays normal
+ *   full   → stays full (user deliberately expanded; don't shrink under them)
+ */
+export function focusLogsFollowUp(sessionId: string, anchor: PaneAnchor | null = null): void {
+  if (!logsWindow || logsWindow.isDestroyed()) {
+    log.warn('logs.focusFollowUp.no-window', {});
+    return;
+  }
+  if (mode === 'dot') setLogsMode('normal');
+  showLogs(sessionId, anchor);
+  safeSend('logs:focus-followup');
+}
+
 export function hideLogs(): void {
   if (!logsWindow || logsWindow.isDestroyed()) return;
   log.info('logs.hide', { activeSessionId });

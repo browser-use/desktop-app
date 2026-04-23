@@ -24,7 +24,7 @@ import started from 'electron-squirrel-startup';
 import { createShellWindow } from './window';
 // Track B — Pill + hotkeys
 import { createPillWindow, togglePill, showPill, hidePill, sendToPill, setPillHeight, PILL_HEIGHT_COLLAPSED, PILL_HEIGHT_EXPANDED } from './pill';
-import { createLogsWindow, attachToHub as attachLogsToHub, toggleLogs, hideLogs, getLogsWindow, showLogs, setLogsMode, updateLogsAnchor } from './logsPill';
+import { createLogsWindow, attachToHub as attachLogsToHub, toggleLogs, hideLogs, getLogsWindow, showLogs, setLogsMode, updateLogsAnchor, focusLogsFollowUp } from './logsPill';
 import { sendSessionNotification } from './notifications';
 import { registerHotkeys, unregisterHotkeys, getGlobalCmdbarAccelerator, setGlobalCmdbarAccelerator } from './hotkeys';
 import { makeRequest, PROTOCOL_VERSION } from '../shared/types';
@@ -333,14 +333,6 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.on('pill:open-followup', (_event, sessionId: string, sessionPrompt: string) => {
-    mainLogger.info('main.pill:openFollowUp', { sessionId, promptLen: sessionPrompt.length });
-    showPill();
-    setTimeout(() => {
-      sendToPill('pill:followup-mode', { sessionId, sessionPrompt });
-    }, 50);
-  });
-
   ipcMain.on('pill:select-session', (_event, id: string) => {
     mainLogger.info('main.pill:selectSession', { id });
     hidePill();
@@ -396,6 +388,10 @@ app.whenReady().then(async () => {
     if (nextMode === 'dot' || nextMode === 'normal' || nextMode === 'full') {
       setLogsMode(nextMode);
     }
+  });
+  ipcMain.handle('logs:focus-followup', (_evt, sessionId: string, anchor?: { x: number; y: number; width: number; height: number }) => {
+    mainLogger.info('main.logs:focus-followup', { sessionId, anchor });
+    focusLogsFollowUp(sessionId, anchor ?? null);
   });
 
   // ---------------------------------------------------------------------------

@@ -84,6 +84,15 @@ contextBridge.exposeInMainWorld('logsAPI', {
     ipcRenderer.on('logs:active-session-changed', handler);
     return () => ipcRenderer.removeListener('logs:active-session-changed', handler);
   },
+  // Fired when the hub asks us to take focus (user pressed 'f' on a card).
+  onFocusFollowUp: (cb: () => void): (() => void) => {
+    const handler = () => {
+      console.log('[logs-preload] focus-followup');
+      cb();
+    };
+    ipcRenderer.on('logs:focus-followup', handler);
+    return () => ipcRenderer.removeListener('logs:focus-followup', handler);
+  },
   // Follow-up input from inside the logs window — routes through the same
   // sessions:resume IPC the pane's FollowUpInput uses so replies land in
   // the same session without the main hub needing focus.

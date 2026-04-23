@@ -13,6 +13,7 @@ declare global {
       setMode: (mode: 'dot' | 'normal' | 'full') => void;
       onModeChanged: (cb: (mode: 'dot' | 'normal' | 'full') => void) => () => void;
       onActiveSessionChanged: (cb: (id: string | null) => void) => () => void;
+      onFocusFollowUp: (cb: () => void) => () => void;
       followUp: (sessionId: string, prompt: string) => Promise<{ resumed?: boolean; error?: string }>;
     };
     electronAPI?: {
@@ -220,6 +221,7 @@ export function LogsApp(): React.ReactElement {
   const [mode, setModeState] = useState<'dot' | 'normal' | 'full'>('normal');
   const [files, setFiles] = useState<FileOutputEntry[]>([]);
   const [done, setDone] = useState<DoneInfo | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -232,6 +234,15 @@ export function LogsApp(): React.ReactElement {
       setSessionId(id);
     });
     return unsub;
+  }, []);
+
+  // Pressing 'f' on a hub card tells the logs window to focus its follow-up
+  // input. rAF so the mode-change → re-render settles before focus(), else
+  // the textarea may not be in the DOM yet when coming from dot mode.
+  useEffect(() => {
+    return window.logsAPI.onFocusFollowUp(() => {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    });
   }, []);
 
   useEffect(() => {
@@ -256,6 +267,7 @@ export function LogsApp(): React.ReactElement {
         | undefined;
       setDone(doneEv ? { summary: String(doneEv.summary ?? 'Task completed'), iterations: Number(doneEv.iterations ?? 0) } : null);
       setErrorMsg(session.error ?? null);
+      setSessionStatus(session.status ?? null);
     });
     return unsub;
   }, [sessionId]);
@@ -269,6 +281,7 @@ export function LogsApp(): React.ReactElement {
     setFiles([]);
     setDone(null);
     setErrorMsg(null);
+    setSessionStatus(null);
     if (!sessionId) return;
     let cancelled = false;
     void window.electronAPI?.sessions.get(sessionId).then((raw) => {
@@ -284,6 +297,7 @@ export function LogsApp(): React.ReactElement {
         | undefined;
       setDone(doneEv ? { summary: String(doneEv.summary ?? 'Task completed'), iterations: Number(doneEv.iterations ?? 0) } : null);
       setErrorMsg(session?.error ?? null);
+      setSessionStatus(session?.status ?? null);
     }).catch((err) => console.error('[LogsApp] sessions.get failed', err));
     return () => { cancelled = true; };
   }, [sessionId]);
@@ -408,7 +422,7 @@ export function LogsApp(): React.ReactElement {
           {cappedFiles.map((f, i) => <FileRow key={`${f.path}-${i}`} entry={f} />)}
         </div>
       )}
-      {(errorMsg || done) && (
+      {(errorMsg || (done && sessionStatus !== 'running')) && (
         <div className={`logs-summary${errorMsg ? ' logs-summary--error' : ''}`}>
           {errorMsg ?? done?.summary}
         </div>
