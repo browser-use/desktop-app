@@ -25,6 +25,7 @@ export interface AgentSession {
   hidden?: boolean;
   primarySite?: string | null;
   lastActivityAt?: number;
+  engine?: string;
 }
 
 export interface ToolResult {

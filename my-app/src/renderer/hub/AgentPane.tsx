@@ -10,6 +10,8 @@ import { TerminalPane } from './TerminalPane';
 // @ts-expect-error — Vite raw-import modifier
 import cursorLogoSrc from './cursor-logo.svg?raw';
 import vscodeLogo from './vscode-logo.svg';
+import claudeCodeLogo from './claude-code-logo.svg';
+import openaiLogo from './openai-logo.svg';
 import { adaptSession } from './types';
 import type { AgentSession, OutputEntry } from './types';
 
@@ -958,7 +960,15 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     >
       <div className="pane__header">
         <span className={`pane__dot pane__dot--${session.status}`} />
-        <span className="pane__prompt">{session.prompt}</span>
+        <div className="pane__title-group">
+          <span className="pane__prompt">{session.prompt}</span>
+          {session.engine === 'codex' && (
+            <img className="pane__engine-icon" src={openaiLogo} alt="Codex" title="Codex" />
+          )}
+          {session.engine === 'claude-code' && (
+            <img className="pane__engine-icon" src={claudeCodeLogo} alt="Claude Code" title="Claude Code" />
+          )}
+        </div>
         <div className="pane__actions">
           {browserDead && (
             <span className="pane__action-btn pane__action-btn--disabled">

@@ -450,9 +450,16 @@ export class SessionManager extends EventEmitter {
     return this.claudeSessionIds.get(id);
   }
 
-  /** Record the engine id chosen for this session (in-memory only). */
+  /** Record the engine id chosen for this session (in-memory only). Also
+   *  stamps `session.engine` so every future `{ ...session }` snapshot carries
+   *  the provider id to the renderer for header icon rendering. */
   setSessionEngine(id: string, engineId: string): void {
     this.sessionEngines.set(id, engineId);
+    const session = this.sessions.get(id);
+    if (session) {
+      (session as AgentSession & { engine?: string }).engine = engineId;
+      this.emitEvent('session-updated', { ...session });
+    }
   }
 
   /** Retrieve the per-session engine id, or null if never set. */

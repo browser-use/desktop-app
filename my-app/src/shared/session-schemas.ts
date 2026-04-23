@@ -120,6 +120,7 @@ export const AgentSessionSchema = z.object({
   originConversationId: z.string().optional(),
   primarySite: z.string().nullable().optional(),
   lastActivityAt: z.number().optional(),
+  engine: z.string().optional(),
 });
 
 export type AgentSession = z.infer<typeof AgentSessionSchema>;

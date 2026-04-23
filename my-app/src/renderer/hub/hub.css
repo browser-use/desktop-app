@@ -732,13 +732,34 @@
   background-color: var(--color-status-warning);
 }
 
+/* Provider icon next to the task title — tiny, subtle, uses the same
+   vertical rhythm as the status dot. */
+.pane__engine-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
-.pane__prompt {
+/* Title + provider icon group — shares the flex-grow that pane__prompt used
+   to claim alone. Keeps the icon hugging the right side of the text instead
+   of being pushed all the way to the action buttons. */
+.pane__title-group {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pane__prompt {
+  flex: 0 1 auto;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg-primary);
