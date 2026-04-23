@@ -230,12 +230,6 @@ export function HubApp(): React.ReactElement {
       console.log('[VimKeys] follow up', s.id);
       window.electronAPI?.pill.openFollowUp(s.id, s.prompt);
     },
-    'view.cycle': () => {
-      const s = sessions[focusIndex];
-      if (!s) return;
-      console.log('[VimKeys] cycle pane view', s.id);
-      window.dispatchEvent(new CustomEvent('pane:cycle-view', { detail: { sessionId: s.id } }));
-    },
     'scroll.halfDown': () => {
       const el = document.querySelector('.hub-grid, .list-view__body, .dashboard');
       if (el) el.scrollBy({ top: el.clientHeight / 2, behavior: 'smooth' });
@@ -609,7 +603,6 @@ export function HubApp(): React.ReactElement {
                         setSettingsOpen(true);
                       }}
                       followUpShortcut={shortcutFor('action.followUp')}
-                      cycleShortcut={shortcutFor('view.cycle')}
                     />
                   );
                 })}

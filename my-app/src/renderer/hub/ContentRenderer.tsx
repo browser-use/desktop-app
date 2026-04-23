@@ -1,5 +1,10 @@
 import React from 'react';
-import { Markdown } from './Markdown';
+import { Markdown, linkifyOutputPaths, linkifyPathsToReact } from './Markdown';
+
+// Strings that mention an output path get rendered via Markdown so the path
+// becomes a clickable link. Pure plain text stays plain to avoid mangling
+// backticks/asterisks in bash commands etc.
+const OUTPUT_PATH_MARKER = /\boutputs\/[a-zA-Z0-9_-]{6,}\//;
 
 function tryParseJSON(str: string): Record<string, unknown> | null {
   try {
@@ -16,6 +21,9 @@ function formatValue(val: unknown, depth: number): React.ReactNode {
   if (typeof val === 'boolean') return <span className="cr__bool">{val ? 'on' : 'off'}</span>;
   if (typeof val === 'number') return <span className="cr__num">{val.toLocaleString()}</span>;
   if (typeof val === 'string') {
+    if (OUTPUT_PATH_MARKER.test(val)) {
+      return <span className="cr__str">{linkifyPathsToReact(val)}</span>;
+    }
     return <span className="cr__str">{val}</span>;
   }
   if (Array.isArray(val)) {
@@ -91,12 +99,18 @@ export function ContentRenderer({ content, type }: ContentRendererProps): React.
     return <Markdown source={content} />;
   }
   if (type === 'thinking' || type === 'error') {
+    if (OUTPUT_PATH_MARKER.test(content)) {
+      return <pre className="entry__pre">{linkifyPathsToReact(content)}</pre>;
+    }
     return <pre className="entry__pre">{content}</pre>;
   }
 
   const parsed = tryParseJSON(content);
 
   if (!parsed) {
+    if (OUTPUT_PATH_MARKER.test(content)) {
+      return <pre className="entry__pre">{linkifyPathsToReact(content)}</pre>;
+    }
     return <pre className="entry__pre">{content}</pre>;
   }
 

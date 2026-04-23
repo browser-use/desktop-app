@@ -1,5 +1,6 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { INPUT_PLACEHOLDER } from './constants';
+import { EnginePicker } from './EnginePicker';
 import {
   classifyAttachmentMime,
   maxBytesForAttachmentMime,
@@ -17,10 +18,23 @@ export interface TaskInputAttachment {
 export interface TaskInputSubmission {
   prompt: string;
   attachments: TaskInputAttachment[];
+  engine: string;
 }
 
 interface TaskInputProps {
   onSubmit: (input: TaskInputSubmission) => void;
+}
+
+const ENGINE_STORAGE_KEY = 'hub.selectedEngine';
+const DEFAULT_ENGINE = 'claude-code';
+
+function loadStoredEngine(): string {
+  try {
+    const v = localStorage.getItem(ENGINE_STORAGE_KEY);
+    return v && v.length > 0 ? v : DEFAULT_ENGINE;
+  } catch {
+    return DEFAULT_ENGINE;
+  }
 }
 
 export interface TaskInputHandle {
@@ -63,6 +77,7 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
   const [attachments, setAttachments] = useState<TaskInputAttachment[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [engine, setEngine] = useState<string>(() => loadStoredEngine());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,12 +126,17 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
     const trimmed = value.trim();
     if (!trimmed && attachments.length === 0) return;
     console.log('[TaskInput] submit', { promptLength: trimmed.length, attachmentCount: attachments.length });
-    onSubmit({ prompt: trimmed, attachments });
+    onSubmit({ prompt: trimmed, attachments, engine });
     setValue('');
     setAttachments([]);
     setErrorMsg(null);
     textareaRef.current?.focus();
-  }, [value, attachments, onSubmit]);
+  }, [value, attachments, engine, onSubmit]);
+
+  const onEngineChange = useCallback((id: string) => {
+    setEngine(id);
+    try { localStorage.setItem(ENGINE_STORAGE_KEY, id); } catch {}
+  }, []);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -200,6 +220,7 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
           >
             <PaperclipIcon />
           </button>
+          <EnginePicker value={engine} onChange={onEngineChange} />
           <input
             ref={fileInputRef}
             type="file"

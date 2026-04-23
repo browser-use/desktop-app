@@ -720,15 +720,14 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   useHydrateSession(session.id);
   const scrollRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  type PaneViewMode = 'output' | 'browser';
-  const [viewMode, setViewMode] = useState<PaneViewMode>('browser');
   const [browserDead, setBrowserDead] = useState(false);
   const [browserMissing, setBrowserMissing] = useState(false);
   const [frameRect, setFrameRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  // Logs overlay is a separate window (see logsPill.ts). The pane tracks
+  // visibility only to reflect it in the Logs button's active state.
   const [logsOpen, setLogsOpen] = useState(false);
-  // Auto-open the logs overlay once per fresh session so users see the
-  // agent's stream as soon as a task starts. Keyed per session id; the
-  // user can close via Esc / the Logs button and it won't re-open.
+  // Auto-open the logs overlay once per fresh session id so users see the
+  // agent's stream as soon as a task starts.
   const autoLogsTriggeredRef = useRef<Set<string>>(new Set());
   const { entries: rawEntries } = useMemo(() => adaptSession(session), [session]);
   const entries = useMemo<OutputEntry[]>(() => {
@@ -745,14 +744,14 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   const BROWSER_CTA_RESERVE = 64;
   const showBrowserCta = session.status === 'idle' && !session.error && !!onOpenFollowUp;
 
-  const computeBounds = useCallback((mode: PaneViewMode): { x: number; y: number; width: number; height: number; slotWidth: number } | null => {
+  const computeBounds = useCallback((): { x: number; y: number; width: number; height: number; slotWidth: number } | null => {
     const el = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     const fullWidth = Math.round(rect.width);
     const slotWidth = fullWidth;
     const border = 1;
-    const topReserve = mode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
+    const topReserve = showBrowserCta ? BROWSER_CTA_RESERVE : 0;
     return {
       x: Math.round(rect.x) + border,
       y: Math.round(rect.y) + border + topReserve,
@@ -787,13 +786,13 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
   // produced its first HlEvent.
   const browserNotReady = session.status === 'draft';
 
-  const updateFrameRect = useCallback((slotWidth: number, mode: PaneViewMode) => {
+  const updateFrameRect = useCallback((slotWidth: number) => {
     const paneEl = paneRef.current;
     const outEl = paneEl?.querySelector('.pane__output') as HTMLElement | null;
     if (!paneEl || !outEl) return;
     const p = paneEl.getBoundingClientRect();
     const o = outEl.getBoundingClientRect();
-    const topReserve = mode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
+    const topReserve = showBrowserCta ? BROWSER_CTA_RESERVE : 0;
     setFrameRect({
       left: Math.round(o.left - p.left),
       top: Math.round(o.top - p.top) + topReserve,
@@ -802,145 +801,46 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
     });
   }, [showBrowserCta]);
 
-  const applyViewMode = useCallback(async (mode: PaneViewMode): Promise<void> => {
+  const handleToggleLogs = useCallback(() => {
     const api = window.electronAPI;
-    if (!api) return;
-
-    if (mode === 'output' || browserDead) {
-      console.log('[AgentPane] detaching browser view', { id: session.id, mode });
-      await api.sessions.viewDetach(session.id).catch(() => {});
-      setFrameRect(null);
-      return;
-    }
-
-    if (browserNotReady) {
-      console.log('[AgentPane] browser not ready, deferring attach', { id: session.id, mode });
-      await api.sessions.viewDetach(session.id).catch(() => {});
-      const computed = computeBounds(mode);
-      if (computed) {
-        updateFrameRect(computed.slotWidth, mode);
-      }
-      return;
-    }
-
-    const computed = computeBounds(mode);
-    if (!computed) return;
-    const { slotWidth, ...bounds } = computed;
-    console.log('[AgentPane] attaching browser view', { id: session.id, mode, bounds });
-    const ok = await api.sessions.viewAttach(session.id, bounds);
-    if (!ok) {
-      setBrowserMissing(true);
-      updateFrameRect(slotWidth, mode);
-      return;
-    }
-    setBrowserMissing(false);
-    updateFrameRect(slotWidth, mode);
-  }, [session.id, browserDead, computeBounds, browserNotReady, updateFrameRect]);
-
-  const handleSetMode = useCallback((mode: PaneViewMode) => {
-    if (browserDead) {
-      setViewMode('output');
-      return;
-    }
-    // Mutual exclusion: showing the inline xterm (output mode) while the
-    // floating logs window is open would duplicate the stream. Close logs.
-    if (mode === 'output' && logsOpen) {
-      window.electronAPI?.logs?.close?.();
-      setLogsOpen(false);
-    }
-    setViewMode(mode);
-  }, [browserDead, logsOpen]);
-
-  const handleToggleLogs = useCallback(async () => {
-    const api = window.electronAPI;
-    if (!api?.logs) {
-      console.warn('[AgentPane] logs API unavailable');
-      return;
-    }
-    if (viewMode === 'output' && !browserDead) {
-      setViewMode('browser');
-    }
-    // Anchor the logs window to the pane's output rect so it sits INSIDE the
-    // browser area, not overlapping the command bar at the bottom of the hub.
+    if (!api?.logs) return;
     const outEl = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
     const rect = outEl?.getBoundingClientRect();
     const anchor = rect
-      ? {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        }
+      ? { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) }
       : undefined;
-    console.log('[AgentPane] toggle logs', { sessionId: session.id, anchor });
-    const nowOpen = await api.logs.toggle(session.id, anchor);
-    console.log('[AgentPane] toggle logs result', { sessionId: session.id, nowOpen });
-    setLogsOpen(nowOpen);
-  }, [session.id, viewMode, browserDead]);
+    void api.logs.toggle(session.id, anchor).then((nowOpen) => setLogsOpen(nowOpen));
+  }, [session.id]);
 
+  // On session change, push the new session id to the floating logs overlay
+  // so it re-targets (also handles first-mount auto-show for running sessions).
   useEffect(() => {
-    if (browserDead) setViewMode('output');
-  }, [browserDead]);
-
-  // Auto-open the logs overlay once when a fresh session starts running.
-  // Uses a ref-keyed guard so it fires exactly once per session id and
-  // does NOT re-fire if the user closes it.
-  useEffect(() => {
-    if (session.status !== 'running') return;
-    if (autoLogsTriggeredRef.current.has(session.id)) return;
-    autoLogsTriggeredRef.current.add(session.id);
-    // Wait two RAFs so the pane has its final size before we anchor.
-    const timer = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const api = window.electronAPI;
-        if (!api?.logs) return;
-        const outEl = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
-        const rect = outEl?.getBoundingClientRect();
-        const anchor = rect
-          ? {
-              x: Math.round(rect.left),
-              y: Math.round(rect.top),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-            }
-          : undefined;
-        console.log('[AgentPane] auto-open logs on new session', { sessionId: session.id, anchor });
-        void api.logs.toggle(session.id, anchor).then((open) => setLogsOpen(open));
-      });
-    });
-    return () => cancelAnimationFrame(timer);
+    if (session.status === 'draft') return;
+    const api = window.electronAPI;
+    if (!api?.logs?.show) return;
+    const outEl = paneRef.current?.querySelector('.pane__output') as HTMLElement | null;
+    const rect = outEl?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const anchor = {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    };
+    void api.logs.show(session.id, anchor).then((open) => setLogsOpen(open));
   }, [session.id, session.status]);
 
   useEffect(() => {
-    const onCycle = (e: Event) => {
-      const detail = (e as CustomEvent<{ sessionId: string }>).detail;
-      if (!detail || detail.sessionId !== session.id) return;
-      if (browserDead) {
-        console.log('[AgentPane] cycle view ignored — browser dead', { id: session.id });
-        setViewMode('output');
-        return;
-      }
-      const order: PaneViewMode[] = ['output', 'browser'];
-      setViewMode((curr) => {
-        const next = order[(order.indexOf(curr) + 1) % order.length];
-        console.log('[AgentPane] cycle view', { id: session.id, from: curr, to: next });
-        return next;
-      });
-    };
-    window.addEventListener('pane:cycle-view', onCycle);
-    return () => window.removeEventListener('pane:cycle-view', onCycle);
-  }, [session.id, browserDead]);
-
-  useEffect(() => {
-    void applyViewMode(viewMode);
-  }, [viewMode, applyViewMode]);
-
-  useEffect(() => {
-    if (viewMode === 'output') return;
     const paneEl = paneRef.current;
     if (!paneEl) return;
     const api = window.electronAPI;
     if (!api) return;
+    if (browserDead) {
+      // Dead browser — ensure any lingering view is detached.
+      api.sessions.viewDetach(session.id).catch(() => {});
+      setFrameRect(null);
+      return;
+    }
 
     let lastKey = '';
     let hasAttached = false;
@@ -949,30 +849,51 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       rafScheduled = 0;
       const outEl = paneEl.querySelector('.pane__output') as HTMLElement | null;
       if (!outEl) return;
-      const computed = computeBounds(viewMode);
+      const computed = computeBounds();
       if (!computed) return;
       const { slotWidth, ...bounds } = computed;
       const key = `${bounds.x}|${bounds.y}|${bounds.width}|${bounds.height}`;
       if (key === lastKey) return;
       lastKey = key;
-      // viewAttach is the heavier path (creates WebContentsView + wires events) —
-      // run it once. Subsequent updates use the lightweight viewResize so rapid
-      // resizes don't queue up expensive work in the main process.
       if (!hasAttached) {
         hasAttached = true;
-        api.sessions.viewAttach(session.id, bounds).catch(() => {});
+        api.sessions.viewAttach(session.id, bounds).then((ok) => {
+          if (!ok) setBrowserMissing(true); else setBrowserMissing(false);
+        }).catch(() => {});
       } else {
         api.sessions.viewResize(session.id, bounds);
       }
       const p = paneEl.getBoundingClientRect();
       const o = outEl.getBoundingClientRect();
-      const topReserve = viewMode === 'browser' && showBrowserCta ? BROWSER_CTA_RESERVE : 0;
+      const topReserve = showBrowserCta ? BROWSER_CTA_RESERVE : 0;
       setFrameRect({
         left: Math.round(o.left - p.left),
         top: Math.round(o.top - p.top) + topReserve,
         width: slotWidth,
         height: Math.round(o.height) - topReserve,
       });
+      // Auto-show the logs overlay once per session on the first real pane
+      // measurement. Ref-keyed so Esc-close doesn't trigger a re-open.
+      const logsAnchor = {
+        x: Math.round(o.left),
+        y: Math.round(o.top),
+        width: Math.round(o.width),
+        height: Math.round(o.height),
+      };
+      if (logsAnchor.width > 0 && logsAnchor.height > 0) {
+        api.logs?.updateAnchor?.(logsAnchor);
+      }
+      if (
+        session.status !== 'draft' &&
+        api.logs?.show &&
+        logsAnchor.width > 0 &&
+        logsAnchor.height > 0 &&
+        !autoLogsTriggeredRef.current.has(session.id)
+      ) {
+        autoLogsTriggeredRef.current.add(session.id);
+        console.log('[AgentPane] auto-open logs on first pane measurement', { sessionId: session.id, logsAnchor });
+        void api.logs.show(session.id, logsAnchor).then((open) => setLogsOpen(open));
+      }
     };
     // Coalesce rapid ResizeObserver / layout callbacks into one IPC per frame.
     const updateBounds = () => {
@@ -1006,7 +927,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       window.removeEventListener('pane:layout-change', onLayoutChange);
       if (rafScheduled) cancelAnimationFrame(rafScheduled);
     };
-  }, [viewMode, session.id, computeBounds]);
+  }, [session.id, computeBounds, browserDead, session.status, showBrowserCta]);
 
   useEffect(() => {
     return () => {
@@ -1039,39 +960,15 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         <span className={`pane__dot pane__dot--${session.status}`} />
         <span className="pane__prompt">{session.prompt}</span>
         <div className="pane__actions">
-          {browserDead ? (
+          {browserDead && (
             <span className="pane__action-btn pane__action-btn--disabled">
               <BrowserIcon />
               <span>Browser ended</span>
             </span>
-          ) : (
-            <div
-              className="pane__view-toggle"
-              role="radiogroup"
-              aria-label="Pane view mode"
-              data-tip={`Press ${cycleShortcut || 'v'} to cycle`}
-            >
-              <button
-                className={`pane__action-btn${viewMode === 'output' ? ' pane__action-btn--active' : ''}`}
-                onClick={(e) => { e.stopPropagation(); handleSetMode('output'); }}
-                aria-label="Output only"
-              >
-                <OutputIcon />
-                <span>Output</span>
-              </button>
-              <button
-                className={`pane__action-btn${viewMode === 'browser' ? ' pane__action-btn--active' : ''}`}
-                onClick={(e) => { e.stopPropagation(); handleSetMode('browser'); }}
-                aria-label="Browser only"
-              >
-                <BrowserIcon />
-                <span>Browser</span>
-              </button>
-            </div>
           )}
           <button
             className={`pane__action-btn${logsOpen ? ' pane__action-btn--active' : ''}`}
-            onClick={(e) => { e.stopPropagation(); void handleToggleLogs(); }}
+            onClick={(e) => { e.stopPropagation(); handleToggleLogs(); }}
             aria-label="Toggle logs overlay"
             data-tip="Toggle logs overlay"
           >
@@ -1126,7 +1023,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         {session.status === 'running' && <div className="pane__progress-bar" />}
       </div>
 
-      {frameRect && viewMode !== 'output' && (
+      {frameRect && (browserDead || browserMissing || session.status === 'draft') && (
         <div
           className="pane__browser-frame"
           style={{
@@ -1138,7 +1035,9 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
           aria-hidden="true"
         >
           <div className="pane__browser-starting">
-            {browserMissing ? (
+            {browserDead ? (
+              <span>Browser ended</span>
+            ) : browserMissing ? (
               <span>
                 {session.status === 'stopped' || session.status === 'idle' || session.status === 'stuck'
                   ? 'Browser stopped'
@@ -1157,7 +1056,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         className="pane__output"
         ref={scrollRef}
       >
-        {viewMode === 'browser' && showBrowserCta && (
+        {showBrowserCta && (
           <button
             type="button"
             className="pane__followup-hint pane__followup-hint--top"
@@ -1165,24 +1064,6 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
           >
             Press <kbd className="pane__followup-kbd">{followUpShortcut || 'f'}</kbd> to follow up
           </button>
-        )}
-        {viewMode !== 'browser' && (
-          <div className="pane__term-wrap">
-            <TerminalPane sessionId={session.id} />
-          </div>
-        )}
-        {viewMode !== 'browser' && entries.some((e) => e.type === 'file_output') && (
-          <div className="pane__file-outputs">
-            {entries.filter((e) => e.type === 'file_output').map((entry) => (
-              <OutputRow key={entry.id} entry={entry} />
-            ))}
-          </div>
-        )}
-        {viewMode !== 'browser' && session.status === 'idle' && !session.error && onFollowUp && (
-          <FollowUpInput
-            sessionId={session.id}
-            onUserInput={(text, attachments) => onFollowUp(session.id, text, attachments)}
-          />
         )}
         {session.error && entries.length <= 2 && (
           <div className="pane__error-center">

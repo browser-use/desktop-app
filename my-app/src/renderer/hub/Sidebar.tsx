@@ -1,18 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentSession, SessionStatus } from './types';
-
-const COLLAPSED_STORAGE_KEY = 'hub-sidebar-collapsed';
 
 interface SidebarSession extends AgentSession {
   primarySite?: string | null;
   lastActivityAt?: number;
 }
 
+export type SidebarRowAction = 'rerun' | 'stop' | 'hide' | 'unhide' | 'delete';
+
 interface SidebarProps {
   sessions?: SidebarSession[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   onNewAgent?: () => void;
+  onRowAction?: (id: string, action: SidebarRowAction) => void;
 }
 
 const MOCK_SIDEBAR_SESSIONS: SidebarSession[] = [
@@ -106,50 +107,6 @@ function PlusIcon(): React.ReactElement {
   );
 }
 
-function SidebarToggleIcon({ collapsed }: { collapsed: boolean }): React.ReactElement {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <rect x="1.5" y="2" width="11" height="10" rx="2" stroke="currentColor" strokeWidth="1.2" />
-      <line x1="5.5" y1="2.5" x2="5.5" y2="11.5" stroke="currentColor" strokeWidth="1.2" />
-      <path
-        d={collapsed ? 'M8.5 5L10 7L8.5 9' : 'M10 5L8.5 7L10 9'}
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ActiveGroupIcon(): React.ReactElement {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="3" fill="currentColor" />
-      <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1" opacity="0.4" />
-    </svg>
-  );
-}
-
-function DoneGroupIcon(): React.ReactElement {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M3.8 6.2L5.3 7.7L8.2 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function HiddenGroupIcon(): React.ReactElement {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-      <path d="M1 6s2-3.5 5-3.5S11 6 11 6s-2 3.5-5 3.5S1 6 1 6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <circle cx="6" cy="6" r="1.3" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M2 2l8 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function TerminalFallbackIcon(): React.ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -160,16 +117,12 @@ function TerminalFallbackIcon(): React.ReactElement {
   );
 }
 
-function ChevronIcon({ open }: { open: boolean }): React.ReactElement {
+function MoreIcon(): React.ReactElement {
   return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      fill="none"
-      style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 120ms' }}
-    >
-      <path d="M3.5 2.5 6.5 5l-3 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="3" cy="7" r="1.1" fill="currentColor" />
+      <circle cx="7" cy="7" r="1.1" fill="currentColor" />
+      <circle cx="11" cy="7" r="1.1" fill="currentColor" />
     </svg>
   );
 }
@@ -178,115 +131,116 @@ function SessionRow({
   s,
   selected,
   onSelect,
-  collapsed = false,
+  onAction,
 }: {
   s: SidebarSession;
   selected: boolean;
   onSelect?: (id: string) => void;
-  collapsed?: boolean;
+  onAction?: (id: string, action: SidebarRowAction) => void;
 }): React.ReactElement {
   const dot = STATUS_DOT[s.status];
   const favicon = faviconUrl(s.primarySite);
   const last = s.lastActivityAt ?? s.createdAt;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent): void => {
+      if (!rootRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('mousedown', onDocClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const isRunning = s.status === 'running' || s.status === 'stuck';
+  const handleAction = (action: SidebarRowAction): void => {
+    setMenuOpen(false);
+    onAction?.(s.id, action);
+  };
+
   return (
-    <button
-      type="button"
-      className={`sidebar__row${selected ? ' sidebar__row--active' : ''}${collapsed ? ' sidebar__row--collapsed has-tooltip' : ''}`}
-      onClick={() => onSelect?.(s.id)}
-      title={collapsed ? undefined : s.prompt}
-      data-tooltip={collapsed ? s.prompt : undefined}
+    <div
+      ref={rootRef}
+      className={`sidebar__row-wrapper${menuOpen ? ' sidebar__row-wrapper--menu-open' : ''}`}
     >
-      <span className="sidebar__row-icon">
-        {favicon ? (
-          <img src={favicon} alt="" width={18} height={18} />
-        ) : (
-          <span className="sidebar__row-icon-fallback" aria-label="No site">
-            <TerminalFallbackIcon />
-          </span>
-        )}
-        <span className="sidebar__row-dot" style={{ background: dot.color }} aria-label={dot.label} />
-      </span>
-      {!collapsed && (
-        <>
-          <span className="sidebar__row-title">{s.prompt}</span>
-          <span className="sidebar__row-time">{formatRelative(last)}</span>
-        </>
-      )}
-    </button>
-  );
-}
-
-interface GroupProps {
-  label: string;
-  icon: React.ReactElement;
-  tone: 'active' | 'done' | 'hidden';
-  sessions: SidebarSession[];
-  selectedId?: string | null;
-  onSelect?: (id: string) => void;
-  defaultOpen?: boolean;
-  collapsed?: boolean;
-}
-
-function Group({ label, icon, tone, sessions, selectedId, onSelect, defaultOpen = true, collapsed = false }: GroupProps): React.ReactElement | null {
-  const [open, setOpen] = useState(defaultOpen);
-  if (sessions.length === 0) return null;
-
-  if (collapsed) {
-    return (
-      <div className={`sidebar__group sidebar__group--collapsed sidebar__group--${tone}`}>
-        <div className={`sidebar__group-rail-icon sidebar__group-icon--${tone} has-tooltip`} data-tooltip={`${label} (${sessions.length})`}>
-          {icon}
-          <span className="sidebar__group-rail-count">{sessions.length}</span>
-        </div>
-        <div className="sidebar__group-body sidebar__group-body--collapsed">
-          {sessions.map((s) => (
-            <SessionRow key={s.id} s={s} selected={s.id === selectedId} onSelect={onSelect} collapsed />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sidebar__group">
       <button
         type="button"
-        className="sidebar__group-header"
-        onClick={() => setOpen((v) => !v)}
+        className={`sidebar__row has-tooltip${selected ? ' sidebar__row--active' : ''}`}
+        onClick={() => onSelect?.(s.id)}
+        data-tooltip={s.prompt}
       >
-        <span className={`sidebar__group-icon sidebar__group-icon--${tone}`}>{icon}</span>
-        <span className="sidebar__group-label">{label}</span>
-        <span className="sidebar__group-count">{sessions.length}</span>
-        <span className="sidebar__group-chevron"><ChevronIcon open={open} /></span>
+        <span className="sidebar__row-icon">
+          {favicon ? (
+            <img src={favicon} alt="" width={18} height={18} />
+          ) : (
+            <span className="sidebar__row-icon-fallback" aria-label="No site">
+              <TerminalFallbackIcon />
+            </span>
+          )}
+          <span className="sidebar__row-dot" style={{ background: dot.color }} aria-label={dot.label} />
+        </span>
+        <span className="sidebar__row-title">{s.prompt}</span>
+        <span className="sidebar__row-time">{formatRelative(last)}</span>
       </button>
-      {open && (
-        <div className="sidebar__group-body">
-          {sessions.map((s) => (
-            <SessionRow key={s.id} s={s} selected={s.id === selectedId} onSelect={onSelect} />
-          ))}
+
+      {onAction && (
+        <button
+          type="button"
+          className="sidebar__row-menu-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((v) => !v);
+          }}
+          aria-label="Session actions"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          <MoreIcon />
+        </button>
+      )}
+
+      {menuOpen && (
+        <div className="sidebar__row-menu" role="menu">
+          <button className="sidebar__row-menu-item" role="menuitem" onClick={() => handleAction('rerun')}>
+            Re-run
+          </button>
+          {isRunning && (
+            <button className="sidebar__row-menu-item" role="menuitem" onClick={() => handleAction('stop')}>
+              Stop
+            </button>
+          )}
+          {s.hidden ? (
+            <button className="sidebar__row-menu-item" role="menuitem" onClick={() => handleAction('unhide')}>
+              Unhide
+            </button>
+          ) : (
+            <button className="sidebar__row-menu-item" role="menuitem" onClick={() => handleAction('hide')}>
+              Hide
+            </button>
+          )}
+          <div className="sidebar__row-menu-sep" />
+          <button
+            className="sidebar__row-menu-item sidebar__row-menu-item--danger"
+            role="menuitem"
+            onClick={() => handleAction('delete')}
+          >
+            Delete
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-export function Sidebar({ sessions, selectedId, onSelect, onNewAgent }: SidebarProps): React.ReactElement {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(COLLAPSED_STORAGE_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
-    } catch {
-      // ignore
-    }
-  }, [collapsed]);
-
+export function Sidebar({ sessions, selectedId, onSelect, onNewAgent, onRowAction }: SidebarProps): React.ReactElement {
   const data = sessions ?? MOCK_SIDEBAR_SESSIONS;
 
   const { active, done, hidden } = useMemo(() => {
@@ -307,38 +261,30 @@ export function Sidebar({ sessions, selectedId, onSelect, onNewAgent }: SidebarP
   }, [data]);
 
   return (
-    <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`} aria-label="Agent sessions">
+    <aside className="sidebar" aria-label="Agent sessions">
       <div className="sidebar__header">
-        {!collapsed && <span className="sidebar__header-title">Agents</span>}
+        <span className="sidebar__header-title">Agents</span>
         <div className="sidebar__header-actions">
-          {!collapsed && (
-            <button
-              type="button"
-              className="sidebar__icon-btn has-tooltip"
-              onClick={onNewAgent}
-              aria-label="New agent"
-              data-tooltip="New agent"
-            >
-              <PlusIcon />
-            </button>
-          )}
           <button
             type="button"
-            className="sidebar__icon-btn has-tooltip"
-            onClick={() => setCollapsed((v) => !v)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            data-tooltip={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="sidebar__icon-btn sidebar__icon-btn--new has-tooltip"
+            onClick={onNewAgent}
+            aria-label="New agent"
+            data-tooltip="New agent"
           >
-            <SidebarToggleIcon collapsed={collapsed} />
+            <PlusIcon />
           </button>
         </div>
       </div>
 
       <div className="sidebar__groups">
-        <Group label="Active" tone="active" icon={<ActiveGroupIcon />} sessions={active} selectedId={selectedId} onSelect={onSelect} defaultOpen collapsed={collapsed} />
-        <Group label="Done" tone="done" icon={<DoneGroupIcon />} sessions={done} selectedId={selectedId} onSelect={onSelect} defaultOpen collapsed={collapsed} />
-        <Group label="Hidden" tone="hidden" icon={<HiddenGroupIcon />} sessions={hidden} selectedId={selectedId} onSelect={onSelect} defaultOpen={false} collapsed={collapsed} />
+        <div className="sidebar__group-body">
+          {[...active, ...done, ...hidden].map((s) => (
+            <SessionRow key={s.id} s={s} selected={s.id === selectedId} onSelect={onSelect} onAction={onRowAction} />
+          ))}
+        </div>
       </div>
+
     </aside>
   );
 }
