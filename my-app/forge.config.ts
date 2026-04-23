@@ -1,4 +1,6 @@
 import path from 'path';
+import { execSync } from 'child_process';
+import fs from 'fs';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerDMG } from '@electron-forge/maker-dmg';
@@ -43,6 +45,33 @@ const config: ForgeConfig = {
     // are identical: the bundled .app/.exe will be named after this.
     name: 'Browser Use',
 
+    // Exclude dev-only files from the packaged app.asar. Without this,
+    // Forge ships src/, tests/, personal planning .md files, Vite
+    // source configs, CI configs, README, etc. — the DMG balloons and
+    // users get dev notes. Paths arrive with a leading slash.
+    ignore: [
+      /^\/src($|\/)/,                             // TS source; compiled output is in .vite/build
+      /^\/tests($|\/)/,
+      /^\/scripts($|\/)/,
+      /^\/python($|\/)/,                          // daemon removed; defensive
+      /^\/harnessless($|\/)/,
+      /^\/\.github($|\/)/,
+      /^\/\.claude($|\/)/,
+      /^\/\.vscode($|\/)/,
+      /^\/coverage($|\/)/,
+      /^\/reagan_.*$/,                            // personal planning docs
+      /^\/.*\.md$/,                               // all markdown (README, docs, etc.)
+      /^\/tsconfig.*\.json$/,
+      /^\/eslint\.config\.(ts|mts|js|mjs|cjs)$/,
+      /^\/vite\..*\.(ts|mts)$/,                   // dev-time vite configs
+      /^\/forge\.config\.(ts|js)$/,
+      /^\/playwright\.config\.(ts|js)$/,
+      /^\/knip\.json$/,
+      /^\/\.env(\..+)?$/,                         // never ship .env to users
+      /^\/Taskfile\.ya?ml$/,
+      /^\/.+\.map$/,                              // sourcemaps
+    ],
+
     // macOS bundle identity — only set when credentials are available.
     ...(SHOULD_SIGN && {
       osxSign: {
@@ -72,12 +101,35 @@ const config: ForgeConfig = {
     // }),
 
     // App metadata
-    appBundleId: 'com.browser-use.agentic-browser',
+    appBundleId: 'com.browser-use.desktop',
     appCategoryType: 'public.app-category.productivity',
     icon: 'assets/icon',   // Forge appends .icns on macOS automatically
   },
 
   rebuildConfig: {},
+
+  hooks: {
+    // @electron-forge/plugin-vite excludes node_modules from the packaged app,
+    // so externals listed in vite.main.config.ts (dotenv, electron-updater,
+    // better-sqlite3, keytar, etc.) are missing at runtime and main.js
+    // crashes on first require('dotenv'). Re-install production deps into
+    // the packaged dir so externals resolve.
+    packageAfterPrune: async (_config, buildPath, electronVersion) => {
+      const pkgPath = path.join(buildPath, 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const prodDeps = Object.keys(pkg.dependencies ?? {});
+      if (prodDeps.length === 0) return;
+      execSync(
+        `npm install --omit=dev --no-package-lock --no-save --legacy-peer-deps ${prodDeps.map((d) => `"${d}"`).join(' ')}`,
+        { cwd: buildPath, stdio: 'inherit' },
+      );
+      // npm install just built native modules against the host Node ABI.
+      // Electron uses a different NODE_MODULE_VERSION, so rebuild them
+      // against Electron's headers before asar packaging.
+      const { rebuild } = await import('@electron/rebuild');
+      await rebuild({ buildPath, electronVersion, arch: process.arch });
+    },
+  },
 
   makers: [
     // macOS: DMG (replaces MakerZIP for darwin per Critic finding + ADR §12)

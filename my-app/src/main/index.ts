@@ -16,9 +16,22 @@ import path from 'node:path';
 // dev-time fallback.
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, crashReporter, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage, shell } from 'electron';
 
 app.setName('Browser Use');
+
+// Native-crash minidumps → userData/Crashpad/. Captures GPU process,
+// renderer process, and main-process native crashes that our
+// uncaughtException handlers (JS-only) miss. Local-only — no upload
+// endpoint wired yet; users can zip the Crashpad dir and attach to
+// bug reports.
+crashReporter.start({
+  productName: 'Browser Use',
+  companyName: 'Browser Use',
+  submitURL: '',
+  uploadToServer: false,
+  compress: true,
+});
 
 // Enforce a single running instance. Launching a second copy would race on
 // the sessions SQLite db, the .vite dev cache, and the user-data dir — and
@@ -345,6 +358,12 @@ app.whenReady().then(async () => {
         sessionManager.saveAttachment(id, a, turnIndex);
       }
     }
+    captureEvent('session_created', {
+      source: 'pill',
+      engine: pillEngineId,
+      prompt_length: validatedPrompt.length,
+      attachments_count: attachments.length,
+    });
     startSessionWithAgent(id).catch((err) => {
       mainLogger.error('main.pill:submit.startFailed', { id, error: (err as Error).message });
     });
@@ -419,6 +438,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('logs:show', (_evt, sessionId: string, anchor?: { x: number; y: number; width: number; height: number }) => {
     mainLogger.info('main.logs:show', { sessionId, anchor });
     showLogs(sessionId, anchor ?? null);
+    // showLogs() uses showInactive() so automatic re-shows (e.g. on app
+    // focus) don't steal focus. But a user-initiated logs:show (click on
+    // a hub card) should grab OS focus so keystrokes go to the follow-up
+    // input — LogsApp's rAF(inputRef.focus()) on session-change is a DOM
+    // focus that has no visible effect while another window owns OS focus.
+    const logsWin = getLogsWindow();
+    if (logsWin && !logsWin.isDestroyed()) logsWin.focus();
     return true;
   });
   ipcMain.handle('logs:close', () => {
@@ -500,7 +526,7 @@ app.whenReady().then(async () => {
     ) as { type: string; summary?: string } | undefined;
     const summary = doneEvent?.summary ?? 'Task completed';
     captureEvent('session_completed', {
-      engine: (session as { engineId?: string }).engineId ?? 'unknown',
+      engine: (session as { engine?: string }).engine ?? 'unknown',
       success: Boolean(doneEvent),
       has_summary: Boolean(doneEvent?.summary),
     });
@@ -682,6 +708,7 @@ app.whenReady().then(async () => {
       }
     }
     captureEvent('session_created', {
+      source: 'hub',
       engine: engineId,
       prompt_length: validatedPrompt.length,
       attachments_count: attachments.length,
@@ -723,6 +750,11 @@ app.whenReady().then(async () => {
     if (resumeAttachments.length > 0) {
       mainLogger.info('main.sessions:resume.attachments', { id: validatedId, count: resumeAttachments.length });
     }
+    captureEvent('session_resumed', {
+      engine: sessionManager.getSessionEngine(validatedId) ?? 'unknown',
+      prompt_length: validatedPrompt.length,
+      attachments_count: resumeAttachments.length,
+    });
 
     steerQueues.set(validatedId, []);
     runEngine({
@@ -769,6 +801,9 @@ app.whenReady().then(async () => {
     browserPool.destroy(validatedId, shellWindow ?? undefined);
 
     const abortController = sessionManager.rerunSession(validatedId);
+    captureEvent('session_rerun', {
+      engine: sessionManager.getSessionEngine(validatedId) ?? 'unknown',
+    });
 
     const view = browserPool.create(validatedId);
     if (!view) {
@@ -1014,10 +1049,10 @@ app.whenReady().then(async () => {
   });
 
   // ---- Takeover overlay (pulsing glow + stop-and-take-over button) ----
-  ipcMain.handle('takeover:show', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }) => {
+  ipcMain.handle('takeover:show', (_event, id: string, bounds: { x: number; y: number; width: number; height: number }, mode?: 'idle' | 'active') => {
     const validatedId = assertString(id, 'id', 100);
     if (!shellWindow) return;
-    takeoverOverlay.show(validatedId, shellWindow, bounds);
+    takeoverOverlay.show(validatedId, shellWindow, bounds, mode ?? 'idle');
     // The browser view was attached before us most of the time; reraise to
     // guarantee our overlay paints above it.
     takeoverOverlay.reraise(validatedId, shellWindow);
@@ -1309,45 +1344,6 @@ function buildApplicationMenu(): void {
         { role: 'paste' },
         { role: 'delete' },
         { role: 'selectAll' },
-      ],
-    },
-    {
-      label: 'View',
-      submenu: [
-        {
-          label: 'Zoom In',
-          accelerator: 'CmdOrCtrl+=',
-          click: () => {
-            if (!shellWindow || shellWindow.isDestroyed()) return;
-            const current = shellWindow.webContents.getZoomFactor();
-            const next = Math.min(current + 0.1, 2.0);
-            mainLogger.debug('menu.zoomIn', { from: current, to: next });
-            shellWindow.webContents.setZoomFactor(next);
-            shellWindow.webContents.send('zoom-changed', next);
-          },
-        },
-        {
-          label: 'Zoom Out',
-          accelerator: 'CmdOrCtrl+-',
-          click: () => {
-            if (!shellWindow || shellWindow.isDestroyed()) return;
-            const current = shellWindow.webContents.getZoomFactor();
-            const next = Math.max(current - 0.1, 0.5);
-            mainLogger.debug('menu.zoomOut', { from: current, to: next });
-            shellWindow.webContents.setZoomFactor(next);
-            shellWindow.webContents.send('zoom-changed', next);
-          },
-        },
-        {
-          label: 'Reset Zoom',
-          accelerator: 'CmdOrCtrl+0',
-          click: () => {
-            if (!shellWindow || shellWindow.isDestroyed()) return;
-            mainLogger.debug('menu.zoomReset');
-            shellWindow.webContents.setZoomFactor(1.0);
-            shellWindow.webContents.send('zoom-changed', 1.0);
-          },
-        },
       ],
     },
     {
