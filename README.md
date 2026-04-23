@@ -10,6 +10,12 @@ Browser Use Desktop allows you to port your cookies into a new Chromium environm
 
 We use [Browser Use Harnessless](https://github.com/browser-use/browser-harness) as the agent framework.
 
+## Download
+
+**macOS (Apple Silicon):** [Browser-Use-arm64.dmg](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
+
+The link always points to the latest release. Unsigned builds require right-click → Open on first launch.
+
 ## Providers
 
 - **Anthropic** - Claude Code Subscription or API Key

@@ -44,7 +44,6 @@ concurrency:
 
 env:
   NODE_VERSION: '20'
-  PYTHON_VERSION: '3.13'
 
 jobs:
   make:
@@ -91,24 +90,9 @@ jobs:
           cache: npm
           cache-dependency-path: my-app/package-lock.json
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install JS dependencies
         working-directory: my-app
-        run: npm ci --no-audit --no-fund
-
-      - name: Install Python daemon dependencies
-        working-directory: my-app/python
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build Python daemon binary
-        working-directory: my-app/python
-        run: bash build.sh
+        run: npm ci --no-audit --no-fund --legacy-peer-deps
 
       # Decide signed vs unsigned. The rule:
       #   - `workflow_dispatch` respects the `skip-signing` input (default true).
@@ -172,6 +156,18 @@ jobs:
           for f in my-app/out/make/**/*.dmg; do
             cp "$f" release-assets/
             dmg_count=$((dmg_count + 1))
+            # Also publish a version-less copy so the
+            # `/releases/latest/download/<file>` URL stays stable across
+            # releases. Arch is derived from the original filename (e.g.
+            # `...-arm64.dmg`, `...-x64.dmg`, `...-universal.dmg`).
+            base="$(basename "$f" .dmg)"
+            case "$base" in
+              *arm64)     stable="Browser-Use-arm64.dmg" ;;
+              *x64)       stable="Browser-Use-x64.dmg" ;;
+              *universal) stable="Browser-Use-universal.dmg" ;;
+              *)          stable="Browser-Use.dmg" ;;
+            esac
+            cp "$f" "release-assets/${stable}"
           done
 
           zip_count=0
