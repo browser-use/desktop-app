@@ -230,6 +230,17 @@ export function LogsApp(): React.ReactElement {
     });
   }, []);
 
+  // Auto-grow the follow-up textarea upward as the user types multi-line
+  // input. Cap at window-height minus the header so the textarea never
+  // pushes the output area offscreen; beyond that it scrolls internally.
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const max = Math.max(72, window.innerHeight - 80);
+    ta.style.height = `${Math.min(ta.scrollHeight, max)}px`;
+  }, [input]);
+
   // Auto-focus the follow-up textarea on active-session switch so the user
   // can start typing immediately after clicking a card. Skip when the logs
   // are collapsed (dot has no input) or the session is ended (textarea

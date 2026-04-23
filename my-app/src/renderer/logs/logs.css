@@ -289,7 +289,10 @@ html, body {
   font-family: inherit;
   font-size: 13px;
   line-height: 18px;
-  max-height: 90px;
+  /* max-height is set inline by LogsApp based on window.innerHeight so the
+     textarea can grow upward for multi-line input without pushing the
+     output offscreen. Internal scroll kicks in past that cap. */
+  overflow-y: auto;
   padding: 0;
   -webkit-user-select: text;
   user-select: text;
