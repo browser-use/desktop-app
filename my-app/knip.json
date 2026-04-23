@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main/index.ts",
+    "src/preload/shell.ts",
+    "src/preload/pill.ts",
+    "src/preload/onboarding.ts",
+    "src/preload/logs.ts",
+    "src/renderer/hub/index.tsx",
+    "src/renderer/pill/index.tsx",
+    "src/renderer/onboarding/index.tsx",
+    "src/renderer/logs/index.tsx",
+    "forge.config.ts",
+    "vite.*.config.*",
+    "scripts/**/*.{ts,mts,js,mjs}",
+    "tests/**/*.{test,spec}.{ts,tsx}"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,js,mjs,mts}",
+    "tests/**/*.{ts,tsx}"
+  ],
+  "ignore": [
+    "harnessless/**",
+    ".vite/**",
+    "src/main/hl/stock/helpers.js"
+  ]
+}
