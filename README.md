@@ -12,8 +12,8 @@ We [Browser Use Harnessless](https://github.com/browser-use/browser-harness) as 
 
 ## Providers
 
-**Anthropic** - Claude Code Subscription or API Key
-**Codex** - ChatGPT Subscription or API Key
+- **Anthropic** - Claude Code Subscription or API Key
+- **Codex** - ChatGPT Subscription or API Key
 
 ## Channels
 
