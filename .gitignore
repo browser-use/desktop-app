@@ -55,6 +55,7 @@ Thumbs.db
 
 # Tooling state
 .omc/
+.omx/
 .task/
 
 # Ephemeral track handoff docs (repo root)
