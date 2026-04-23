@@ -179,8 +179,14 @@ export function createLogsWindow(): BrowserWindow {
     log.debug('logs.userMoved', { bounds: logsWindow?.getBounds() });
   });
 
-  logsWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  logsWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Pin to the Space where the hub lives so a 3/4-finger swipe hides the
+  // logs overlay along with the hub. The previous 'screen-saver' level
+  // overrode Space containment on macOS (that level floats above
+  // everything, including Space boundaries), causing the overlay to leak
+  // onto every desktop. 'floating' is above normal windows but respects
+  // Spaces — sufficient for our overlay purpose.
+  logsWindow.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true });
+  logsWindow.setAlwaysOnTop(true, 'floating');
 
   const preloadPath = path.join(__dirname, 'logs.js');
   log.info('logs.preload.path', { preloadPath });
@@ -254,6 +260,16 @@ export function createLogsWindow(): BrowserWindow {
 export function attachToHub(hub: BrowserWindow): void {
   anchorWindow = hub;
   log.info('logs.attachToHub', { hubId: hub.id });
+
+  // Parent the logs window to the hub. Child windows follow the parent's
+  // Space / workspace on macOS and z-order above it — this is the
+  // reliable way to stop the overlay from leaking onto other desktops
+  // when the user swipes Spaces (alwaysOnTop leaks regardless of level).
+  if (logsWindow && !logsWindow.isDestroyed()) {
+    try { logsWindow.setParentWindow(hub); } catch (err) {
+      log.warn('logs.setParentWindow.error', { error: (err as Error).message });
+    }
+  }
 
   const reposition = (): void => {
     if (!logsWindow || logsWindow.isDestroyed()) return;
@@ -339,7 +355,10 @@ export function showLogs(sessionId: string, anchor: PaneAnchor | null = null): v
     logsWindow.setBounds(computeLogsBounds(anchorWindow, lastAnchor));
   }
   logsWindow.showInactive();
-  logsWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Keep the level in sync with the one set at window creation — using
+  // 'screen-saver' here would float the overlay across Spaces again on
+  // every session switch.
+  logsWindow.setAlwaysOnTop(true, 'floating');
   safeSend('logs:active-session-changed', sessionId);
 }
 
