@@ -88,6 +88,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # yarn.lock contains a git+ssh URL for a baileys dep
+      # (whiskeysockets/libsignal-node). CI has no SSH key, so rewrite to HTTPS.
+      - name: Rewrite git SSH to HTTPS
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
       - name: Install JS dependencies
         working-directory: my-app
         # Repo's source of truth is yarn.lock (Taskfile runs `yarn install`).
