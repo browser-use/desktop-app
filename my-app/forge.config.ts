@@ -73,25 +73,19 @@ const config: ForgeConfig = {
     ],
 
     // macOS bundle identity — only set when credentials are available.
-    // macOS 26+ refuses to launch any bundle without at least an ad-hoc
-    // signature ("is damaged" error). So we ALWAYS sign — with a real
-    // Developer ID when SHOULD_SIGN (for distribution + notarization) or
-    // ad-hoc (`identity: '-'`) for local/CI unsigned builds. Ad-hoc is
-    // free, requires no Apple account, and is enough to satisfy the macOS
-    // launcher's signature check.
-    osxSign: SHOULD_SIGN
-      ? {
-          identity: SIGNING_IDENTITY,
-          // Newer @electron/osx-sign moved per-file options (hardenedRuntime,
-          // entitlements, etc.) behind an optionsForFile callback.
-          optionsForFile: () => ({
-            hardenedRuntime: true,
-            entitlements: path.resolve(__dirname, 'entitlements.plist'),
-          }),
-        }
-      : {
-          identity: '-',
-        },
+    // Real Developer ID signing only runs via @electron/osx-sign when
+    // SHOULD_SIGN. For unsigned builds, an ad-hoc signature is applied
+    // below in the `postPackage` hook — @electron/osx-sign silently
+    // no-ops on `identity: '-'`, so we call `codesign` directly.
+    ...(SHOULD_SIGN && {
+      osxSign: {
+        identity: SIGNING_IDENTITY,
+        optionsForFile: () => ({
+          hardenedRuntime: true,
+          entitlements: path.resolve(__dirname, 'entitlements.plist'),
+        }),
+      },
+    }),
 
     // osxNotarize: submits to Apple notarization service after signing.
     // Requires @electron/notarize (listed in .track-F-deps.txt).
@@ -133,6 +127,24 @@ const config: ForgeConfig = {
       // against Electron's headers before asar packaging.
       const { rebuild } = await import('@electron/rebuild');
       await rebuild({ buildPath, electronVersion, arch: process.arch });
+    },
+
+    // Ad-hoc sign the .app on macOS for unsigned builds. macOS 26 refuses
+    // to launch bundles without a bundle-level signature ("is damaged"),
+    // and @electron/osx-sign silently skips when identity is '-'. Calling
+    // `codesign --deep --force --sign -` directly is the reliable path.
+    // No-op on signed builds (osxSign already handled them) and on non-mac.
+    postPackage: async (_config, packageResult) => {
+      if (SHOULD_SIGN || process.platform !== 'darwin') return;
+      for (const outputPath of packageResult.outputPaths ?? []) {
+        const appPath = path.join(outputPath, 'Browser Use.app');
+        if (!fs.existsSync(appPath)) continue;
+        execSync(
+          `codesign --deep --force --sign - "${appPath}"`,
+          { stdio: 'inherit' },
+        );
+        execSync(`codesign -dvv "${appPath}"`, { stdio: 'inherit' });
+      }
     },
   },
 
