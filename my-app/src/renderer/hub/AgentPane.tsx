@@ -810,6 +810,10 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
 
   // On session change, push the new session id to the floating logs overlay
   // so it re-targets (also handles first-mount auto-show for running sessions).
+  // Deliberately does NOT depend on session.status — re-firing logs.show() on
+  // every running→idle transition causes the logs window's showInactive +
+  // setAlwaysOnTop calls to surface the app/Space on macOS, yanking the user
+  // back from whatever window they'd switched to.
   useEffect(() => {
     if (session.status === 'draft') return;
     const api = window.electronAPI;
@@ -824,7 +828,8 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       height: Math.round(rect.height),
     };
     void api.logs.show(session.id, anchor).then((open) => setLogsOpen(open));
-  }, [session.id, session.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+  }, [session.id]);
 
   useEffect(() => {
     const paneEl = paneRef.current;
