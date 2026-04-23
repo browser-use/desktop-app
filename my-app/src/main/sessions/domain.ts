@@ -10,7 +10,7 @@ export function extractRegistrableDomain(url: string): string | null {
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch {
-    const m = url.match(/^[a-z]+:\/\/([^\/\?#]+)/i);
+    const m = url.match(/^[a-z]+:\/\/([^/?#]+)/i);
     if (!m) return null;
     host = m[1].toLowerCase();
   }

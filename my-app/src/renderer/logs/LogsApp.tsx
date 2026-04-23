@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TerminalPane } from '../hub/TerminalPane';
 // Reuse the hub's editor-logo assets so the logs window's "Open in ..." menu
 // matches the hub's FileOutputRow visually.
-// @ts-expect-error — Vite raw-import modifier (inline SVG string)
 import cursorLogoSrc from '../hub/cursor-logo.svg?raw';
 import vscodeLogo from '../hub/vscode-logo.svg';
 
@@ -15,20 +14,6 @@ declare global {
       onActiveSessionChanged: (cb: (id: string | null) => void) => () => void;
       onFocusFollowUp: (cb: () => void) => () => void;
       followUp: (sessionId: string, prompt: string) => Promise<{ resumed?: boolean; error?: string }>;
-    };
-    electronAPI?: {
-      sessions: {
-        getTermReplay: (id: string) => Promise<string>;
-        revealOutput: (filePath: string) => Promise<{ revealed: boolean }>;
-        get: (id: string) => Promise<unknown>;
-        listEditors: () => Promise<Array<{ id: string; name: string }>>;
-        openInEditor: (editorId: string, filePath: string) => Promise<{ opened: boolean }>;
-        downloadOutput: (filePath: string) => Promise<{ opened: boolean }>;
-      };
-      on: {
-        sessionOutputTerm: (cb: (id: string, bytes: string) => void) => () => void;
-        sessionUpdated: (cb: (session: unknown) => void) => () => void;
-      };
     };
   }
 }
@@ -270,11 +255,14 @@ export function LogsApp(): React.ReactElement {
       const session = raw as SessionShape;
       if (!session || session.id !== sessionId) return;
       const out = session.output ?? [];
-      const fileEntries = out
-        .filter((e): e is FileOutputEntry => e.type === 'file_output')
-        .map((e) => ({ type: 'file_output' as const, name: e.name, path: e.path, size: e.size, mime: e.mime }));
+      const fileEntries: FileOutputEntry[] = out
+        .filter((e) => (e as { type?: string }).type === 'file_output')
+        .map((e) => {
+          const f = e as unknown as { name: string; path: string; size: number; mime: string };
+          return { type: 'file_output' as const, name: f.name, path: f.path, size: f.size, mime: f.mime };
+        });
       setFiles(fileEntries);
-      const doneEv = [...out].reverse().find((e) => e.type === 'done') as
+      const doneEv = [...out].reverse().find((e) => (e as { type?: string }).type === 'done') as
         | { type: 'done'; summary?: string; iterations?: number }
         | undefined;
       setDone(doneEv ? { summary: String(doneEv.summary ?? 'Task completed'), iterations: Number(doneEv.iterations ?? 0) } : null);
@@ -319,11 +307,14 @@ export function LogsApp(): React.ReactElement {
       if (cancelled) return;
       const session = raw as SessionShape | null;
       const out = session?.output ?? [];
-      const fileEntries = out
-        .filter((e): e is FileOutputEntry => e.type === 'file_output')
-        .map((e) => ({ type: 'file_output' as const, name: e.name, path: e.path, size: e.size, mime: e.mime }));
+      const fileEntries: FileOutputEntry[] = out
+        .filter((e) => (e as { type?: string }).type === 'file_output')
+        .map((e) => {
+          const f = e as unknown as { name: string; path: string; size: number; mime: string };
+          return { type: 'file_output' as const, name: f.name, path: f.path, size: f.size, mime: f.mime };
+        });
       setFiles(fileEntries);
-      const doneEv = [...out].reverse().find((e) => e.type === 'done') as
+      const doneEv = [...out].reverse().find((e) => (e as { type?: string }).type === 'done') as
         | { type: 'done'; summary?: string; iterations?: number }
         | undefined;
       setDone(doneEv ? { summary: String(doneEv.summary ?? 'Task completed'), iterations: Number(doneEv.iterations ?? 0) } : null);

@@ -9,10 +9,13 @@
     "noImplicitAny": true,
     "sourceMap": true,
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "outDir": "dist",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node", "vite/client"]
   },
   "exclude": ["node_modules", "out", ".vite", "dist"]
 }

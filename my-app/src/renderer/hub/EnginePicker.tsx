@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-// @ts-expect-error — Vite raw-import modifier
 import claudeLogoSrc from './claude-logo.svg?raw';
-// @ts-expect-error — Vite raw-import modifier
 import openaiLogoSrc from './openai-logo.svg?raw';
 
 export interface EngineInfo {

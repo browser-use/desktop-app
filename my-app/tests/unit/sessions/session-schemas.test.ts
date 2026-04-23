@@ -244,7 +244,7 @@ describe('validation helpers', () => {
     prompt: 'test',
     status: 'draft',
     createdAt: Date.now(),
-    output: [],
+    output: [] as unknown[],
   };
 
   it('validateSession passes for valid data', () => {

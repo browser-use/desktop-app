@@ -86,7 +86,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     try {
       await fsPromises.rm(AUTH_DIR, { recursive: true, force: true });
       mainLogger.info('whatsapp.clearAuth');
-    } catch {}
+    } catch { /* ignore */ }
   }
 
   async send(conversationId: string, text: string): Promise<string | null> {
@@ -107,6 +107,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       await this.restoreCredsFromBackupIfNeeded();
 
       const { version } = await fetchLatestBaileysVersion();
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- Baileys library fn, not a React hook
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
       mainLogger.info('whatsapp.startSocket', {
@@ -136,7 +137,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
           const existing = fs.readFileSync(credsPath, 'utf-8');
           JSON.parse(existing);
           fs.copyFileSync(credsPath, backupPath);
-        } catch {}
+        } catch { /* ignore */ }
         await saveCreds();
       };
 
@@ -195,7 +196,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
           mainLogger.warn('whatsapp.authInvalid', { code });
           try {
             await fsPromises.rm(AUTH_DIR, { recursive: true, force: true });
-          } catch {}
+          } catch { /* ignore */ }
           this.identity = null;
           this.setStatus('disconnected', 'Session expired — reconnect to scan QR');
           break;
@@ -325,7 +326,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
         JSON.parse(backupRaw);
         fs.copyFileSync(backupPath, credsPath);
         mainLogger.info('whatsapp.creds.restoredFromBackup');
-      } catch {}
+      } catch { /* ignore */ }
     }
   }
 

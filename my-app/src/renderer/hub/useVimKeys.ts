@@ -30,7 +30,7 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
     if (typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)) return 'darwin';
     return 'other';
   });
-  const chordTimer = useRef<ReturnType<typeof setTimeout>>();
+  const chordTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 

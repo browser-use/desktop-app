@@ -13,11 +13,8 @@ import { app } from 'electron';
 import { mainLogger } from '../logger';
 import type { HlContext } from './context';
 
-// @ts-expect-error — Vite raw-import modifier
 import STOCK_HELPERS_JS from './stock/helpers.js?raw';
-// @ts-expect-error — Vite raw-import modifier
 import STOCK_TOOLS_JSON from './stock/TOOLS.json?raw';
-// @ts-expect-error — Vite raw-import modifier
 import STOCK_SKILL_MD from './stock/AGENTS.md?raw';
 
 export interface HarnessTool {

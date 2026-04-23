@@ -148,6 +148,8 @@ export class BrowserPool {
     const applyEmulation = (): void => {
       try {
         if (view.webContents.isDestroyed()) return;
+        // `fitToView` is accepted at runtime but missing from Electron's
+        // Parameters typedef; cast to loosen the shape.
         view.webContents.enableDeviceEmulation({
           screenSize: { width: EMULATED_VIEWPORT_WIDTH, height: EMULATED_VIEWPORT_HEIGHT },
           viewSize:   { width: EMULATED_VIEWPORT_WIDTH, height: EMULATED_VIEWPORT_HEIGHT },
@@ -157,7 +159,7 @@ export class BrowserPool {
           fitToView: false,
           offset: { x: 0, y: 0 },
           scale: 1,
-        });
+        } as Parameters<typeof view.webContents.enableDeviceEmulation>[0]);
         mainLogger.info('BrowserPool.deviceEmulation.applied', {
           sessionId,
           operationalViewport: {

@@ -7,7 +7,6 @@ import { TerminalPane } from './TerminalPane';
 // Inline the SVG source so `fill="currentColor"` in the logos picks up the
 // menu's CSS color. `<img src=...>` renders in its own graphics context and
 // can't inherit text color.
-// @ts-expect-error — Vite raw-import modifier
 import cursorLogoSrc from './cursor-logo.svg?raw';
 import vscodeLogo from './vscode-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';

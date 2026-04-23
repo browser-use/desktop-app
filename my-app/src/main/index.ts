@@ -1349,7 +1349,6 @@ function buildApplicationMenu(): void {
           label: 'Report an Issue…',
           click: () => {
             mainLogger.debug('menu.reportIssue');
-            const { shell } = require('electron');
             shell.openExternal('https://github.com/browser-use/desktop-app/issues');
           },
         },

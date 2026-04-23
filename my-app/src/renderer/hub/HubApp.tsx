@@ -138,7 +138,7 @@ export function HubApp(): React.ReactElement {
   });
   const setViewMode = useCallback((mode: ViewMode) => {
     setViewModeRaw(mode);
-    try { window.localStorage.setItem('hub-view-mode', mode); } catch {}
+    try { window.localStorage.setItem('hub-view-mode', mode); } catch { /* ignore */ }
   }, []);
   const openPill = useCallback(() => { window.electronAPI?.pill.toggle(); }, []);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -156,7 +156,7 @@ export function HubApp(): React.ReactElement {
   });
   const hideCmdBar = useCallback(() => {
     setCmdBarVisible(false);
-    try { window.localStorage.setItem('hub-cmdbar-visible', '0'); } catch {}
+    try { window.localStorage.setItem('hub-cmdbar-visible', '0'); } catch { /* ignore */ }
   }, []);
 
   const visibleSessionCount = sessions.length;

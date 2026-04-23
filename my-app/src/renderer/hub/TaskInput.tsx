@@ -135,7 +135,7 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
 
   const onEngineChange = useCallback((id: string) => {
     setEngine(id);
-    try { localStorage.setItem(ENGINE_STORAGE_KEY, id); } catch {}
+    try { localStorage.setItem(ENGINE_STORAGE_KEY, id); } catch { /* ignore */ }
   }, []);
 
   const onKeyDown = useCallback(
