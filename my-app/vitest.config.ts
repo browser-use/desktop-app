@@ -19,37 +19,8 @@ export default defineConfig({
     name: 'unit',
     include: [
       'tests/unit/**/*.test.ts',
-      'tests/unit/profiles/**/*.spec.{ts,tsx}',
-      'tests/unit/permissions/**/*.spec.{ts,tsx}',
-      'tests/unit/passwords/**/*.spec.{ts,tsx}',
-      'tests/pill/**/*.spec.ts',
+      'tests/unit/**/*.spec.{ts,tsx}',
       'tests/integration/**/*.test.ts',
-      // Regression tests that don't need a live Electron process
-      'tests/regression/no-global-shortcuts.spec.ts',
-      // Backfilled tests for chrome://history, chrome://extensions, zoom
-      // (PR: test backfill for D1 TDD compliance)
-      'tests/unit/history/**/*.spec.ts',
-      'tests/unit/history/**/*.spec.tsx',
-      'tests/unit/extensions/**/*.spec.ts',
-      'tests/unit/extensions/**/*.spec.tsx',
-      'tests/unit/zoom/**/*.spec.ts',
-      'tests/unit/shell/**/*.spec.tsx',
-      'tests/unit/share/**/*.spec.ts',
-      // Sign-out store wiring + ClearDataController wiring
-      // (Issues #216 / #200 — sign-out 'clear' and clear-data actually remove data)
-      'tests/unit/identity/SignOutController.spec.ts',
-      'tests/unit/privacy/**/*.spec.ts',
-      // Issue #202 — auto-updater wiring
-      'tests/unit/updater/**/*.spec.ts',
-      // Factory-reset controller wiping (Issues #217 / #225)
-      'tests/unit/settings/**/*.spec.ts',
-      // Issue #222 — content-category policies actually enforced at runtime
-      'tests/unit/content-categories/**/*.spec.ts',
-      // Profile-scoped stores (Issue #208 — bookmarks/history/passwords/autofill
-      // must each persist under <userData>/profiles/<id>/ not the shared root).
-      'tests/unit/bookmarks/**/*.spec.ts',
-      'tests/unit/autofill/**/*.spec.ts',
-      'tests/unit/sessions/**/*.test.ts',
     ],
     exclude: ['tests/e2e/**', 'tests/parity/**'],
     // Renderer .spec.tsx files declare jsdom via the per-file
