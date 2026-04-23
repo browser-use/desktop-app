@@ -159,14 +159,14 @@ export function HubApp(): React.ReactElement {
     try { window.localStorage.setItem('hub-cmdbar-visible', '0'); } catch {}
   }, []);
 
-  const visibleSessionCount = sessions.filter((s) => !s.hidden).length;
+  const visibleSessionCount = sessions.length;
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('pane:layout-change'));
   }, [visibleSessionCount, gridColumns, gridPage, viewMode]);
 
   const vimHandlers = useMemo<Partial<Record<ActionId, () => void>>>(() => ({
     'nav.down': () => {
-      const visible = sessions.filter((s) => !s.hidden);
+      const visible = sessions;
       if (!visible.length) return;
       const currVis = visible.findIndex((v) => v.id === sessions[focusIndex]?.id);
       const nextVis = Math.min((currVis < 0 ? 0 : currVis + 1), visible.length - 1);
@@ -175,7 +175,7 @@ export function HubApp(): React.ReactElement {
       setFocusIndex(nextGlobal);
     },
     'nav.up': () => {
-      const visible = sessions.filter((s) => !s.hidden);
+      const visible = sessions;
       if (!visible.length) return;
       const currVis = visible.findIndex((v) => v.id === sessions[focusIndex]?.id);
       const nextVis = Math.max((currVis < 0 ? 0 : currVis - 1), 0);
@@ -184,13 +184,13 @@ export function HubApp(): React.ReactElement {
       setFocusIndex(nextGlobal);
     },
     'nav.top': () => {
-      const visible = sessions.filter((s) => !s.hidden);
+      const visible = sessions;
       if (!visible.length) return;
       const nextGlobal = sessions.findIndex((s) => s.id === visible[0].id);
       setFocusIndex(nextGlobal);
     },
     'nav.bottom': () => {
-      const visible = sessions.filter((s) => !s.hidden);
+      const visible = sessions;
       if (!visible.length) return;
       const lastVis = visible.length - 1;
       const nextGlobal = sessions.findIndex((s) => s.id === visible[lastVis].id);
@@ -210,7 +210,6 @@ export function HubApp(): React.ReactElement {
       const s = sessions[focusIndex];
       if (!s) return;
       window.electronAPI?.sessions.viewDetach(s.id).catch(() => {});
-      window.electronAPI?.sessions.hide(s.id).catch(() => {});
       console.log('[VimKeys] dismiss session', s.id);
       dismissSession(s.id);
       setFocusIndex((i) => Math.min(i, sessions.length - 2));
@@ -349,7 +348,7 @@ export function HubApp(): React.ReactElement {
   }, [sessions, setViewMode]);
 
   useEffect(() => {
-    const visible = sessions.filter((s) => !s.hidden);
+    const visible = sessions;
     if (!visible.length) return;
     const focused = sessions[focusIndex];
     if (!focused) return;
@@ -446,13 +445,13 @@ export function HubApp(): React.ReactElement {
     console.log('[HubApp] selectSession', { id });
   }, [sessions]);
 
-  const visibleCount = sessions.filter((s) => !s.hidden).length;
+  const visibleCount = sessions.length;
   const gridPageSize = Math.max(1, gridColumns);
   const gridTotalPages = Math.max(1, Math.ceil(visibleCount / gridPageSize));
   const gridSafePage = Math.min(gridPage, gridTotalPages - 1);
   const goToPage = useCallback((target: number) => {
     const clamped = Math.max(0, Math.min(target, gridTotalPages - 1));
-    const visible = sessions.filter((s) => !s.hidden);
+    const visible = sessions;
     const firstOnPage = visible[clamped * gridPageSize];
     if (firstOnPage) {
       const globalIdx = sessions.findIndex((s) => s.id === firstOnPage.id);
@@ -513,8 +512,6 @@ export function HubApp(): React.ReactElement {
         sessions={sessions}
         selectedId={selectedSessionId}
         onSelect={(id) => {
-          window.electronAPI?.sessions.unhide(id).catch(() => {});
-          updateSession(id, { hidden: false });
           handleSelectSession(id);
           if (viewMode === 'dashboard') setViewMode('grid');
         }}
@@ -528,19 +525,6 @@ export function HubApp(): React.ReactElement {
             case 'stop':
               window.electronAPI?.sessions.cancel(id).catch(() => {});
               break;
-            case 'hide':
-              window.electronAPI?.sessions.viewDetach(id).catch(() => {});
-              window.electronAPI?.sessions.hide(id).catch(() => {});
-              updateSession(id, { hidden: true });
-              break;
-            case 'unhide':
-              window.electronAPI?.sessions.unhide(id).catch(() => {});
-              updateSession(id, { hidden: false });
-              break;
-            case 'delete':
-              window.electronAPI?.sessions.viewDetach(id).catch(() => {});
-              dismissSession(id);
-              break;
           }
         }}
       />
@@ -551,7 +535,6 @@ export function HubApp(): React.ReactElement {
           onSwitchToGrid={() => setViewMode('grid')}
           onSubmitTask={(submission) => { handleCreateSession(submission); }}
           onSelectSession={(id) => {
-            window.electronAPI?.sessions.unhide(id).catch(() => {});
             handleSelectSession(id);
             sessionsQuery.refetch();
             setViewMode('grid');
@@ -559,7 +542,7 @@ export function HubApp(): React.ReactElement {
         />
       ) : viewMode === 'grid' ? (
         (() => {
-          const visibleSessions = sessions.filter((s) => !s.hidden);
+          const visibleSessions = sessions;
           const pageSize = gridColumns;
           const totalPages = Math.max(1, Math.ceil(visibleSessions.length / pageSize));
           const safePage = Math.min(gridPage, totalPages - 1);
@@ -595,7 +578,6 @@ export function HubApp(): React.ReactElement {
                       onFollowUp={handleFollowUp}
                       onDismiss={(id) => {
                         window.electronAPI?.sessions.viewDetach(id).catch(() => {});
-                        window.electronAPI?.sessions.hide(id).catch(() => {});
                         dismissSession(id);
                       }}
                       onCancel={(id) => {
@@ -622,7 +604,6 @@ export function HubApp(): React.ReactElement {
         <ListView
           sessions={sessions}
           onSelectSession={(id) => {
-            window.electronAPI?.sessions.unhide(id).catch(() => {});
             handleSelectSession(id);
             sessionsQuery.refetch();
             const idx = sessions.findIndex((s) => s.id === id);

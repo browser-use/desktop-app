@@ -6,7 +6,7 @@ interface SidebarSession extends AgentSession {
   lastActivityAt?: number;
 }
 
-export type SidebarRowAction = 'rerun' | 'stop' | 'hide' | 'unhide' | 'delete';
+export type SidebarRowAction = 'rerun' | 'stop';
 
 interface SidebarProps {
   sessions?: SidebarSession[];
@@ -70,7 +70,6 @@ const MOCK_SIDEBAR_SESSIONS: SidebarSession[] = [
     output: [],
     primarySite: 'calendar.google.com',
     lastActivityAt: Date.now() - 1000 * 60 * 60 * 23,
-    hidden: true,
   },
 ];
 
@@ -217,23 +216,6 @@ function SessionRow({
               Stop
             </button>
           )}
-          {s.hidden ? (
-            <button className="sidebar__row-menu-item" role="menuitem" onClick={() => handleAction('unhide')}>
-              Unhide
-            </button>
-          ) : (
-            <button className="sidebar__row-menu-item" role="menuitem" onClick={() => handleAction('hide')}>
-              Hide
-            </button>
-          )}
-          <div className="sidebar__row-menu-sep" />
-          <button
-            className="sidebar__row-menu-item sidebar__row-menu-item--danger"
-            role="menuitem"
-            onClick={() => handleAction('delete')}
-          >
-            Delete
-          </button>
         </div>
       )}
     </div>
@@ -243,21 +225,18 @@ function SessionRow({
 export function Sidebar({ sessions, selectedId, onSelect, onNewAgent, onRowAction }: SidebarProps): React.ReactElement {
   const data = sessions ?? MOCK_SIDEBAR_SESSIONS;
 
-  const { active, done, hidden } = useMemo(() => {
+  const { active, done } = useMemo(() => {
     const sortByActivity = (a: SidebarSession, b: SidebarSession): number =>
       (b.lastActivityAt ?? b.createdAt) - (a.lastActivityAt ?? a.createdAt);
     const act: SidebarSession[] = [];
     const don: SidebarSession[] = [];
-    const hid: SidebarSession[] = [];
     for (const s of data) {
-      if (s.hidden) hid.push(s);
-      else if (s.status === 'running' || s.status === 'idle' || s.status === 'stuck' || s.status === 'draft') act.push(s);
+      if (s.status === 'running' || s.status === 'idle' || s.status === 'stuck' || s.status === 'draft') act.push(s);
       else don.push(s);
     }
     act.sort(sortByActivity);
     don.sort(sortByActivity);
-    hid.sort(sortByActivity);
-    return { active: act, done: don, hidden: hid };
+    return { active: act, done: don };
   }, [data]);
 
   return (
@@ -279,7 +258,7 @@ export function Sidebar({ sessions, selectedId, onSelect, onNewAgent, onRowActio
 
       <div className="sidebar__groups">
         <div className="sidebar__group-body">
-          {[...active, ...done, ...hidden].map((s) => (
+          {[...active, ...done].map((s) => (
             <SessionRow key={s.id} s={s} selected={s.id === selectedId} onSelect={onSelect} onAction={onRowAction} />
           ))}
         </div>

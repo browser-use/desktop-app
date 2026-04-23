@@ -24,14 +24,10 @@ export function useSessionsQuery() {
       const api = window.electronAPI;
       if (!api) return [];
       const list = await api.sessions.listAll();
-      const hiddenCount = list.filter((s) => s.hidden).length;
-      const visibleCount = list.filter((s) => !s.hidden).length;
       console.log('[useSessionsQuery] fetched sessions', {
         total: list.length,
-        visible: visibleCount,
-        hidden: hiddenCount,
         fetchMs: Math.round(performance.now() - t0),
-        ids: list.map((s) => ({ id: s.id.slice(0, 8), status: s.status, hidden: !!s.hidden })),
+        ids: list.map((s) => ({ id: s.id.slice(0, 8), status: s.status })),
       });
       return list;
     },

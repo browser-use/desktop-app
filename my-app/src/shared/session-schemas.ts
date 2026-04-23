@@ -115,7 +115,6 @@ export const AgentSessionSchema = z.object({
   error: z.string().optional(),
   group: z.string().optional(),
   hasBrowser: z.boolean().optional(),
-  hidden: z.boolean().optional(),
   originChannel: z.string().optional(),
   originConversationId: z.string().optional(),
   primarySite: z.string().nullable().optional(),

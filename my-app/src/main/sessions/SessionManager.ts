@@ -48,10 +48,9 @@ export class SessionManager extends EventEmitter {
       mainLogger.warn('SessionManager.loadPersistedSessions.recovered', { count: recoveredCount });
     }
 
-    const rows = this.db.listSessions({ limit: 100, includeHidden: true });
+    const rows = this.db.listSessions({ limit: 100 });
     mainLogger.info('SessionManager.loadPersistedSessions.rows', {
       rowCount: rows.length,
-      hiddenCount: rows.filter((r) => r.hidden === 1).length,
       statuses: rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] ?? 0) + 1; return acc; }, {} as Record<string, number>),
     });
     for (const row of rows) {
@@ -63,7 +62,6 @@ export class SessionManager extends EventEmitter {
         output: [],
         error: row.error ?? undefined,
         group: row.group_name ?? undefined,
-        hidden: row.hidden === 1,
         originChannel: row.origin_channel ?? undefined,
         originConversationId: row.origin_conversation_id ?? undefined,
         primarySite: row.primary_site ?? null,
@@ -311,21 +309,6 @@ export class SessionManager extends EventEmitter {
     this.emitEvent('session-updated', { ...session });
   }
 
-  hideSession(id: string): void {
-    const session = this.sessions.get(id);
-    if (session) (session as AgentSession & { hidden?: boolean }).hidden = true;
-    this.db.hideSession(id);
-    mainLogger.info('SessionManager.hideSession', { id });
-  }
-
-  unhideSession(id: string): void {
-    const session = this.sessions.get(id);
-    if (session) (session as AgentSession & { hidden?: boolean }).hidden = false;
-    this.db.unhideSession(id);
-    mainLogger.info('SessionManager.unhideSession', { id });
-    if (session) this.emitEvent('session-updated', { ...session });
-  }
-
   deleteSession(id: string): void {
     const session = this.sessions.get(id);
     if (session && (session.status === 'running' || session.status === 'stuck')) {
@@ -425,17 +408,10 @@ export class SessionManager extends EventEmitter {
     return { ...session };
   }
 
-  listSessions(opts?: { includeHidden?: boolean }): AgentSession[] {
-    const total = this.sessions.size;
-    let list = Array.from(this.sessions.values());
-    if (!opts?.includeHidden) {
-      list = list.filter((s) => !(s as any).hidden);
-    }
+  listSessions(): AgentSession[] {
+    const list = Array.from(this.sessions.values());
     mainLogger.info('SessionManager.listSessions', {
-      includeHidden: !!opts?.includeHidden,
-      inMemoryTotal: total,
       returning: list.length,
-      filteredHidden: total - list.length,
     });
     return list
       .sort((a, b) => b.createdAt - a.createdAt)

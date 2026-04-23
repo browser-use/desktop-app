@@ -103,7 +103,6 @@ export function MemoryIndicator({ onOpenSettings }: MemoryIndicatorProps): React
                           const api = window.electronAPI;
                           if (!api || !p.sessionId) return;
                           api.sessions.cancel(p.sessionId).catch(() => {});
-                          api.sessions.hide(p.sessionId).catch(() => {});
                         }}
                         aria-label="Stop session"
                       >

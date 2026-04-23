@@ -11,7 +11,6 @@ interface SessionRow {
   error: string | null;
   group_name: string | null;
   updated_at: number;
-  hidden: number;
   origin_channel: string | null;
   origin_conversation_id: string | null;
   primary_site: string | null;
@@ -32,10 +31,6 @@ export class SessionDb {
     getSessionOrigin: Database.Statement;
     listAll: Database.Statement;
     listByStatus: Database.Statement;
-    listAllWithHidden: Database.Statement;
-    listByStatusWithHidden: Database.Statement;
-    hide: Database.Statement;
-    unhide: Database.Statement;
     saveMessages: Database.Statement;
     getMessages: Database.Statement;
     deleteSession: Database.Statement;
@@ -101,10 +96,6 @@ export class SessionDb {
       getSessionOrigin: this.db.prepare('SELECT origin_channel, origin_conversation_id FROM sessions WHERE id = ?'),
       listAll: this.db.prepare('SELECT * FROM sessions ORDER BY created_at DESC LIMIT ? OFFSET ?'),
       listByStatus: this.db.prepare('SELECT * FROM sessions WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'),
-      listAllWithHidden: this.db.prepare('SELECT * FROM sessions WHERE hidden = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?'),
-      listByStatusWithHidden: this.db.prepare('SELECT * FROM sessions WHERE status = ? AND hidden = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?'),
-      hide: this.db.prepare('UPDATE sessions SET hidden = 1, updated_at = ? WHERE id = ?'),
-      unhide: this.db.prepare('UPDATE sessions SET hidden = 0, updated_at = ? WHERE id = ?'),
       saveMessages: this.db.prepare('UPDATE sessions SET messages = ?, updated_at = ? WHERE id = ?'),
       getMessages: this.db.prepare('SELECT messages FROM sessions WHERE id = ?'),
       deleteSession: this.db.prepare('DELETE FROM sessions WHERE id = ?'),
@@ -386,29 +377,13 @@ export class SessionDb {
     return (this.stmts.getSession.get(id) as SessionRow | undefined) ?? null;
   }
 
-  listSessions(opts?: { status?: SessionStatus; limit?: number; offset?: number; includeHidden?: boolean }): SessionRow[] {
+  listSessions(opts?: { status?: SessionStatus; limit?: number; offset?: number }): SessionRow[] {
     const limit = opts?.limit ?? 1000;
     const offset = opts?.offset ?? 0;
     if (opts?.status) {
-      return opts.includeHidden
-        ? this.stmts.listByStatus.all(opts.status, limit, offset) as SessionRow[]
-        : this.stmts.listByStatusWithHidden.all(opts.status, limit, offset) as SessionRow[];
+      return this.stmts.listByStatus.all(opts.status, limit, offset) as SessionRow[];
     }
-    return opts?.includeHidden
-      ? this.stmts.listAll.all(limit, offset) as SessionRow[]
-      : this.stmts.listAllWithHidden.all(limit, offset) as SessionRow[];
-  }
-
-  hideSession(id: string): void {
-    if (this.closed) return;
-    this.stmts.hide.run(Date.now(), id);
-    mainLogger.info('SessionDb.hideSession', { id });
-  }
-
-  unhideSession(id: string): void {
-    if (this.closed) return;
-    this.stmts.unhide.run(Date.now(), id);
-    mainLogger.info('SessionDb.unhideSession', { id });
+    return this.stmts.listAll.all(limit, offset) as SessionRow[];
   }
 
   saveMessages(id: string, messages: unknown[]): void {

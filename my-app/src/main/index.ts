@@ -897,24 +897,11 @@ app.whenReady().then(async () => {
     browserPool.destroy(validatedId, shellWindow ?? undefined);
   });
 
-  ipcMain.handle('sessions:hide', (_event, id: string) => {
-    const validatedId = assertString(id, 'id', 100);
-    mainLogger.info('main.sessions:hide', { id: validatedId });
-    browserPool.destroy(validatedId, shellWindow ?? undefined);
-    sessionManager.hideSession(validatedId);
-  });
-
   ipcMain.handle('sessions:delete', (_event, id: string) => {
     const validatedId = assertString(id, 'id', 100);
     mainLogger.info('main.sessions:delete', { id: validatedId });
     browserPool.destroy(validatedId, shellWindow ?? undefined);
     sessionManager.deleteSession(validatedId);
-  });
-
-  ipcMain.handle('sessions:unhide', (_event, id: string) => {
-    const validatedId = assertString(id, 'id', 100);
-    mainLogger.info('main.sessions:unhide', { id: validatedId });
-    sessionManager.unhideSession(validatedId);
   });
 
   /**
@@ -1007,7 +994,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('sessions:list-all', () => {
-    return sessionManager.listSessions({ includeHidden: true }).map((s) => ({
+    return sessionManager.listSessions().map((s) => ({
       ...s,
       hasBrowser: !!browserPool.getWebContents(s.id),
     }));

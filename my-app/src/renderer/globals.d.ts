@@ -42,8 +42,6 @@ interface ElectronSessionAPI {
   steer: (id: string, message: string) => Promise<{ queued?: boolean; error?: string }>;
   dismiss: (id: string) => Promise<void>;
   delete: (id: string) => Promise<void>;
-  hide: (id: string) => Promise<void>;
-  unhide: (id: string) => Promise<void>;
   downloadOutput: (filePath: string) => Promise<{ opened: boolean }>;
   revealOutput: (filePath: string) => Promise<{ revealed: boolean }>;
   listEditors: () => Promise<Array<{ id: string; name: string }>>;

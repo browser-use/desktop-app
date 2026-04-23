@@ -113,8 +113,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sessions:steer', { id, message }),
     dismiss: (id: string): Promise<void> => ipcRenderer.invoke('sessions:dismiss', id),
     delete: (id: string): Promise<void> => ipcRenderer.invoke('sessions:delete', id),
-    hide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:hide', id),
-    unhide: (id: string): Promise<void> => ipcRenderer.invoke('sessions:unhide', id),
     downloadOutput: (filePath: string): Promise<{ opened: boolean }> =>
       ipcRenderer.invoke('sessions:download-output', filePath),
     revealOutput: (filePath: string): Promise<{ revealed: boolean }> =>
