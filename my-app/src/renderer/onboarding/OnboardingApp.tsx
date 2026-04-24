@@ -63,7 +63,7 @@ declare global {
       getConsent: () => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
       setTelemetryConsent: (optedIn: boolean) => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
       capture: (name: string, props?: Record<string, string | number | boolean>) => void;
-      complete: () => Promise<void>;
+      complete: (opts?: { initialHubView?: 'dashboard' | 'grid' | 'list' }) => Promise<void>;
       whatsapp: {
         connect: () => Promise<{ status: string }>;
         disconnect: () => Promise<{ status: string }>;
@@ -585,7 +585,11 @@ export function OnboardingApp() {
   const handleFinish = useCallback(async () => {
     window.onboardingAPI.capture?.('onboarding_completed');
     try {
-      await window.onboardingAPI.complete();
+      // Tells the main process to land the freshly-opened hub on the
+      // Dashboard view (equivalent to `g d`), rather than whatever
+      // hub-view-mode was last persisted. Cross-window localStorage
+      // isn't shared, so this has to go via main.
+      await window.onboardingAPI.complete({ initialHubView: 'dashboard' });
     } catch (err) {
       console.error('[onboarding] complete failed', err);
     }
@@ -927,7 +931,6 @@ export function OnboardingApp() {
                   type="button"
                   className="claude-code-card"
                   onClick={handleStartCodexLogin}
-                  disabled={waitingForCodexLogin}
                 >
                   <div className="claude-code-card__icon">
                     <img src={codexLogo} alt="" />
@@ -938,27 +941,37 @@ export function OnboardingApp() {
                     </div>
                     <div className="claude-code-card__sub">
                       {waitingForCodexLogin && codexDeviceCode
-                        ? 'Enter the code shown below on the verification page.'
+                        ? 'Enter the code shown below, or click here to restart the flow.'
                         : waitingForCodexLogin
                           ? 'Starting device-auth flow…'
                           : 'Opens a browser with a one-time code — sign in once, we’ll detect it.'}
                     </div>
                   </div>
-                  <div className="claude-code-card__chevron">{waitingForCodexLogin ? '…' : '›'}</div>
+                  <div className="claude-code-card__chevron">{waitingForCodexLogin ? '↻' : '›'}</div>
                 </button>
                 {codexDeviceCode && (
                   <div className="codex-device-auth">
                     <div className="codex-device-auth__label">One-time code</div>
                     <div className="codex-device-auth__code">{codexDeviceCode}</div>
-                    {codexVerificationUrl && (
+                    <div className="codex-device-auth__actions">
+                      {codexVerificationUrl && (
+                        <button
+                          type="button"
+                          className="codex-device-auth__link"
+                          onClick={() => window.onboardingAPI.openExternal?.(codexVerificationUrl)}
+                        >
+                          Open verification page ↗
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className="codex-device-auth__link"
-                        onClick={() => window.onboardingAPI.openExternal?.(codexVerificationUrl)}
+                        className="codex-device-auth__link codex-device-auth__link--secondary"
+                        onClick={handleStartCodexLogin}
+                        title="Kill the current login attempt and request a fresh code"
                       >
-                        Open verification page ↗
+                        Restart with a new code
                       </button>
-                    )}
+                    </div>
                   </div>
                 )}
               </>

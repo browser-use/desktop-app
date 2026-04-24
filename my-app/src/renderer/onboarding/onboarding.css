@@ -1315,8 +1315,13 @@ html, body {
   color: var(--color-text-primary);
 }
 
+.codex-device-auth__actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
 .codex-device-auth__link {
-  align-self: flex-start;
   background: transparent;
   border: none;
   padding: 0;
@@ -1326,4 +1331,8 @@ html, body {
 }
 .codex-device-auth__link:hover {
   text-decoration: underline;
+}
+
+.codex-device-auth__link--secondary {
+  color: var(--color-text-secondary);
 }
