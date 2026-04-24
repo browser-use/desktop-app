@@ -1,13 +1,16 @@
 /**
  * Cross-platform Codex login driver.
  *
- * `codex login --device-auth` prints an OAuth URL + one-time code to stdout,
- * but only when stdout is a TTY (without one it emits zero bytes and hangs).
- * We spawn it via node-pty to satisfy the isatty gate, parse the URL and code
- * from the ANSI-coloured output, hand the URL off to the system browser, and
- * return the code to the renderer so the user can type it into the device
- * verification form. The PTY keeps polling OpenAI until auth.json appears or
- * the user gives up.
+ * Default: plain `codex login` — opens a localhost callback server and prints
+ * an auth.openai.com/oauth/authorize URL. Matches the Claude Code flow and
+ * does NOT require the account-level "Enable device code authorization"
+ * toggle in ChatGPT Security Settings. `codex login --device-auth` is the
+ * remote/headless fallback and is gated on that toggle.
+ *
+ * Both variants need a TTY — plain `child_process.spawn` yields zero bytes —
+ * so we go through node-pty either way. The URL is parsed from stdout and
+ * handed to `shell.openExternal`; when `--device-auth` is in play we also
+ * capture the XXXX-XXXXX one-time code.
  *
  * Replaces the previous macOS-only `osascript → Terminal.app` flow.
  */
@@ -18,9 +21,15 @@ import { mainLogger } from '../logger';
 import { enrichedEnv } from '../hl/engines/pathEnrich';
 
 const LOGIN_BIN = 'codex';
-const LOGIN_ARGS = ['login', '--device-auth'];
-const TIMEOUT_MS = 15 * 60 * 1000;   // Codex tells users the code expires in 15m.
+const TIMEOUT_MS = 15 * 60 * 1000;   // Device-auth codes expire in 15m; cap plain-OAuth at the same.
 const PARSE_BUDGET_MS = 15_000;       // Fail fast if no URL surfaces in 15s.
+
+export interface CodexLoginOptions {
+  /** Force the `--device-auth` fallback (remote/headless). Off by default —
+   *  plain OAuth is simpler for desktop and doesn't require the ChatGPT
+   *  security-settings toggle. */
+  deviceAuth?: boolean;
+}
 
 // ANSI-stripping regex — codex emits coloured output even under a pty.
 // Matches CSI sequences and the OSC-8 hyperlink wrappers codex sometimes uses.
@@ -57,13 +66,16 @@ export function killActiveCodexLogin(): void {
 }
 
 /**
- * Spawn `codex login --device-auth` and extract the URL + code. Resolves as
- * soon as both are parsed (or the parse budget elapses). The PTY process
- * continues running in the background, polling OpenAI's token endpoint; its
- * success is observed separately by probing `~/.codex/auth.json`.
+ * Spawn `codex login` (or `codex login --device-auth` when requested) and
+ * extract the verification URL from stdout, plus the XXXX-XXXXX code when in
+ * device-auth mode. Resolves as soon as the URL is parsed — the PTY process
+ * stays alive in the background, polling OpenAI; its success is observed
+ * separately by probing `~/.codex/auth.json`.
  */
-export function runCodexDeviceLogin(): Promise<CodexLoginResult> {
+export function runCodexDeviceLogin(opts: CodexLoginOptions = {}): Promise<CodexLoginResult> {
   killActiveCodexLogin();
+
+  const args = opts.deviceAuth ? ['login', '--device-auth'] : ['login'];
 
   return new Promise((resolve) => {
     let settled = false;
@@ -73,7 +85,7 @@ export function runCodexDeviceLogin(): Promise<CodexLoginResult> {
 
     let child: pty.IPty;
     try {
-      child = pty.spawn(LOGIN_BIN, LOGIN_ARGS, {
+      child = pty.spawn(LOGIN_BIN, args, {
         name: 'xterm-256color',
         cols: 100,
         rows: 30,
@@ -111,11 +123,15 @@ export function runCodexDeviceLogin(): Promise<CodexLoginResult> {
         }
       }
 
-      if (foundUrl && foundCode && !settled) {
+      // Device-auth mode needs both URL and code; plain OAuth only needs the
+      // URL (the CLI runs a localhost callback server on :1455 to capture
+      // the redirect, no user-typed code required).
+      const ready = opts.deviceAuth ? Boolean(foundUrl && foundCode) : Boolean(foundUrl);
+      if (ready && !settled) {
         // Open the verification page in the user's default browser. If this
-        // fails (headless CI, no browser, etc.) we still return the URL so
+        // fails (no browser, headless CI, etc.) we still return the URL so
         // the renderer can show a copyable link.
-        shell.openExternal(foundUrl).catch((err) => {
+        shell.openExternal(foundUrl!).catch((err) => {
           mainLogger.warn('codexLogin.openExternalFailed', { error: (err as Error).message });
         });
         finish({ opened: true, verificationUrl: foundUrl, deviceCode: foundCode });

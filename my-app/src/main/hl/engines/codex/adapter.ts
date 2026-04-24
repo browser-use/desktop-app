@@ -111,10 +111,11 @@ const codexAdapter: EngineAdapter = {
     }
   },
 
-  async openLoginInTerminal() {
-    // Cross-platform device-auth flow via node-pty. See codexLogin.ts for the
-    // PTY-is-required-for-stdout rationale and the URL/code parsing logic.
-    return runCodexDeviceLogin();
+  async openLoginInTerminal(opts?: { deviceAuth?: boolean }) {
+    // Cross-platform OAuth via node-pty. Default is plain `codex login`
+    // (localhost-callback); `deviceAuth: true` switches to the remote/headless
+    // fallback which requires the ChatGPT security-settings toggle server-side.
+    return runCodexDeviceLogin(opts);
   },
 
   wrapPrompt(ctx: SpawnContext): string {

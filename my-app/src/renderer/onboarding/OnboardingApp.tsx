@@ -51,7 +51,7 @@ declare global {
         error?: string | null;
       }>;
       useCodex: () => Promise<{ ok: boolean }>;
-      openCodexLoginTerminal: () => Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }>;
+      openCodexLoginTerminal: (opts?: { deviceAuth?: boolean }) => Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }>;
       openExternal: (url: string) => Promise<{ opened: boolean }>;
       requestNotifications: () => Promise<{ supported: boolean }>;
       listenShortcut: () => Promise<{ ok: boolean; accelerator: string }>;
@@ -353,13 +353,13 @@ export function OnboardingApp() {
     }
   }, []);
 
-  const handleStartCodexLogin = useCallback(async () => {
-    console.log('[onboarding] handleStartCodexLogin: invoking openCodexLoginTerminal');
+  const handleStartCodexLogin = useCallback(async (opts?: { deviceAuth?: boolean }) => {
+    console.log('[onboarding] handleStartCodexLogin: invoking openCodexLoginTerminal', opts);
     setWaitingForCodexLogin(true);
     setCodexDeviceCode(null);
     setCodexVerificationUrl(null);
     try {
-      const res = await window.onboardingAPI.openCodexLoginTerminal();
+      const res = await window.onboardingAPI.openCodexLoginTerminal(opts);
       console.log('[onboarding] handleStartCodexLogin: result', res);
       if (!res.opened) {
         console.warn('[onboarding] openCodexLoginTerminal failed', res.error);
@@ -373,6 +373,11 @@ export function OnboardingApp() {
       setWaitingForCodexLogin(false);
     }
   }, []);
+
+  // Click handlers for the card + the explicit device-auth fallback link.
+  // Keeping these as plain references so React binds identity-stable functions.
+  const handleStartCodexLoginPlain = useCallback(() => handleStartCodexLogin(), [handleStartCodexLogin]);
+  const handleStartCodexLoginDeviceAuth = useCallback(() => handleStartCodexLogin({ deviceAuth: true }), [handleStartCodexLogin]);
 
   // Clear the device code as soon as the backend observes auth.json — the
   // polling effect below flips waitingForCodexLogin off and we follow suit.
@@ -930,7 +935,7 @@ export function OnboardingApp() {
                 <button
                   type="button"
                   className="claude-code-card"
-                  onClick={handleStartCodexLogin}
+                  onClick={handleStartCodexLoginPlain}
                 >
                   <div className="claude-code-card__icon">
                     <img src={codexLogo} alt="" />
@@ -941,10 +946,10 @@ export function OnboardingApp() {
                     </div>
                     <div className="claude-code-card__sub">
                       {waitingForCodexLogin && codexDeviceCode
-                        ? 'Enter the code shown below, or click here to restart the flow.'
+                        ? 'Enter the code shown below, or click to restart.'
                         : waitingForCodexLogin
-                          ? 'Starting device-auth flow…'
-                          : 'Opens a browser with a one-time code — sign in once, we’ll detect it.'}
+                          ? 'Finish the OAuth flow in your browser. Click to restart.'
+                          : 'Opens ChatGPT in your browser — sign in once, we’ll detect it.'}
                     </div>
                   </div>
                   <div className="claude-code-card__chevron">{waitingForCodexLogin ? '↻' : '›'}</div>
@@ -953,26 +958,28 @@ export function OnboardingApp() {
                   <div className="codex-device-auth">
                     <div className="codex-device-auth__label">One-time code</div>
                     <div className="codex-device-auth__code">{codexDeviceCode}</div>
-                    <div className="codex-device-auth__actions">
-                      {codexVerificationUrl && (
-                        <button
-                          type="button"
-                          className="codex-device-auth__link"
-                          onClick={() => window.onboardingAPI.openExternal?.(codexVerificationUrl)}
-                        >
-                          Open verification page ↗
-                        </button>
-                      )}
+                    {codexVerificationUrl && (
                       <button
                         type="button"
-                        className="codex-device-auth__link codex-device-auth__link--secondary"
-                        onClick={handleStartCodexLogin}
-                        title="Kill the current login attempt and request a fresh code"
+                        className="codex-device-auth__link"
+                        onClick={() => window.onboardingAPI.openExternal?.(codexVerificationUrl)}
                       >
-                        Restart with a new code
+                        Open verification page ↗
                       </button>
-                    </div>
+                    )}
                   </div>
+                )}
+                {/* Remote/headless fallback. ChatGPT accounts need the
+                    "Enable device code authorization" toggle in Security
+                    Settings for this path to work server-side. */}
+                {!codexDeviceCode && (
+                  <button
+                    type="button"
+                    className="codex-device-auth__link codex-device-auth__link--secondary codex-device-auth__fallback"
+                    onClick={handleStartCodexLoginDeviceAuth}
+                  >
+                    Having trouble? Use device code flow instead
+                  </button>
                 )}
               </>
             )}

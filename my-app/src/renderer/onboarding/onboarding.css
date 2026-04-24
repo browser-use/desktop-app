@@ -1336,3 +1336,11 @@ html, body {
 .codex-device-auth__link--secondary {
   color: var(--color-text-secondary);
 }
+
+.codex-device-auth__fallback {
+  margin-top: 6px;
+  padding: 2px 0;
+  font-size: 12px;
+  text-align: left;
+  align-self: flex-start;
+}

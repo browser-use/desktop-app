@@ -179,14 +179,14 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
    * Open Terminal with `codex login` so the user can complete the OAuth
    * flow outside the app. Delegates to the codex adapter.
    */
-  ipcMain.handle('onboarding:open-codex-login-terminal', async () => {
-    mainLogger.info('onboardingHandlers.openCodexLoginTerminal.enter');
+  ipcMain.handle('onboarding:open-codex-login-terminal', async (_event, opts?: { deviceAuth?: boolean }) => {
+    mainLogger.info('onboardingHandlers.openCodexLoginTerminal.enter', { deviceAuth: Boolean(opts?.deviceAuth) });
     const adapter = getAdapter('codex');
     if (!adapter) {
       mainLogger.warn('onboardingHandlers.openCodexLoginTerminal.noAdapter');
       return { opened: false, error: 'codex adapter not registered' };
     }
-    const result = await adapter.openLoginInTerminal();
+    const result = await adapter.openLoginInTerminal(opts);
     mainLogger.info('onboardingHandlers.openCodexLoginTerminal.result', result);
     return result;
   });
@@ -355,8 +355,8 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
     return { supported: true };
   });
 
-  ipcMain.handle('onboarding:complete', async () => {
-    mainLogger.info('onboardingHandlers.complete');
+  ipcMain.handle('onboarding:complete', async (_e, opts?: { initialHubView?: 'dashboard' | 'grid' | 'list' }) => {
+    mainLogger.info('onboardingHandlers.complete', { opts });
 
     const existing = accountStore.load();
     accountStore.save({
@@ -372,6 +372,25 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
     mainLogger.info('onboardingHandlers.complete.shellOpened', {
       shellWindowId: shell.id,
     });
+
+    // Cross-window localStorage isn't shared between the onboarding window
+    // and the hub, so the onboarding renderer can't preset the view itself.
+    // Main sends 'hub:force-view-mode' once the shell has loaded; HubApp
+    // listens for it and calls setViewMode. Sent after did-finish-load so
+    // the hub's effect listener is mounted by then.
+    const initialView = opts?.initialHubView;
+    if (initialView) {
+      const sendForceView = (): void => {
+        if (shell.isDestroyed()) return;
+        mainLogger.info('onboardingHandlers.complete.forceViewMode', { initialView });
+        shell.webContents.send('hub:force-view-mode', initialView);
+      };
+      if (shell.webContents.isLoading()) {
+        shell.webContents.once('did-finish-load', sendForceView);
+      } else {
+        sendForceView();
+      }
+    }
 
     if (!onboardingWindow.isDestroyed()) {
       onboardingWindow.close();

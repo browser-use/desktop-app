@@ -57,8 +57,8 @@ const onboardingAPI = {
   useCodex: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('onboarding:use-codex'),
 
-  openCodexLoginTerminal: (): Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }> =>
-    ipcRenderer.invoke('onboarding:open-codex-login-terminal'),
+  openCodexLoginTerminal: (opts?: { deviceAuth?: boolean }): Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }> =>
+    ipcRenderer.invoke('onboarding:open-codex-login-terminal', opts),
 
   openExternal: (url: string): Promise<{ opened: boolean }> =>
     ipcRenderer.invoke('onboarding:open-external', url),
@@ -121,8 +121,8 @@ const onboardingAPI = {
     ipcRenderer.invoke('telemetry:capture', name, props);
   },
 
-  complete: (): Promise<void> =>
-    ipcRenderer.invoke('onboarding:complete'),
+  complete: (opts?: { initialHubView?: 'dashboard' | 'grid' | 'list' }): Promise<void> =>
+    ipcRenderer.invoke('onboarding:complete', opts),
 
   whatsapp: {
     connect: (): Promise<{ status: string }> =>

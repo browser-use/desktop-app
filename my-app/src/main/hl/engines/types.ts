@@ -87,9 +87,11 @@ export interface EngineAdapter {
   probeAuthed(): Promise<AuthProbe>;
   /** Kick off the engine's login flow. `opened` means "the flow is now
    *  underway" — for Claude Code that's the OAuth browser handoff, for Codex
-   *  it's the device-auth URL + code returned in this result. Callers should
-   *  then poll `probeAuthed()` to detect when auth.json / OAuth creds appear. */
-  openLoginInTerminal(): Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }>;
+   *  it's the URL (+ optional device code) returned in this result. Codex
+   *  supports a `deviceAuth` escape hatch for remote/headless machines that
+   *  can't use the default localhost-callback OAuth. Callers should poll
+   *  `probeAuthed()` to detect when auth.json / OAuth creds appear. */
+  openLoginInTerminal(opts?: { deviceAuth?: boolean }): Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }>;
 
   // Execution
   /** Produce the argv for spawning this engine in headless mode. */
