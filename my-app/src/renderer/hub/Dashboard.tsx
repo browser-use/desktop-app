@@ -123,6 +123,14 @@ export function Dashboard({ sessions, onSwitchToGrid, onSelectSession, onSubmitT
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
 
+  // Auto-focus the task input whenever the Dashboard mounts, so landing here
+  // (via `g d`, clicking the Dashboard tab, or finishing onboarding with Skip)
+  // drops the caret straight into the chat box.
+  useEffect(() => {
+    const id = window.setTimeout(() => taskInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, []);
+
   useEffect(() => {
     const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
 

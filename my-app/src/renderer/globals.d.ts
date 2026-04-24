@@ -95,6 +95,7 @@ interface ElectronOnAPI {
   channelStatus?: (cb: (channelId: string, status: string, detail?: string) => void) => () => void;
   pillToggled?: (cb: () => void) => () => void;
   globalCmdbarChanged?: (cb: (accelerator: string) => void) => () => void;
+  forceViewMode?: (cb: (mode: 'dashboard' | 'grid' | 'list') => void) => () => void;
 }
 
 interface ElectronHotkeysAPI {

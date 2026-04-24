@@ -269,5 +269,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('hotkeys:global-changed', handler);
       return () => ipcRenderer.removeListener('hotkeys:global-changed', handler);
     },
+    forceViewMode: (cb: (mode: 'dashboard' | 'grid' | 'list') => void): (() => void) => {
+      const handler = (_event: unknown, mode: 'dashboard' | 'grid' | 'list') => cb(mode);
+      ipcRenderer.on('hub:force-view-mode', handler);
+      return () => ipcRenderer.removeListener('hub:force-view-mode', handler);
+    },
   },
 });

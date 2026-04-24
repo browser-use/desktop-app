@@ -285,6 +285,15 @@ export function HubApp(): React.ReactElement {
     return unsub;
   }, []);
 
+  // Main-process signal (e.g. fired by onboarding:complete after Skip) telling
+  // the hub to switch to a specific view regardless of the saved preference.
+  useEffect(() => {
+    const unsub = window.electronAPI?.on?.forceViewMode?.((mode) => {
+      setViewMode(mode);
+    });
+    return unsub;
+  }, [setViewMode]);
+
   useEffect(() => {
     const api = (window as unknown as { electronAPI?: { on?: { zoomChanged?: (cb: (f: number) => void) => () => void } } }).electronAPI;
     const saved = localStorage.getItem('hub-zoom-factor');
