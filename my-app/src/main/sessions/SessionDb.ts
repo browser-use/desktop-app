@@ -15,6 +15,13 @@ interface SessionRow {
   origin_conversation_id: string | null;
   primary_site: string | null;
   engine: string | null;
+  auth_mode: string | null;
+  subscription_type: string | null;
+  cost_usd: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cached_input_tokens: number | null;
+  cost_source: string | null;
 }
 
 export class SessionDb {
@@ -27,6 +34,8 @@ export class SessionDb {
     updateCreatedAt: Database.Statement;
     updatePrimarySite: Database.Statement;
     updateEngine: Database.Statement;
+    updateAuth: Database.Statement;
+    updateUsage: Database.Statement;
     getSession: Database.Statement;
     getSessionOrigin: Database.Statement;
     listAll: Database.Statement;
@@ -91,6 +100,12 @@ export class SessionDb {
       ),
       updateEngine: this.db.prepare(
         'UPDATE sessions SET engine = ?, updated_at = ? WHERE id = ?'
+      ),
+      updateAuth: this.db.prepare(
+        'UPDATE sessions SET auth_mode = ?, subscription_type = ?, updated_at = ? WHERE id = ?'
+      ),
+      updateUsage: this.db.prepare(
+        'UPDATE sessions SET cost_usd = ?, input_tokens = ?, output_tokens = ?, cached_input_tokens = ?, cost_source = ?, updated_at = ? WHERE id = ?'
       ),
       getSession: this.db.prepare('SELECT * FROM sessions WHERE id = ?'),
       getSessionOrigin: this.db.prepare('SELECT origin_channel, origin_conversation_id FROM sessions WHERE id = ?'),
@@ -279,6 +294,45 @@ export class SessionDb {
       mainLogger.info('SessionDb.migration.complete', { version: 8 });
     }
 
+    if (this.getVersion() < 9) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 9 });
+      this.db.transaction(() => {
+        const cols = this.db.pragma('table_info(sessions)') as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === 'auth_mode')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN auth_mode TEXT');
+        }
+        if (!cols.some((c) => c.name === 'subscription_type')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN subscription_type TEXT');
+        }
+        this.setVersion(9);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 9 });
+    }
+
+    if (this.getVersion() < 10) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 10 });
+      this.db.transaction(() => {
+        const cols = this.db.pragma('table_info(sessions)') as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === 'cost_usd')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN cost_usd REAL');
+        }
+        if (!cols.some((c) => c.name === 'input_tokens')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN input_tokens INTEGER');
+        }
+        if (!cols.some((c) => c.name === 'output_tokens')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN output_tokens INTEGER');
+        }
+        if (!cols.some((c) => c.name === 'cached_input_tokens')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN cached_input_tokens INTEGER');
+        }
+        if (!cols.some((c) => c.name === 'cost_source')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN cost_source TEXT');
+        }
+        this.setVersion(10);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 10 });
+    }
+
     const final = this.getVersion();
     if (final !== DB_SCHEMA_VERSION) {
       const msg = `SessionDb migration did not reach expected version. Got ${final}, expected ${DB_SCHEMA_VERSION}.`;
@@ -359,6 +413,36 @@ export class SessionDb {
       }
     } catch (err) {
       mainLogger.error('SessionDb.updateEngine.failed', { id, engine, error: (err as Error).message });
+      throw err;
+    }
+  }
+
+  updateUsage(id: string, usage: { costUsd: number; inputTokens: number; outputTokens: number; cachedInputTokens: number; costSource: 'exact' | 'estimated' }): void {
+    if (this.closed) return;
+    const now = Date.now();
+    try {
+      const result = this.stmts.updateUsage.run(
+        usage.costUsd, usage.inputTokens, usage.outputTokens, usage.cachedInputTokens, usage.costSource, now, id,
+      );
+      if (result.changes === 0) {
+        mainLogger.warn('SessionDb.updateUsage.notFound', { id });
+      }
+    } catch (err) {
+      mainLogger.error('SessionDb.updateUsage.failed', { id, error: (err as Error).message });
+      throw err;
+    }
+  }
+
+  updateAuth(id: string, authMode: string | null, subscriptionType: string | null): void {
+    if (this.closed) return;
+    const now = Date.now();
+    try {
+      const result = this.stmts.updateAuth.run(authMode, subscriptionType, now, id);
+      if (result.changes === 0) {
+        mainLogger.warn('SessionDb.updateAuth.notFound', { id, authMode, subscriptionType });
+      }
+    } catch (err) {
+      mainLogger.error('SessionDb.updateAuth.failed', { id, authMode, subscriptionType, error: (err as Error).message });
       throw err;
     }
   }

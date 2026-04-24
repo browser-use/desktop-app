@@ -172,6 +172,10 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
     case 'error':
       out.push(`${BOLD}${FG.brightRed}✗ ${event.message}${RESET}\r\n`);
       return finish();
+
+    case 'turn_usage':
+      // Cost telemetry — rolled up into the session header; no terminal row.
+      return finish();
   }
 
   return out.join('');

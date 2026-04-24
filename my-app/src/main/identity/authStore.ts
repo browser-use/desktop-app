@@ -112,6 +112,15 @@ export async function clearAuth(): Promise<void> {
   mainLogger.info('authStore.clearAuth');
 }
 
+/** Read the stored Claude OAuth credential's subscriptionType ("max" | "pro"
+ *  | ...) without touching active auth mode. Used at session-spawn time to
+ *  label a session with the subscription tier that actually ran it. Returns
+ *  null if no OAuth creds are stored or the field is missing. */
+export async function loadClaudeSubscriptionType(): Promise<string | null> {
+  const creds = await loadOAuth();
+  return creds?.subscriptionType ?? null;
+}
+
 async function loadOAuth(): Promise<ClaudeOAuthCredentials | null> {
   const keytar = getKeytar();
   if (!keytar) return null;

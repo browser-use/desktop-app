@@ -11,7 +11,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { mainLogger } from '../../logger';
-import { resolveAuth, loadOpenAIKey } from '../../identity/authStore';
+import { resolveAuth, loadOpenAIKey, loadClaudeSubscriptionType } from '../../identity/authStore';
 import { helpersPath, toolsPath, skillPath } from '../harness';
 import { get as getAdapter } from './registry';
 import type {
@@ -140,6 +140,35 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     hasSavedKey: Boolean(savedApiKey),
     cliAuthed,
   });
+
+  // Resolve the (authMode, subscriptionType) snapshot for this session. Fires
+  // onAuthResolved so SessionManager can stamp the session row. This is the
+  // source of truth for per-session auth attribution — the global authStore
+  // mode can change later without rewriting history.
+  const resolvedAuthMode: 'apiKey' | 'subscription' | null = chosen === 'none' ? null : chosen;
+  let resolvedSubType: string | null = null;
+  if (resolvedAuthMode === 'subscription') {
+    if (adapter.id === 'codex') {
+      // Codex CLI does not expose Plus vs Pro locally; use a generic label.
+      resolvedSubType = 'chatgpt';
+    } else {
+      try {
+        resolvedSubType = await loadClaudeSubscriptionType();
+      } catch (err) {
+        mainLogger.warn('engines.run.subType.loadFailed', { error: (err as Error).message });
+      }
+    }
+  }
+  mainLogger.info('session.auth.resolved', {
+    sessionId: opts.sessionId,
+    engineId: adapter.id,
+    authMode: resolvedAuthMode,
+    subscriptionType: resolvedSubType,
+  });
+  if (opts.onAuthResolved) {
+    try { opts.onAuthResolved({ authMode: resolvedAuthMode, subscriptionType: resolvedSubType }); }
+    catch (err) { mainLogger.warn('engines.run.onAuthResolved.threw', { error: (err as Error).message }); }
+  }
 
   // 4. Build spawn context + let adapter compose args/env/prompt.
   const spawnCtx: SpawnContext = {

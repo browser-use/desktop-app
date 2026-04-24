@@ -32,6 +32,7 @@ import type {
   SpawnContext,
 } from '../types';
 import type { HlEvent } from '../../../../shared/session-schemas';
+import { estimateCostUsd } from '../../pricing';
 
 const ID = 'codex';
 const DISPLAY = 'Codex';
@@ -190,11 +191,14 @@ const codexAdapter: EngineAdapter = {
         capturedSessionId = tid;
         mainLogger.info('codex.threadStarted', { thread_id: tid });
       }
+      if (typeof e.model === 'string') ctx.currentModel = e.model;
       return { events, capturedSessionId };
     }
 
     if (type === 'turn.started') {
       ctx.iter++;
+      // Some codex versions report model on turn.started instead of thread.started.
+      if (typeof e.model === 'string') ctx.currentModel = e.model;
       return { events };
     }
 
@@ -262,11 +266,29 @@ const codexAdapter: EngineAdapter = {
       // 2-minute stuck timer to fire after process exit. Use the latest
       // agent_message text as the summary so the UI shows a real sentence,
       // not token telemetry.
+      const usage = e.usage as Record<string, unknown> | undefined;
+      const inputTokens = typeof usage?.input_tokens === 'number' ? (usage.input_tokens as number) : 0;
+      const outputTokens = typeof usage?.output_tokens === 'number' ? (usage.output_tokens as number) : 0;
+      const cachedInputTokens = typeof usage?.cached_input_tokens === 'number' ? (usage.cached_input_tokens as number)
+                              : typeof usage?.cache_read_input_tokens === 'number' ? (usage.cache_read_input_tokens as number)
+                              : 0;
+      if (inputTokens > 0 || outputTokens > 0) {
+        const costUsd = estimateCostUsd(ctx.currentModel, { inputTokens, outputTokens, cachedInputTokens });
+        events.push({
+          type: 'turn_usage',
+          inputTokens,
+          outputTokens,
+          cachedInputTokens,
+          costUsd,
+          model: ctx.currentModel,
+          source: 'estimated',
+        });
+        mainLogger.info('codex.turnUsage', { inputTokens, outputTokens, cachedInputTokens, costUsd, model: ctx.currentModel });
+      }
+
       const summary = (ctx.lastNarrative ?? '').trim() || 'Task completed';
-      const outTok = typeof (e.usage as Record<string, unknown> | undefined)?.output_tokens === 'number'
-        ? ((e.usage as Record<string, unknown>).output_tokens as number) : 0;
       events.push({ type: 'done', summary, iterations: ctx.iter });
-      mainLogger.info('codex.turnCompleted.done', { outputTokens: outTok, iter: ctx.iter, summaryLen: summary.length });
+      mainLogger.info('codex.turnCompleted.done', { outputTokens, iter: ctx.iter, summaryLen: summary.length });
       // Reset for the next turn so a follow-up doesn't reuse the old text
       // before the new turn has produced any narrative.
       ctx.lastNarrative = undefined;

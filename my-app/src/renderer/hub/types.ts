@@ -11,7 +11,8 @@ export type HlEvent =
   | { type: 'skill_used'; path: string; domain?: string; topic: string }
   | { type: 'harness_edited'; target: 'helpers' | 'tools'; action: 'write' | 'patch'; path: string; added?: string[]; removed?: string[]; changed?: string[] }
   | { type: 'file_output'; name: string; path: string; size: number; mime: string }
-  | { type: 'notify'; message: string; level: 'info' | 'blocking' };
+  | { type: 'notify'; message: string; level: 'info' | 'blocking' }
+  | { type: 'turn_usage'; inputTokens: number; outputTokens: number; cachedInputTokens: number; costUsd: number; model?: string; source: 'exact' | 'estimated' };
 
 export interface AgentSession {
   id: string;
@@ -25,6 +26,13 @@ export interface AgentSession {
   primarySite?: string | null;
   lastActivityAt?: number;
   engine?: string;
+  authMode?: 'apiKey' | 'subscription';
+  subscriptionType?: string;
+  costUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  costSource?: 'exact' | 'estimated';
 }
 
 export interface ToolResult {
@@ -115,7 +123,12 @@ export function adaptSession(session: AgentSession): {
   toolCallCount: number;
   elapsedMs: number;
 } {
-  const raw = session.output.map((e, i) => hlEventToOutputEntry(e, session.createdAt + i));
+  // turn_usage events are persisted for audit + session-total roll-up in the
+  // main process; they have no row in the UI log so we drop them here.
+  const visibleOutput = session.output.filter(
+    (e): e is Exclude<HlEvent, { type: 'turn_usage' }> => e.type !== 'turn_usage',
+  );
+  const raw = visibleOutput.map((e, i) => hlEventToOutputEntry(e, session.createdAt + i));
 
   const merged: OutputEntry[] = [];
   for (const entry of raw) {

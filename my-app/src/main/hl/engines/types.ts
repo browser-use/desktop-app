@@ -41,6 +41,10 @@ export interface ParseContext {
    *  emit a proper summary (codex) use this as the `done.summary` so users
    *  see a meaningful sentence instead of token telemetry. */
   lastNarrative?: string;
+  /** Model id reported by the engine (e.g. 'gpt-5-codex', 'claude-sonnet-4-5').
+   *  Adapters capture this from their init/thread-started event so cost
+   *  estimation and future per-turn UI can cite the model that ran. */
+  currentModel?: string;
 }
 
 /** Result of parsing one NDJSON line. */
@@ -108,4 +112,7 @@ export interface RunEngineOptions {
   signal?: AbortSignal;
   onEvent: (e: HlEvent) => void;
   onSessionId?: (id: string) => void;
+  /** Fired once per run with the resolved auth for this spawn, so the caller
+   *  can stamp the session with the mode that actually ran it. */
+  onAuthResolved?: (info: { authMode: 'apiKey' | 'subscription' | null; subscriptionType: string | null }) => void;
 }

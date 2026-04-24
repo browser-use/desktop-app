@@ -193,6 +193,7 @@ const claudeCodeAdapter: EngineAdapter = {
       if (subtype === 'init') {
         mainLogger.info('claude-code.init', { model: e.model, session_id: e.session_id, tools: Array.isArray(e.tools) ? (e.tools as unknown[]).length : 0 });
         if (typeof e.session_id === 'string') capturedSessionId = e.session_id;
+        if (typeof e.model === 'string') ctx.currentModel = e.model;
       } else if (subtype === 'api_retry') {
         mainLogger.warn('claude-code.apiRetry', { attempt: e.attempt, reason: e.reason });
       }
@@ -251,6 +252,28 @@ const claudeCodeAdapter: EngineAdapter = {
     }
 
     if (type === 'result') {
+      // Emit a turn_usage event before done/error so the session totals are
+      // rolled up even on failed runs where the CLI still reports partial use.
+      const usage = e.usage as Record<string, unknown> | undefined;
+      const totalCostRaw = e.total_cost_usd ?? e.cost_usd;
+      if (usage || typeof totalCostRaw === 'number') {
+        const inputTokens = typeof usage?.input_tokens === 'number' ? (usage.input_tokens as number) : 0;
+        const outputTokens = typeof usage?.output_tokens === 'number' ? (usage.output_tokens as number) : 0;
+        const cacheRead = typeof usage?.cache_read_input_tokens === 'number' ? (usage.cache_read_input_tokens as number) : 0;
+        const cacheCreate = typeof usage?.cache_creation_input_tokens === 'number' ? (usage.cache_creation_input_tokens as number) : 0;
+        const costUsd = typeof totalCostRaw === 'number' ? (totalCostRaw as number) : 0;
+        events.push({
+          type: 'turn_usage',
+          inputTokens,
+          outputTokens,
+          cachedInputTokens: cacheRead + cacheCreate,
+          costUsd,
+          model: ctx.currentModel,
+          source: 'exact',
+        });
+        mainLogger.info('claude-code.turnUsage', { inputTokens, outputTokens, cacheRead, cacheCreate, costUsd, model: ctx.currentModel });
+      }
+
       const subtype = e.subtype as string | undefined;
       const resultText = (e.result as string | undefined) ?? '';
       if (subtype && subtype !== 'success') {

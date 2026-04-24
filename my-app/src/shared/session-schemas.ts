@@ -86,6 +86,22 @@ export const HlEventFileOutputSchema = z.object({
   mime: z.string(),
 });
 
+// Emitted by adapters at turn end. Carries cumulative-for-this-turn tokens
+// and the dollar cost. For Claude Code, costUsd is the CLI's own total_cost_usd
+// (authoritative). For Codex, costUsd is computed from a local price table in
+// main/hl/pricing.ts (estimated — may drift from OpenAI's dashboard).
+export const HlEventTurnUsageSchema = z.object({
+  type: z.literal('turn_usage'),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cachedInputTokens: z.number(),
+  costUsd: z.number(),
+  model: z.string().optional(),
+  // 'exact' for Claude's CLI-reported number; 'estimated' when we multiplied
+  // token counts ourselves (Codex). Drives the `~` prefix on the UI.
+  source: z.enum(['exact', 'estimated']),
+});
+
 export const HlEventSchema = z.discriminatedUnion('type', [
   HlEventThinkingSchema,
   HlEventToolCallSchema,
@@ -98,6 +114,7 @@ export const HlEventSchema = z.discriminatedUnion('type', [
   HlEventHarnessEditedSchema,
   HlEventSkillUsedSchema,
   HlEventFileOutputSchema,
+  HlEventTurnUsageSchema,
 ]);
 
 export type HlEvent = z.infer<typeof HlEventSchema>;
@@ -120,6 +137,25 @@ export const AgentSessionSchema = z.object({
   primarySite: z.string().nullable().optional(),
   lastActivityAt: z.number().optional(),
   engine: z.string().optional(),
+  // Snapshotted at spawn — whether the run was authenticated via API key or
+  // subscription OAuth. Optional on existing rows (pre-migration-v9 sessions
+  // predate this field). Distinct from the live auth mode in authStore because
+  // users may flip between modes, but historical sessions should still reflect
+  // the mode that actually ran them (for cost attribution).
+  // Cumulative usage totals, updated on each turn_usage event. For Claude Code
+  // these reflect the CLI's own figures; for Codex they are computed locally
+  // via main/hl/pricing.ts and may drift from OpenAI's dashboard.
+  costUsd: z.number().optional(),
+  inputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
+  cachedInputTokens: z.number().optional(),
+  costSource: z.enum(['exact', 'estimated']).optional(),
+  authMode: z.enum(['apiKey', 'subscription']).optional(),
+  // Subscription tier label when authMode === 'subscription'. For Claude Code
+  // this is the OAuth credential's subscriptionType ("max" | "pro"). For Codex
+  // we use 'chatgpt' as a generic label since the CLI does not expose the
+  // plan tier locally.
+  subscriptionType: z.string().optional(),
 });
 
 export type AgentSession = z.infer<typeof AgentSessionSchema>;

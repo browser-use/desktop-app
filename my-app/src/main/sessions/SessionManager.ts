@@ -71,6 +71,19 @@ export class SessionManager extends EventEmitter {
         (session as AgentSession & { engine?: string }).engine = row.engine;
         this.sessionEngines.set(row.id, row.engine);
       }
+      if (row.auth_mode === 'apiKey' || row.auth_mode === 'subscription') {
+        session.authMode = row.auth_mode;
+      }
+      if (row.subscription_type) {
+        session.subscriptionType = row.subscription_type;
+      }
+      if (typeof row.cost_usd === 'number') session.costUsd = row.cost_usd;
+      if (typeof row.input_tokens === 'number') session.inputTokens = row.input_tokens;
+      if (typeof row.output_tokens === 'number') session.outputTokens = row.output_tokens;
+      if (typeof row.cached_input_tokens === 'number') session.cachedInputTokens = row.cached_input_tokens;
+      if (row.cost_source === 'exact' || row.cost_source === 'estimated') {
+        session.costSource = row.cost_source;
+      }
       this.sessions.set(row.id, session);
     }
 
@@ -194,6 +207,35 @@ export class SessionManager extends EventEmitter {
     session.output.push(event);
     const seq = session.output.length - 1;
     this.db.appendEvent(id, seq, event);
+
+    // turn_usage is telemetry — roll up into cumulative totals on the session
+    // row so the UI can show a single number without scanning every event.
+    // 'exact' beats 'estimated' if the session has a mix (shouldn't happen
+    // since source is engine-specific, but be defensive).
+    if (event.type === 'turn_usage') {
+      session.costUsd = (session.costUsd ?? 0) + event.costUsd;
+      session.inputTokens = (session.inputTokens ?? 0) + event.inputTokens;
+      session.outputTokens = (session.outputTokens ?? 0) + event.outputTokens;
+      session.cachedInputTokens = (session.cachedInputTokens ?? 0) + event.cachedInputTokens;
+      if (event.source === 'exact' || !session.costSource) session.costSource = event.source;
+      this.db.updateUsage(id, {
+        costUsd: session.costUsd,
+        inputTokens: session.inputTokens,
+        outputTokens: session.outputTokens,
+        cachedInputTokens: session.cachedInputTokens,
+        costSource: session.costSource,
+      });
+      mainLogger.info('SessionManager.turnUsage', {
+        id,
+        addedCostUsd: event.costUsd,
+        totalCostUsd: session.costUsd,
+        inputTokens: session.inputTokens,
+        outputTokens: session.outputTokens,
+        source: event.source,
+        model: event.model,
+      });
+      this.emitEvent('session-updated', { ...session });
+    }
 
     if (session.status === 'stuck') {
       session.status = 'running';
@@ -445,6 +487,23 @@ export class SessionManager extends EventEmitter {
   /** Retrieve the per-session engine id, or null if never set. */
   getSessionEngine(id: string): string | null {
     return this.sessionEngines.get(id) ?? null;
+  }
+
+  /** Snapshot the auth mode + subscription type that actually ran this session.
+   *  Called once at spawn by runEngine via the onAuthResolved callback. Frozen
+   *  for the life of the session — later global auth-mode changes do not
+   *  retroactively rewrite historical sessions. */
+  setSessionAuth(id: string, authMode: 'apiKey' | 'subscription' | null, subscriptionType: string | null): void {
+    const session = this.sessions.get(id);
+    if (!session) {
+      mainLogger.warn('SessionManager.setSessionAuth.notFound', { id });
+      return;
+    }
+    session.authMode = authMode ?? undefined;
+    session.subscriptionType = subscriptionType ?? undefined;
+    this.db.updateAuth(id, authMode, subscriptionType);
+    mainLogger.info('SessionManager.setSessionAuth', { id, authMode, subscriptionType });
+    this.emitEvent('session-updated', { ...session });
   }
 
   getAbortController(id: string): AbortController | undefined {

@@ -52,6 +52,14 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+// Display dollar amounts: sub-cent uses 4 decimals so tiny runs stay visible
+// (e.g. $0.0023), single-dollar uses 3 decimals, larger rounds to cents.
+function formatCostUsd(usd: number): string {
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
 function BrowseIcon(): React.ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -1006,6 +1014,33 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
           )}
           {session.engine === 'claude-code' && (
             <img className="pane__engine-icon" src={claudeCodeLogo} alt="Claude Code" title="Claude Code" />
+          )}
+          {session.authMode && (
+            <span
+              className={`pane__auth-badge pane__auth-badge--${session.authMode}`}
+              title={
+                session.authMode === 'subscription'
+                  ? `Ran under ${session.subscriptionType ?? 'subscription'} OAuth`
+                  : 'Ran under saved API key'
+              }
+            >
+              {session.authMode === 'subscription' ? 'SUBSCRIPTION' : 'KEY'}
+            </span>
+          )}
+          {typeof session.costUsd === 'number' && session.costUsd > 0 && (
+            <span
+              className="pane__cost"
+              title={
+                session.authMode === 'subscription'
+                  ? `Notional API-equivalent cost (covered by subscription) · ${session.inputTokens ?? 0} in / ${session.outputTokens ?? 0} out`
+                  : session.costSource === 'estimated'
+                    ? `Estimated from token count × local price table · ${session.inputTokens ?? 0} in / ${session.outputTokens ?? 0} out`
+                    : `${session.inputTokens ?? 0} in / ${session.outputTokens ?? 0} out`
+              }
+            >
+              {session.authMode === 'subscription' || session.costSource === 'estimated' ? '~' : ''}
+              {formatCostUsd(session.costUsd)}
+            </span>
           )}
         </div>
         <div className="pane__actions">

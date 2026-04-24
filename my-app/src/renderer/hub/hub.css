@@ -742,6 +742,44 @@
   opacity: 0.85;
 }
 
+/* Auth-mode badge — "MAX" / "PRO" / "KEY" / "CHATGPT". Frozen at session
+   spawn so it reflects the mode that actually ran, not current settings. */
+.pane__auth-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border-muted);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-raised);
+  text-transform: uppercase;
+  font-family: var(--font-family-mono);
+}
+
+.pane__auth-badge--subscription {
+  border-color: var(--color-accent-subtle, var(--color-border-muted));
+  color: var(--color-accent, var(--color-text-primary));
+}
+
+.pane__auth-badge--apiKey {
+  border-color: var(--color-border-muted);
+  color: var(--color-text-secondary);
+}
+
+/* Cost readout — tilde prefix signals notional/estimated (subscription or
+   Codex); clean $ signals exact (Claude CLI's own total_cost_usd). */
+.pane__cost {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }

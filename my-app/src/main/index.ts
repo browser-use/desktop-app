@@ -642,6 +642,7 @@ app.whenReady().then(async () => {
         cdpPort: resolvedCdp.port,
         signal: abortController.signal,
         onSessionId: (sid) => sessionManager.setClaudeSessionId(id, sid),
+        onAuthResolved: ({ authMode, subscriptionType }) => sessionManager.setSessionAuth(id, authMode, subscriptionType),
         onEvent: (event) => {
           if (event.type === 'done') {
             sessionManager.appendOutput(id, event);
@@ -769,6 +770,7 @@ app.whenReady().then(async () => {
       signal: abortController.signal,
       resumeSessionId: sessionManager.getClaudeSessionId(validatedId),
       onSessionId: (sid) => sessionManager.setClaudeSessionId(validatedId, sid),
+      onAuthResolved: ({ authMode, subscriptionType }) => sessionManager.setSessionAuth(validatedId, authMode, subscriptionType),
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
@@ -841,6 +843,7 @@ app.whenReady().then(async () => {
       // Rerun intentionally starts a fresh conversation; SessionManager.rerunSession
       // already cleared any stored resume id.
       onSessionId: (sid) => sessionManager.setClaudeSessionId(validatedId, sid),
+      onAuthResolved: ({ authMode, subscriptionType }) => sessionManager.setSessionAuth(validatedId, authMode, subscriptionType),
       onEvent: (event) => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
