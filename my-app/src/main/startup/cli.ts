@@ -76,18 +76,14 @@ export function resolveUserDataDir(
 // --remote-debugging-port
 // ---------------------------------------------------------------------------
 
-/** Well-known Chrome remote-debugging port — we specifically AVOID this by
- *  default because any user with their own Chrome running `--remote-debugging-port=9222`
- *  would collide and our `BU_CDP_PORT` env var would point the agent at
- *  their Chrome instead of our Electron. See reagan_plan_cdp_port or git log
- *  for the bug this prevents. */
-const CHROME_DEFAULT_PORT = 9222;
-
-/** Ephemeral/dynamic TCP port range (IANA RFC 6335). Picking a random port
- *  here makes a collision with anything the user is running vanishingly
- *  unlikely — 16k-port space vs Chrome's single fixed 9222. */
-const DYNAMIC_PORT_MIN = 49152;
-const DYNAMIC_PORT_MAX = 65535;
+/** Start walking from the Chrome-convention port. If it's free, use it.
+ *  If the user's Chrome is already there (the bug that prompted this fix),
+ *  step up one port at a time until we find an unused slot. Predictable for
+ *  firewall rules and docs, resilient against Chrome-on-9222 collision. */
+const DEFAULT_START_PORT = 9222;
+/** Sanity cap so a broken port-probe doesn't spin forever; in practice
+ *  the first attempt almost always succeeds. */
+const MAX_PORT_WALK = 500;
 
 export interface ResolvedCdpPort {
   /**
@@ -96,8 +92,18 @@ export interface ResolvedCdpPort {
    * discovered from stdout / `/json/version` after launch.
    */
   port: number;
-  /** Provenance of the port, useful in logs for diagnosing collisions. */
-  source: 'cli' | 'env' | 'random';
+  /** Provenance of the port.
+   *   - 'cli'      → --remote-debugging-port=<N> on argv
+   *   - 'env'      → AGB_CDP_PORT env var
+   *   - 'walk'     → started at DEFAULT_START_PORT, first free port wins
+   *   - 'fallback' → the walk hit MAX_PORT_WALK; we returned the start port
+   *                  as a last resort and verifyCdpOwnership will surface
+   *                  any collision. */
+  source: 'cli' | 'env' | 'walk' | 'fallback';
+  /** When source === 'walk', how many ports we skipped before finding one.
+   *  0 means DEFAULT_START_PORT was free on first try. Used in startup logs
+   *  to spot chronic collisions without needing a separate metric. */
+  walkedFrom?: number;
 }
 
 /**
@@ -105,8 +111,9 @@ export interface ResolvedCdpPort {
  *
  * - `--remote-debugging-port=<N>` on argv wins (dev / power-user override).
  * - `AGB_CDP_PORT=<N>` env var second (CI / Docker pinning).
- * - Otherwise a random port in the dynamic range (49152–65535) so we never
- *   collide with the user's own Chrome on 9222.
+ * - Otherwise walk up from DEFAULT_START_PORT (9222) until we find a free
+ *   port. Keeps the port predictable for firewall configs while avoiding
+ *   collision with a user's own Chrome that already bound 9222.
  */
 export function resolveCdpPort(argv: readonly string[]): ResolvedCdpPort {
   const raw = extractFlagValue(argv, 'remote-debugging-port');
@@ -115,7 +122,7 @@ export function resolveCdpPort(argv: readonly string[]): ResolvedCdpPort {
     if (Number.isFinite(n) && n >= 0 && n <= 65535 && String(n) === raw) {
       return { port: n, source: 'cli' };
     }
-    // Fall through to env / random on a bogus value rather than crashing.
+    // Fall through to env / walk on a bogus value rather than crashing.
   }
   const envVal = process.env.AGB_CDP_PORT;
   if (envVal) {
@@ -124,12 +131,51 @@ export function resolveCdpPort(argv: readonly string[]): ResolvedCdpPort {
       return { port: n, source: 'env' };
     }
   }
-  // Random port in dynamic range, biased away from CHROME_DEFAULT_PORT (it's
-  // outside the range anyway, belt-and-braces guard in case range shifts).
-  const span = DYNAMIC_PORT_MAX - DYNAMIC_PORT_MIN + 1;
-  let port = DYNAMIC_PORT_MIN + Math.floor(Math.random() * span);
-  if (port === CHROME_DEFAULT_PORT) port += 1;
-  return { port, source: 'random' };
+  for (let i = 0; i < MAX_PORT_WALK; i++) {
+    const p = DEFAULT_START_PORT + i;
+    if (p > 65535) break;
+    if (isPortFreeSync(p)) {
+      return { port: p, source: 'walk', walkedFrom: i };
+    }
+  }
+  return { port: DEFAULT_START_PORT, source: 'fallback' };
+}
+
+/**
+ * Synchronously check whether a TCP port is already bound on localhost.
+ *
+ * Uses the OS's native listing command because Node's `net.createServer`
+ * is async and we need a blocking answer before `app.commandLine.appendSwitch`
+ * runs. `lsof` on POSIX and `netstat` on Windows are installed by default
+ * and resolve in ~20ms, so walking a handful of ports is barely perceptible
+ * at startup.
+ *
+ * On any error we return `true` (= port is free). Being optimistic on probe
+ * failure keeps startup moving; verifyCdpOwnership() post-boot catches a
+ * real collision and logs loudly.
+ */
+function isPortFreeSync(port: number): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+  try {
+    if (process.platform === 'win32') {
+      const res = spawnSync('netstat', ['-an'], { encoding: 'utf8', timeout: 2000 });
+      if (res.status !== 0 || !res.stdout) return true;
+      const needle = `:${port} `;
+      return !res.stdout
+        .split(/\r?\n/)
+        .some((line) => line.includes(needle) && /LISTENING/i.test(line));
+    }
+    const res = spawnSync('lsof', ['-i', `:${port}`, '-sTCP:LISTEN', '-n', '-P'], {
+      encoding: 'utf8',
+      timeout: 2000,
+    });
+    // lsof exits 1 when there are no matches — treat as "free".
+    if (res.status !== 0) return true;
+    return (res.stdout ?? '').trim().length === 0;
+  } catch {
+    return true;
+  }
 }
 
 // ---------------------------------------------------------------------------

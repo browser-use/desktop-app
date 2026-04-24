@@ -108,17 +108,21 @@ describe('resolveUserDataDir (#206)', () => {
 // resolveCdpPort — Issue #207
 // ---------------------------------------------------------------------------
 
-const DYNAMIC_RANGE = { min: 49152, max: 65535 } as const;
+const WALK_START = 9222;
 
 describe('resolveCdpPort', () => {
-  it('picks a random port in the IANA dynamic range when no override is given', () => {
-    // No CLI flag, no AGB_CDP_PORT env → random avoids colliding with any
-    // user-run Chrome on 9222. We assert the range, not the exact value.
+  it('walks upward from 9222 when no override is given', () => {
+    // No CLI flag, no env → walk from 9222 up until we hit a free port.
+    // Chrome on 9222 would push us to 9223+ — we assert walk semantics,
+    // not the exact port (depends on what's listening on this machine).
     delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort([]);
-    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
-    expect(r.port).toBeLessThanOrEqual(DYNAMIC_RANGE.max);
-    expect(r.source).toBe('random');
+    expect(r.source === 'walk' || r.source === 'fallback').toBe(true);
+    expect(r.port).toBeGreaterThanOrEqual(WALK_START);
+    if (r.source === 'walk') {
+      expect(r.walkedFrom).toBeGreaterThanOrEqual(0);
+      expect(r.port).toBe(WALK_START + (r.walkedFrom ?? 0));
+    }
   });
 
   it('honors --remote-debugging-port=9225', () => {
@@ -139,25 +143,25 @@ describe('resolveCdpPort', () => {
     expect(r.source).toBe('cli');
   });
 
-  it('falls through to random for malformed port value', () => {
+  it('falls through to walk for malformed port value', () => {
     delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort(['--remote-debugging-port=not-a-number']);
-    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
-    expect(r.source).toBe('random');
+    expect(r.source === 'walk' || r.source === 'fallback').toBe(true);
+    expect(r.port).toBeGreaterThanOrEqual(WALK_START);
   });
 
-  it('falls through to random for out-of-range port value', () => {
+  it('falls through to walk for out-of-range port value', () => {
     delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort(['--remote-debugging-port=99999']);
-    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
-    expect(r.source).toBe('random');
+    expect(r.source === 'walk' || r.source === 'fallback').toBe(true);
+    expect(r.port).toBeGreaterThanOrEqual(WALK_START);
   });
 
-  it('falls through to random for negative port value', () => {
+  it('falls through to walk for negative port value', () => {
     delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort(['--remote-debugging-port=-1']);
-    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
-    expect(r.source).toBe('random');
+    expect(r.source === 'walk' || r.source === 'fallback').toBe(true);
+    expect(r.port).toBeGreaterThanOrEqual(WALK_START);
   });
 
   it('honors AGB_CDP_PORT env when no CLI flag is given', () => {
