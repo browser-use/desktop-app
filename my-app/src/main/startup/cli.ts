@@ -76,8 +76,18 @@ export function resolveUserDataDir(
 // --remote-debugging-port
 // ---------------------------------------------------------------------------
 
-/** Default CDP port kept for Docker agent containers that hardcode 9222. */
-export const DEFAULT_CDP_PORT = 9222;
+/** Well-known Chrome remote-debugging port — we specifically AVOID this by
+ *  default because any user with their own Chrome running `--remote-debugging-port=9222`
+ *  would collide and our `BU_CDP_PORT` env var would point the agent at
+ *  their Chrome instead of our Electron. See reagan_plan_cdp_port or git log
+ *  for the bug this prevents. */
+const CHROME_DEFAULT_PORT = 9222;
+
+/** Ephemeral/dynamic TCP port range (IANA RFC 6335). Picking a random port
+ *  here makes a collision with anything the user is running vanishingly
+ *  unlikely — 16k-port space vs Chrome's single fixed 9222. */
+const DYNAMIC_PORT_MIN = 49152;
+const DYNAMIC_PORT_MAX = 65535;
 
 export interface ResolvedCdpPort {
   /**
@@ -86,30 +96,40 @@ export interface ResolvedCdpPort {
    * discovered from stdout / `/json/version` after launch.
    */
   port: number;
-  /** Whether the caller supplied a port (so we should NOT pick the default). */
-  source: 'cli' | 'default';
+  /** Provenance of the port, useful in logs for diagnosing collisions. */
+  source: 'cli' | 'env' | 'random';
 }
 
 /**
  * Resolve the CDP remote-debugging port.
  *
- * - `--remote-debugging-port=<N>` on argv wins. `0` (OS-assigned) is honored.
- * - Otherwise returns `DEFAULT_CDP_PORT` (9222) so the Docker agent
- *   containers that hardcode `host.docker.internal:9222` keep working.
- *
- * An invalid or negative port in argv is rejected (falls back to default)
- * rather than silently crashing Electron at launch.
+ * - `--remote-debugging-port=<N>` on argv wins (dev / power-user override).
+ * - `AGB_CDP_PORT=<N>` env var second (CI / Docker pinning).
+ * - Otherwise a random port in the dynamic range (49152–65535) so we never
+ *   collide with the user's own Chrome on 9222.
  */
 export function resolveCdpPort(argv: readonly string[]): ResolvedCdpPort {
   const raw = extractFlagValue(argv, 'remote-debugging-port');
-  if (raw === null) {
-    return { port: DEFAULT_CDP_PORT, source: 'default' };
+  if (raw !== null) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 65535 && String(n) === raw) {
+      return { port: n, source: 'cli' };
+    }
+    // Fall through to env / random on a bogus value rather than crashing.
   }
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 0 || n > 65535 || String(n) !== raw) {
-    return { port: DEFAULT_CDP_PORT, source: 'default' };
+  const envVal = process.env.AGB_CDP_PORT;
+  if (envVal) {
+    const n = Number.parseInt(envVal, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 65535 && String(n) === envVal) {
+      return { port: n, source: 'env' };
+    }
   }
-  return { port: n, source: 'cli' };
+  // Random port in dynamic range, biased away from CHROME_DEFAULT_PORT (it's
+  // outside the range anyway, belt-and-braces guard in case range shifts).
+  const span = DYNAMIC_PORT_MAX - DYNAMIC_PORT_MIN + 1;
+  let port = DYNAMIC_PORT_MIN + Math.floor(Math.random() * span);
+  if (port === CHROME_DEFAULT_PORT) port += 1;
+  return { port, source: 'random' };
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +147,10 @@ export function resolveCdpPort(argv: readonly string[]): ResolvedCdpPort {
 // runtime discovery via `/json/version`.
 // ---------------------------------------------------------------------------
 
-let announcedCdpPort: number = DEFAULT_CDP_PORT;
+// Sentinel until setAnnouncedCdpPort is called at startup. Zero is valid for
+// "OS-assigned" too; consumers that see 0 must discover the actual port via
+// /json/version rather than use 0 as a TCP port.
+let announcedCdpPort: number = 0;
 
 export function setAnnouncedCdpPort(port: number): void {
   announcedCdpPort = port;
@@ -135,4 +158,44 @@ export function setAnnouncedCdpPort(port: number): void {
 
 export function getAnnouncedCdpPort(): number {
   return announcedCdpPort;
+}
+
+// ---------------------------------------------------------------------------
+// CDP ownership verification
+// ---------------------------------------------------------------------------
+
+/**
+ * Probe http://127.0.0.1:<port>/json/version and confirm the Browser field
+ * looks like an Electron instance (not the user's Chrome). Used at startup
+ * to catch port collisions that would otherwise silently hand the agent the
+ * wrong CDP endpoint.
+ *
+ * Returns { ok: true } when Browser starts with 'Electron/', { ok: false }
+ * otherwise. Caller is responsible for logging + surfacing errors.
+ */
+export async function verifyCdpOwnership(port: number, timeoutMs = 2000): Promise<{ ok: boolean; browser?: string; error?: string }> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const http = require('node:http') as typeof import('node:http');
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: '127.0.0.1', port, path: '/json/version', timeout: timeoutMs },
+      (res) => {
+        let buf = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => (buf += c));
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(buf) as { Browser?: string };
+            const browser = parsed.Browser ?? 'unknown';
+            const ok = browser.startsWith('Electron/');
+            resolve({ ok, browser });
+          } catch (err) {
+            resolve({ ok: false, error: `parse failed: ${(err as Error).message}` });
+          }
+        });
+      },
+    );
+    req.on('error', (err) => resolve({ ok: false, error: err.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+  });
 }

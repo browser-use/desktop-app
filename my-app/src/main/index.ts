@@ -84,6 +84,7 @@ import {
   resolveUserDataDir,
   resolveCdpPort,
   setAnnouncedCdpPort,
+  verifyCdpOwnership,
 } from './startup/cli';
 import { assertString, assertAttachments } from './ipc-validators';
 // Agent loop: CLI subprocess driving the browser harness. Engine is
@@ -274,6 +275,28 @@ function openShellAndWire(): BrowserWindow {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   mainLogger.info('main.appReady', { msg: 'Electron app ready — initializing Browser Use' });
+
+  // Verify the CDP endpoint at our announced port is actually OUR Electron
+  // instance and not, e.g., the user's own Chrome that happened to already
+  // bind 9222. Without this, BU_CDP_PORT handed to the agent would point at
+  // a stranger's browser — `/json/list` returns targets the agent has no
+  // access to, and `/devtools/page/<id>` gives 404/403. Log loudly on
+  // mismatch so users hit a clear error instead of mysterious CDP failures.
+  verifyCdpOwnership(resolvedCdp.port).then((v) => {
+    if (v.ok) {
+      mainLogger.info('main.cdp.verified', { port: resolvedCdp.port, browser: v.browser });
+    } else {
+      mainLogger.error('main.cdp.verifyFailed', {
+        port: resolvedCdp.port,
+        portSource: resolvedCdp.source,
+        browser: v.browser ?? null,
+        error: v.error ?? null,
+        hint: v.browser && !v.browser.startsWith('Electron/')
+          ? `Port ${resolvedCdp.port} is owned by ${v.browser}, not our Electron. Restart the app to pick a fresh random port, or pass --remote-debugging-port=<free port>.`
+          : `Could not reach CDP on :${resolvedCdp.port}; Electron may not have bound it (another process may hold it).`,
+      });
+    }
+  });
 
   if (process.platform === 'darwin' && app.dock) {
     try {

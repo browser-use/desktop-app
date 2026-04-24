@@ -12,7 +12,6 @@ import {
   extractFlagValue,
   resolveUserDataDir,
   resolveCdpPort,
-  DEFAULT_CDP_PORT,
   setAnnouncedCdpPort,
   getAnnouncedCdpPort,
 } from '../../../src/main/startup/cli';
@@ -109,12 +108,17 @@ describe('resolveUserDataDir (#206)', () => {
 // resolveCdpPort — Issue #207
 // ---------------------------------------------------------------------------
 
-describe('resolveCdpPort (#207)', () => {
-  it('defaults to 9222 so Docker agents keep working', () => {
+const DYNAMIC_RANGE = { min: 49152, max: 65535 } as const;
+
+describe('resolveCdpPort', () => {
+  it('picks a random port in the IANA dynamic range when no override is given', () => {
+    // No CLI flag, no AGB_CDP_PORT env → random avoids colliding with any
+    // user-run Chrome on 9222. We assert the range, not the exact value.
+    delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort([]);
-    expect(r.port).toBe(DEFAULT_CDP_PORT);
-    expect(r.port).toBe(9222);
-    expect(r.source).toBe('default');
+    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
+    expect(r.port).toBeLessThanOrEqual(DYNAMIC_RANGE.max);
+    expect(r.source).toBe('random');
   });
 
   it('honors --remote-debugging-port=9225', () => {
@@ -135,26 +139,51 @@ describe('resolveCdpPort (#207)', () => {
     expect(r.source).toBe('cli');
   });
 
-  it('falls back to default for malformed port value', () => {
+  it('falls through to random for malformed port value', () => {
+    delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort(['--remote-debugging-port=not-a-number']);
-    expect(r.port).toBe(DEFAULT_CDP_PORT);
-    expect(r.source).toBe('default');
+    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
+    expect(r.source).toBe('random');
   });
 
-  it('falls back to default for out-of-range port value', () => {
+  it('falls through to random for out-of-range port value', () => {
+    delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort(['--remote-debugging-port=99999']);
-    expect(r.port).toBe(DEFAULT_CDP_PORT);
-    expect(r.source).toBe('default');
+    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
+    expect(r.source).toBe('random');
   });
 
-  it('falls back to default for negative port value', () => {
+  it('falls through to random for negative port value', () => {
+    delete process.env.AGB_CDP_PORT;
     const r = resolveCdpPort(['--remote-debugging-port=-1']);
-    expect(r.port).toBe(DEFAULT_CDP_PORT);
-    expect(r.source).toBe('default');
+    expect(r.port).toBeGreaterThanOrEqual(DYNAMIC_RANGE.min);
+    expect(r.source).toBe('random');
   });
 
-  it('handles exact multi-instance test argv (non-9222 startup)', () => {
-    // tests/e2e/multi-instance.spec.ts:233 uses 9225/9226
+  it('honors AGB_CDP_PORT env when no CLI flag is given', () => {
+    process.env.AGB_CDP_PORT = '9227';
+    try {
+      const r = resolveCdpPort([]);
+      expect(r.port).toBe(9227);
+      expect(r.source).toBe('env');
+    } finally {
+      delete process.env.AGB_CDP_PORT;
+    }
+  });
+
+  it('CLI flag beats AGB_CDP_PORT env', () => {
+    process.env.AGB_CDP_PORT = '9227';
+    try {
+      const r = resolveCdpPort(['--remote-debugging-port=9225']);
+      expect(r.port).toBe(9225);
+      expect(r.source).toBe('cli');
+    } finally {
+      delete process.env.AGB_CDP_PORT;
+    }
+  });
+
+  it('handles exact multi-instance test argv (explicit port)', () => {
+    // tests/e2e/multi-instance.spec.ts uses explicit 9225/9226
     const argv = [
       '/electron',
       '/main.js',
@@ -175,10 +204,10 @@ describe('resolveCdpPort (#207)', () => {
 
 describe('announced CDP port', () => {
   beforeEach(() => {
-    setAnnouncedCdpPort(DEFAULT_CDP_PORT);
+    setAnnouncedCdpPort(9222);  // arbitrary seed for the tests below
   });
 
-  it('defaults to 9222', () => {
+  it('returns whatever seed was set', () => {
     expect(getAnnouncedCdpPort()).toBe(9222);
   });
 
