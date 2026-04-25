@@ -17,7 +17,7 @@ import {
   deleteOpenAIKey,
   getCredentialStatus,
 } from '../identity/authStore';
-import { readClaudeCodeCredentials } from '../identity/claudeCodeAuth';
+import { probeClaudeAuthStatus } from '../identity/claudeCodeAuth';
 import { enrichedEnv } from '../hl/engines/pathEnrich';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -123,10 +123,9 @@ async function handleDelete(): Promise<void> {
 }
 
 async function handleClaudeCodeAvailable(): Promise<{ available: boolean; subscriptionType?: string | null }> {
-  const creds = await readClaudeCodeCredentials();
-  if (!creds) return { available: false };
-  if (!creds.scopes.includes('user:inference')) return { available: false };
-  return { available: true, subscriptionType: creds.subscriptionType ?? null };
+  const status = await probeClaudeAuthStatus();
+  if (!status.loggedIn) return { available: false };
+  return { available: true, subscriptionType: status.subscriptionType ?? null };
 }
 
 /**
@@ -177,20 +176,18 @@ async function handleClaudeCodeLogin(): Promise<{ ok: boolean; error?: string }>
 }
 
 async function handleUseClaudeCode(): Promise<{ subscriptionType: string | null }> {
-  // Verify the Claude CLI is actually authed (we want to fail fast if the
-  // user clicks "Sign in with Claude" without having run `claude auth login`).
-  // We do NOT copy the OAuth tokens into our keychain — the agent spawns
-  // `claude` directly which reads from the CLI's own keychain entry.
-  const creds = await readClaudeCodeCredentials();
-  if (!creds) throw new Error('Claude Code credentials not found');
-  if (!creds.scopes.includes('user:inference')) {
-    throw new Error('Claude Code token missing user:inference scope');
-  }
-  // Just record the user's mode preference so resolveAuth() doesn't return
-  // a stored API key when they've explicitly chosen the subscription path.
+  // Verify the Claude CLI is actually authed by shelling out to `claude
+  // auth status --json` (no keychain crossing — the CLI reads its own
+  // entry, no Browser-Use prompt). We do NOT copy OAuth tokens into our
+  // keychain — the agent spawns `claude` directly which reads from the
+  // CLI's own keychain entry.
+  const status = await probeClaudeAuthStatus();
+  if (!status.loggedIn) throw new Error('Claude Code credentials not found');
+  // Record the user's mode preference so resolveAuth() doesn't return a
+  // stored API key when they've explicitly chosen the subscription path.
   // eslint-disable-next-line react-hooks/rules-of-hooks -- not a React hook; main-process function that happens to start with `use`
   await useClaudeCodeSubscription();
-  return { subscriptionType: creds.subscriptionType ?? null };
+  return { subscriptionType: status.subscriptionType ?? null };
 }
 
 export interface OpenAiKeyStatus {

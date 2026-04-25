@@ -25,7 +25,7 @@
  */
 
 import { mainLogger } from '../logger';
-import { readClaudeCodeCredentials } from './claudeCodeAuth';
+import { probeClaudeAuthStatus } from './claudeCodeAuth';
 
 const CREDENTIALS_SERVICE = 'com.browser-use.desktop.credentials';
 const DEFAULT_ACCOUNT = 'default';
@@ -239,8 +239,8 @@ async function loadApiKey(): Promise<string | null> {
  *  ran it. */
 export async function loadClaudeSubscriptionType(): Promise<string | null> {
   try {
-    const creds = await readClaudeCodeCredentials();
-    return creds?.subscriptionType ?? null;
+    const status = await probeClaudeAuthStatus();
+    return status.loggedIn ? (status.subscriptionType ?? null) : null;
   } catch (err) {
     mainLogger.warn('authStore.loadClaudeSubscriptionType.failed', { error: (err as Error).message });
     return null;
@@ -272,16 +272,16 @@ export async function getCredentialStatus(): Promise<CredentialStatus> {
   if (c.authMode === 'apiKey' && c.anthropicApiKey) {
     anthropic = { type: 'apiKey', masked: maskKey(c.anthropicApiKey) };
   } else {
+    let liveLoggedIn = false;
     let liveSub: string | null = null;
     try {
-      const live = await readClaudeCodeCredentials();
-      if (live && live.scopes.includes('user:inference')) {
-        liveSub = live.subscriptionType ?? null;
-      }
+      const status = await probeClaudeAuthStatus();
+      liveLoggedIn = status.loggedIn;
+      liveSub = status.subscriptionType ?? null;
     } catch (err) {
       mainLogger.warn('authStore.getCredentialStatus.claudeProbeFailed', { error: (err as Error).message });
     }
-    if (liveSub !== null || (c.authMode !== 'apiKey' && (await readClaudeCodeCredentials())?.scopes.includes('user:inference'))) {
+    if (liveLoggedIn) {
       anthropic = { type: 'oauth', subscriptionType: liveSub };
     } else if (c.anthropicApiKey) {
       // No CLI subscription, but the user has stored an API key.

@@ -13,7 +13,9 @@
  *   anthropic-beta: oauth-2025-04-20
  */
 
+import { spawn } from 'node:child_process';
 import { mainLogger } from '../logger';
+import { enrichedEnv } from '../hl/engines/pathEnrich';
 
 // Public Claude Code OAuth client id (from the Claude Code install).
 // Not a secret — this is the identifier Anthropic uses to scope the flow.
@@ -45,8 +47,76 @@ function getKeytar(): KeytarLike | null {
 }
 
 /**
+ * Status surface for the Settings UI — sources `claude auth status --json`
+ * output. Distinct from ClaudeOAuthCredentials because we don't want to
+ * surface the raw access token to anything except the (now-removed) OAuth
+ * mirror path; the renderer only needs the loggedIn flag and the tier.
+ */
+export interface ClaudeAuthStatus {
+  loggedIn: boolean;
+  authMethod?: string;
+  email?: string;
+  subscriptionType?: string;
+}
+
+/**
+ * Probe Claude Code's auth state by shelling out to `claude auth status
+ * --json`. Strongly preferred over `readClaudeCodeCredentials()` for the
+ * Settings UI hot path: that function reads Claude's keychain entry from
+ * OUR process, which triggers a "Browser Use wants to access Claude Code-
+ * credentials" prompt every time Claude rewrites the entry (i.e. on every
+ * fresh `claude auth login`). The CLI subprocess reads its OWN keychain
+ * entry — Apple's prompt rules consider that allowed-by-default.
+ */
+export function probeClaudeAuthStatus(timeoutMs = 5000): Promise<ClaudeAuthStatus> {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn('claude', ['auth', 'status', '--json'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: enrichedEnv(),
+      });
+    } catch {
+      resolve({ loggedIn: false });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += String(d)));
+    child.stderr.on('data', (d) => (stderr += String(d)));
+    const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* dead */ } }, timeoutMs);
+    child.on('error', () => { clearTimeout(timer); resolve({ loggedIn: false }); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        mainLogger.debug('claudeCodeAuth.probeStatus.nonZero', { code, stderr: stderr.slice(-200) });
+        resolve({ loggedIn: false });
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout) as ClaudeAuthStatus;
+        resolve({
+          loggedIn: Boolean(parsed.loggedIn),
+          authMethod: parsed.authMethod,
+          email: parsed.email,
+          subscriptionType: parsed.subscriptionType,
+        });
+      } catch (err) {
+        mainLogger.warn('claudeCodeAuth.probeStatus.parseFailed', { error: (err as Error).message, stdoutPreview: stdout.slice(0, 200) });
+        resolve({ loggedIn: false });
+      }
+    });
+  });
+}
+
+/**
  * Read Claude Code's OAuth credentials from the local Keychain.
  * Returns null if Claude Code isn't installed or has never been signed in.
+ *
+ * NOTE: callers that only need the loggedIn flag + subscriptionType should
+ * prefer probeClaudeAuthStatus() — that doesn't trigger a macOS keychain
+ * prompt. This function is kept for paths that genuinely need the raw
+ * tokens (refresh flows, etc.).
  */
 export async function readClaudeCodeCredentials(): Promise<ClaudeOAuthCredentials | null> {
   const keytar = getKeytar();
