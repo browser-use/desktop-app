@@ -155,39 +155,61 @@ export function resolveCdpPort(argv: readonly string[]): ResolvedCdpPort {
  * real collision and logs loudly.
  */
 /**
- * Try to bind `net.createServer().listen(port)` in a short-lived subprocess.
- * Authoritative: Node resolves EADDRINUSE iff something already holds the
- * port, and succeeds iff we can take it ourselves. No dependency on lsof /
- * netstat / their PATH availability.
+ * Sync probe: is `port` already bound on localhost?
  *
- * Cost: one spawnSync of Electron-as-Node per probe (~100-200ms). Cheap
- * for the one or two probes we do at startup. Blocking is required because
- * we must have the answer before app.commandLine.appendSwitch fires.
+ * Uses OS-native listing tools (`lsof` on POSIX, `netstat` on Windows)
+ * because we MUST NOT spawn `process.execPath` here — Electron Forge's
+ * `RunAsNode: false` fuse blocks `ELECTRON_RUN_AS_NODE` in packaged
+ * builds, so spawning the Electron binary launches the full app
+ * (recursive window storm) instead of running our inline script.
+ *
+ * Probe candidates use absolute paths first (Electron's PATH at launch
+ * is often missing /usr/sbin where lsof lives). If no candidate is
+ * available we return TRUE (= probably free) and rely on
+ * verifyCdpOwnership() to surface real collisions post-boot.
  */
 function isPortFreeSync(port: number): boolean {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
-  const script = `
-    const net = require('node:net');
-    const s = net.createServer();
-    s.once('error', (e) => { process.exit(e && e.code === 'EADDRINUSE' ? 1 : 2); });
-    s.once('listening', () => { s.close(() => process.exit(0)); });
-    s.listen(${port}, '127.0.0.1');
-    setTimeout(() => { try { s.close(); } catch {} process.exit(3); }, 800);
-  `;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fsSync = require('node:fs') as typeof import('node:fs');
+
+  if (process.platform === 'win32') {
+    try {
+      const res = spawnSync('netstat', ['-an'], { encoding: 'utf8', timeout: 2000 });
+      if (res.status !== 0 || !res.stdout) return true;
+      const needle = `:${port} `;
+      return !res.stdout
+        .split(/\r?\n/)
+        .some((line) => line.includes(needle) && /LISTENING/i.test(line));
+    } catch {
+      return true;
+    }
+  }
+
+  // POSIX: hunt for an absolute lsof path before falling back to PATH.
+  const candidates = ['/usr/sbin/lsof', '/usr/bin/lsof'];
+  let bin: string | null = null;
+  for (const c of candidates) {
+    try { if (fsSync.existsSync(c)) { bin = c; break; } } catch { /* try next */ }
+  }
+  if (!bin) {
+    // No absolute lsof found; try PATH lookup as last resort. ENOENT means
+    // we can't probe — be optimistic so the walk doesn't spin pointlessly.
+    bin = 'lsof';
+  }
   try {
-    const res = spawnSync(process.execPath, ['-e', script], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-      timeout: 3000,
+    const res = spawnSync(bin, ['-i', `:${port}`, '-sTCP:LISTEN', '-n', '-P'], {
       encoding: 'utf8',
+      timeout: 2000,
     });
-    // 0 → port was free and we bound-then-released. Anything else (1 =
-    // EADDRINUSE, 2 = other error, 3 = timeout) → treat as taken so the
-    // walk advances rather than hand Electron a port it can't take.
-    return res.status === 0;
+    // status null/undefined ⇒ ENOENT or signal — be optimistic and let
+    // verifyCdpOwnership catch a real collision post-boot.
+    if (res.error || res.status === null) return true;
+    // lsof exits 1 with empty stdout when there are no matches = port free.
+    return (res.stdout ?? '').trim().length === 0;
   } catch {
-    // Spawn failed — be pessimistic and advance the walk.
-    return false;
+    return true;
   }
 }
 
