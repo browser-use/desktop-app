@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('settings:claude-code:available'),
       use: (): Promise<{ subscriptionType: string | null }> =>
         ipcRenderer.invoke('settings:claude-code:use'),
+      login: (): Promise<{ ok: boolean; error?: string }> =>
+        ipcRenderer.invoke('settings:claude-code:login'),
       logout: (): Promise<{ opened: boolean; error?: string }> =>
         ipcRenderer.invoke('settings:claude-code:logout'),
     },

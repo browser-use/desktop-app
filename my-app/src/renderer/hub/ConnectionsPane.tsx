@@ -35,6 +35,10 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
 
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ type: 'none' });
   const [claudeCodeAvailable, setClaudeCodeAvailable] = useState<{ available: boolean; subscriptionType?: string | null }>({ available: false });
+  // True while we've spawned `claude auth login --claudeai` and are waiting
+  // for the user to complete the OAuth in their browser. Drives the card's
+  // 'Waiting for login…' subtitle + button-disabled state.
+  const [claudeWaiting, setClaudeWaiting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftKey, setDraftKey] = useState('');
   const [keyStatus, setKeyStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle');
@@ -93,13 +97,65 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
   const handleUseClaudeCode = useCallback(async () => {
     const api = window.electronAPI;
     if (!api?.settings?.claudeCode) return;
+    setKeyError(null);
+    // Two cases: (a) Claude CLI is already authed → just record the
+    // mode preference; (b) it isn't → spawn `claude auth login --claudeai`,
+    // let Claude open the browser, poll until creds appear, then record.
     try {
-      await api.settings.claudeCode.use();
-      await refreshKey();
+      const cc = await api.settings.claudeCode.available();
+      if (cc.available) {
+        await api.settings.claudeCode.use();
+        await refreshKey();
+        return;
+      }
+      if (!api.settings.claudeCode.login) {
+        setKeyError('Login flow not available — run `claude auth login` in a terminal first.');
+        return;
+      }
+      setClaudeWaiting(true);
+      const res = await api.settings.claudeCode.login();
+      if (!res.ok) {
+        setClaudeWaiting(false);
+        setKeyError(res.error ?? 'Failed to start Claude login');
+      }
+      // Browser is now open with the OAuth flow. Polling effect below
+      // detects completion and flips claudeWaiting off.
     } catch (err) {
+      setClaudeWaiting(false);
       setKeyError((err as Error).message);
     }
   }, [refreshKey]);
+
+  // Poll while we're waiting for `claude auth login --claudeai` to complete.
+  // 1s interval so the panel flips fast once auth.json appears in the CLI's
+  // own keychain. Tighter than the global 5s panel refresh.
+  useEffect(() => {
+    if (!claudeWaiting) return;
+    let cancelled = false;
+    let attempts = 0;
+    const MAX = 180; // 3 minutes
+    const tick = async () => {
+      if (cancelled) return;
+      attempts++;
+      const api = window.electronAPI;
+      if (!api?.settings?.claudeCode) return;
+      try {
+        const cc = await api.settings.claudeCode.available();
+        if (cc.available) {
+          await api.settings.claudeCode.use();
+          setClaudeWaiting(false);
+          await refreshKey();
+          return;
+        }
+      } catch (err) {
+        console.warn('[connections] claude poll failed', err);
+      }
+      if (attempts >= MAX) { setClaudeWaiting(false); return; }
+      setTimeout(tick, 1000);
+    };
+    void tick();
+    return () => { cancelled = true; };
+  }, [claudeWaiting, refreshKey]);
 
   useEffect(() => {
     refreshKey();
@@ -330,6 +386,8 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
             <span className="conn-card__subtitle">
               {editing
                 ? 'Enter a new key — it will be tested before saving'
+                : claudeWaiting
+                ? 'Finish the OAuth flow in your browser…'
                 : authStatus.type === 'oauth'
                 ? `Signed in with Claude ${authStatus.subscriptionType === 'max' ? 'Max' : authStatus.subscriptionType === 'pro' ? 'Pro' : 'subscription'}`
                 : authStatus.type === 'apiKey' && authStatus.masked
@@ -338,9 +396,13 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
             </span>
           </div>
           <div className="conn-card__actions">
-            {!editing && authStatus.type === 'none' && claudeCodeAvailable.available && (
-              <button className="conn-card__btn conn-card__btn--primary" onClick={handleUseClaudeCode}>
-                Sign in with Claude
+            {!editing && authStatus.type === 'none' && (
+              <button
+                className="conn-card__btn conn-card__btn--primary"
+                onClick={handleUseClaudeCode}
+                disabled={claudeWaiting}
+              >
+                {claudeWaiting ? 'Waiting…' : 'Sign in with Claude'}
               </button>
             )}
             {!editing && authStatus.type === 'none' && (

@@ -155,6 +155,7 @@ interface ElectronSettingsApiKeyAPI {
 interface ElectronSettingsClaudeCodeAPI {
   available: () => Promise<{ available: boolean; subscriptionType?: string | null }>;
   use: () => Promise<{ subscriptionType: string | null }>;
+  login: () => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<{ opened: boolean; error?: string }>;
 }
 

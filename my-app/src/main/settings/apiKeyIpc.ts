@@ -38,6 +38,7 @@ const CH_OAI_SAVE = 'settings:openai-key:save';
 const CH_OAI_TEST = 'settings:openai-key:test';
 const CH_OAI_DELETE = 'settings:openai-key:delete';
 const CH_CODEX_LOGOUT = 'settings:codex:logout';
+const CH_CC_LOGIN = 'settings:claude-code:login';
 const CH_CC_LOGOUT = 'settings:claude-code:logout';
 
 export interface AuthStatus {
@@ -126,6 +127,53 @@ async function handleClaudeCodeAvailable(): Promise<{ available: boolean; subscr
   if (!creds) return { available: false };
   if (!creds.scopes.includes('user:inference')) return { available: false };
   return { available: true, subscriptionType: creds.subscriptionType ?? null };
+}
+
+/**
+ * Spawn `claude auth login --claudeai` from Settings — same flow onboarding
+ * runs. Resolves as soon as the subprocess starts (Claude opens the browser
+ * itself); the renderer polls `available()` to detect when auth.json
+ * appears in the CLI's keychain. Cross-platform: plain spawn, no Terminal
+ * involvement, no PTY needed (Claude CLI prints to plain stdout).
+ */
+async function handleClaudeCodeLogin(): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r: { ok: boolean; error?: string }) => {
+      if (!settled) { settled = true; resolve(r); }
+    };
+    let child;
+    try {
+      child = spawn('claude', ['auth', 'login', '--claudeai'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: enrichedEnv(),
+      });
+    } catch (err) {
+      finish({ ok: false, error: (err as Error).message });
+      return;
+    }
+    let stderrBuf = '';
+    let stdoutBuf = '';
+    child.stdout.on('data', (d) => { stdoutBuf += String(d); if (stdoutBuf.length > 4096) stdoutBuf = stdoutBuf.slice(-4096); });
+    child.stderr.on('data', (d) => { stderrBuf += String(d); if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096); });
+    const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* dead */ } }, 5 * 60 * 1000);
+    child.on('spawn', () => {
+      mainLogger.info('apiKeyIpc.claudeCode.login.spawn');
+      finish({ ok: true });
+    });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      mainLogger.warn('apiKeyIpc.claudeCode.login.error', { error: err.message });
+      finish({ ok: false, error: err.message });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      mainLogger.info('apiKeyIpc.claudeCode.login.close', { code, stderr: stderrBuf.slice(-200) });
+      if (code !== 0 && !settled) {
+        finish({ ok: false, error: stderrBuf.trim() || stdoutBuf.trim() || `claude auth login exit ${code}` });
+      }
+    });
+  });
 }
 
 async function handleUseClaudeCode(): Promise<{ subscriptionType: string | null }> {
@@ -263,6 +311,7 @@ export function registerApiKeyHandlers(): void {
   ipcMain.handle(CH_OAI_TEST, handleOpenAiTest);
   ipcMain.handle(CH_OAI_DELETE, handleOpenAiDelete);
   ipcMain.handle(CH_CODEX_LOGOUT, handleCodexLogout);
+  ipcMain.handle(CH_CC_LOGIN, handleClaudeCodeLogin);
   ipcMain.handle(CH_CC_LOGOUT, handleClaudeCodeLogout);
   mainLogger.info('apiKeyIpc.register.ok');
 }
