@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { TerminalPane } from '../hub/TerminalPane';
 // Reuse the hub's editor-logo assets so the logs window's "Open in ..." menu
 // matches the hub's FileOutputRow visually.
@@ -122,18 +123,41 @@ function getEditors(): Promise<Array<{ id: string; name: string }>> {
 function FileRow({ entry }: { entry: FileOutputEntry }): React.ReactElement {
   const [editors, setEditors] = useState<Array<{ id: string; name: string }>>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // Anchor coordinates for the portal-rendered menu. We render the menu via
+  // createPortal so it escapes `.logs-files` (which has overflow-x: auto and
+  // therefore clips on Y too — the menu would otherwise be invisible).
+  const [menuAnchor, setMenuAnchor] = useState<{ left: number; bottom: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuPortalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { void getEditors().then(setEditors).catch(() => setEditors([])); }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
     const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Node;
+      const insideButton = buttonRef.current?.contains(target);
+      const insideMenu = menuPortalRef.current?.contains(target);
+      if (!insideButton && !insideMenu) setMenuOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
+
+  const openMenu = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Place the menu's bottom 4px above the button's top, left-aligned to
+      // the button. Coordinates are viewport-relative; portal renders into
+      // document.body so they map directly.
+      setMenuAnchor({ left: rect.left, bottom: window.innerHeight - rect.top + 4 });
+    }
+    setMenuOpen(true);
+  }, []);
+  const toggleMenu = useCallback(() => {
+    if (menuOpen) setMenuOpen(false);
+    else openMenu();
+  }, [menuOpen, openMenu]);
 
   const onOpenInEditor = useCallback(async (editorId: string) => {
     console.log('[LogsApp file] onOpenInEditor click', { editorId, path: entry.path });
@@ -165,11 +189,12 @@ function FileRow({ entry }: { entry: FileOutputEntry }): React.ReactElement {
   }, [entry.path]);
 
   return (
-    <div className="logs-file-row-wrap" ref={menuRef}>
+    <div className="logs-file-row-wrap">
       <button
+        ref={buttonRef}
         type="button"
         className="logs-file-row"
-        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+        onClick={(e) => { e.stopPropagation(); toggleMenu(); }}
         title={entry.path}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
@@ -187,8 +212,13 @@ function FileRow({ entry }: { entry: FileOutputEntry }): React.ReactElement {
         <span className="logs-file-row__size">{formatSize(entry.size)}</span>
         <span className="logs-file-row__caret">{'▾'}</span>
       </button>
-      {menuOpen && (
-        <div className="logs-file-menu" role="menu">
+      {menuOpen && menuAnchor && createPortal(
+        <div
+          ref={menuPortalRef}
+          className="logs-file-menu"
+          role="menu"
+          style={{ position: 'fixed', left: menuAnchor.left, bottom: menuAnchor.bottom }}
+        >
           {editors.map((ed) => (
             <button
               key={ed.id}
@@ -209,7 +239,8 @@ function FileRow({ entry }: { entry: FileOutputEntry }): React.ReactElement {
             <span className="logs-file-menu__icon"><FinderIcon /></span>
             <span>Reveal in Finder</span>
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
