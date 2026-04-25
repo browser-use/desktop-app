@@ -357,6 +357,21 @@ export function showLogs(sessionId: string, anchor: PaneAnchor | null = null): v
   activeSessionId = sessionId;
   if (anchor) lastAnchor = anchor;
   log.info('logs.show', { sessionId, anchor: anchor ?? lastAnchor, ready: logsReady, mode, userCustomized });
+  // Defer the visual show when the user is currently focused on another
+  // app (no Electron window of ours is the foreground window). AgentPane
+  // auto-fires logs.show() when it mounts for a new session — for tasks
+  // started via the global-shortcut pill, that happens while the user is
+  // still in Cursor / their browser / wherever, and we don't want a
+  // floating logs window to pop over their work uninvited. Record the
+  // intent in wasVisibleBeforeBlur so the hub-focus handler restores it
+  // the next time the user actually comes back to the app.
+  const someoneIsFocused = BrowserWindow.getFocusedWindow() !== null;
+  if (!someoneIsFocused) {
+    log.info('logs.show.deferred', { reason: 'app-not-foreground', sessionId });
+    wasVisibleBeforeBlur = true;
+    safeSend('logs:active-session-changed', sessionId);
+    return;
+  }
   if (anchorWindow && !anchorWindow.isDestroyed() && !userCustomized) {
     beginProgrammaticBoundsChange();
     logsWindow.setBounds(computeLogsBounds(anchorWindow, lastAnchor));
