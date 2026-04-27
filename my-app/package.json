@@ -74,7 +74,7 @@
     "eslint-plugin-import-x": "^4.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.5.0",
-    "jsdom": "^29.0.2",
+    "jsdom": "^29.1.0",
     "open": "^11.0.0",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
