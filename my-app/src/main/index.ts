@@ -171,6 +171,9 @@ browserPool.setOnGone((sessionId) => {
     shellWindow.webContents.send('sessions:browser-gone', sessionId);
   }
   takeoverOverlay.hide(sessionId, shellWindow);
+  // An idle session whose browser is gone has nothing left to do — promote
+  // to 'stopped' so the UI stops showing "Idle" and renders the end state.
+  sessionManager.markBrowserEnded(sessionId);
 });
 // Keep each session's primarySite in sync with the actual page — the
 // browser is the source of truth. Covers agent-driven navigation and

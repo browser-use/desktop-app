@@ -89,6 +89,14 @@ export class BrowserPool {
       return null;
     }
 
+    const startupStartedAt = Date.now();
+    const startupMs = (): number => Date.now() - startupStartedAt;
+    mainLogger.info('BrowserPool.startup.start', {
+      sessionId,
+      activeCount: this.entries.size,
+      maxConcurrent: this.maxConcurrent,
+    });
+
     const view = new WebContentsView({
       webPreferences: {
         contextIsolation: true,
@@ -96,6 +104,12 @@ export class BrowserPool {
         sandbox: true,
         backgroundThrottling: true,
       },
+    });
+    mainLogger.info('BrowserPool.startup.constructed', {
+      sessionId,
+      msSinceCreate: startupMs(),
+      pid: view.webContents.getOSProcessId(),
+      wcId: view.webContents.id,
     });
 
     view.setBounds({
@@ -105,13 +119,17 @@ export class BrowserPool {
       height: DEFAULT_BROWSER_HEIGHT,
     });
 
-    // Anti-detection: strip the `Electron/x.y.z` token from the default UA so
-    // bot walls (Cloudflare, Akamai, Datadome) stop white-paging us. We leave
-    // every other byte of the UA untouched — real Chromium version, real OS,
-    // real WebKit — so behavior and feature-detection stay identical.
+    // Anti-detection: replace the Electron default UA with a vanilla Chrome UA.
+    // The default contains TWO bot tells — the app name token (`my-app/x.y.z`)
+    // injected by Electron between `Gecko)` and `Chrome/`, and the Electron
+    // token (`Electron/x.y.z`) before `Safari/`. Strip both. We keep the real
+    // bundled Chromium version (process.versions.chrome) so feature-detection,
+    // Sec-CH-UA hints, and TLS fingerprint stay coherent with the engine.
     try {
       const defaultUa = view.webContents.getUserAgent();
-      const cleanedUa = defaultUa.replace(/\sElectron\/\S+/, '');
+      const cleanedUa = defaultUa
+        .replace(/\sElectron\/\S+/, '')
+        .replace(/\s[A-Za-z][\w-]*\/\d+\.\d+\.\d+(?=\sChrome\/)/, '');
       if (cleanedUa !== defaultUa) {
         view.webContents.setUserAgent(cleanedUa);
         mainLogger.info('BrowserPool.userAgent.stripped', { sessionId, before: defaultUa, after: cleanedUa });
@@ -181,7 +199,7 @@ export class BrowserPool {
     const entry: PoolEntry = {
       sessionId,
       view,
-      createdAt: Date.now(),
+      createdAt: startupStartedAt,
       attached: false,
     };
 
@@ -190,13 +208,52 @@ export class BrowserPool {
     // Fire onGone if the renderer process crashes, closes, or otherwise dies
     // out-of-band so the UI can react (stop showing "Browser starting…").
     const wc = view.webContents;
+    wc.once('did-start-loading', () => {
+      mainLogger.info('BrowserPool.startup.didStartLoading', {
+        sessionId,
+        msSinceCreate: startupMs(),
+        pid: wc.getOSProcessId(),
+        wcId: wc.id,
+        url: wc.getURL(),
+      });
+    });
+    wc.once('dom-ready', () => {
+      mainLogger.info('BrowserPool.startup.domReady', {
+        sessionId,
+        msSinceCreate: startupMs(),
+        pid: wc.getOSProcessId(),
+        wcId: wc.id,
+        url: wc.getURL(),
+      });
+    });
+    wc.once('did-finish-load', () => {
+      mainLogger.info('BrowserPool.startup.didFinishLoad', {
+        sessionId,
+        msSinceCreate: startupMs(),
+        pid: wc.getOSProcessId(),
+        wcId: wc.id,
+        url: wc.getURL(),
+      });
+    });
+    wc.once('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      mainLogger.warn('BrowserPool.startup.didFailLoad', {
+        sessionId,
+        msSinceCreate: startupMs(),
+        pid: wc.getOSProcessId(),
+        wcId: wc.id,
+        errorCode,
+        errorDescription,
+        validatedURL,
+        isMainFrame,
+      });
+    });
     wc.on('destroyed', () => {
-      mainLogger.info('BrowserPool.wc.destroyed', { sessionId });
+      mainLogger.info('BrowserPool.wc.destroyed', { sessionId, msSinceCreate: startupMs() });
       this.entries.delete(sessionId);
       this.notifyGone(sessionId);
     });
     wc.on('render-process-gone', (_event, details) => {
-      mainLogger.warn('BrowserPool.wc.renderProcessGone', { sessionId, reason: details.reason });
+      mainLogger.warn('BrowserPool.wc.renderProcessGone', { sessionId, reason: details.reason, msSinceCreate: startupMs() });
       this.notifyGone(sessionId);
     });
     // Top-frame navigation — full page load. Covers agent-driven goto(),
@@ -375,18 +432,51 @@ export class BrowserPool {
 
     const lifetimeMs = Date.now() - entry.createdAt;
 
+    // Delete from map first so the wc.on('destroyed') listener's notifyGone
+    // is a clean no-op (it still fires, but the entry is already gone).
+    this.entries.delete(sessionId);
+
+    const wc = entry.view.webContents;
+    let closed = false;
     try {
-      (entry.view.webContents as any).close();
-    } catch {
-      // webContents may already be destroyed
+      if (!wc.isDestroyed()) {
+        (wc as unknown as { close: (opts?: { waitForBeforeUnload?: boolean }) => void }).close();
+        closed = true;
+      }
+    } catch (err) {
+      mainLogger.warn('BrowserPool.destroy.closeError', {
+        sessionId,
+        error: (err as Error).message,
+      });
     }
 
-    this.entries.delete(sessionId);
+    // wc.close() doesn't always destroy embedded WebContents synchronously
+    // (or at all, for views without an unload handler). Force teardown on the
+    // next tick if it's still alive — this fires the `destroyed` listener,
+    // which also calls notifyGone (idempotent on the renderer).
+    setImmediate(() => {
+      try {
+        if (!wc.isDestroyed()) {
+          (wc as unknown as { destroy?: () => void }).destroy?.();
+        }
+      } catch (err) {
+        mainLogger.warn('BrowserPool.destroy.forceError', {
+          sessionId,
+          error: (err as Error).message,
+        });
+      }
+    });
+
+    // Notify renderer synchronously so "Browser ended" paints immediately —
+    // we don't want to wait for the wc.destroyed event, which may be delayed
+    // or never fire if close() is a no-op.
+    this.notifyGone(sessionId);
 
     mainLogger.info('BrowserPool.destroy', {
       sessionId,
       lifetimeMs,
       remainingActive: this.entries.size,
+      closed,
     });
 
     this.drainQueue();

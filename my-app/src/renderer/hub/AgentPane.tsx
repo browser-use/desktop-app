@@ -796,7 +796,8 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
       if (id === session.id) {
         console.log('[AgentPane] browser-gone signal', { id });
         setBrowserDead(true);
-        setFrameRect(null);
+        // Keep frameRect — the "Browser ended" overlay needs it to paint.
+        // Without it the empty .pane__output area shows as black with no label.
       }
     });
     return off;
@@ -1124,7 +1125,7 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
         {session.status === 'running' && <div className="pane__progress-bar" />}
       </div>
 
-      {frameRect && (browserDead || browserMissing || session.status === 'draft') && !(session.error && entries.length <= 2) && (
+      {frameRect && (browserDead || browserMissing || session.status === 'draft' || session.status === 'stopped' || session.status === 'idle' || session.status === 'stuck') && !(session.error && entries.length <= 2) && (
         <div
           className="pane__browser-frame"
           style={{
@@ -1144,6 +1145,8 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
                     ? 'Browser stopped'
                     : 'No browser started yet'}
                 </span>
+              ) : session.status === 'stopped' || session.status === 'idle' || session.status === 'stuck' ? (
+                <span>Browser ended</span>
               ) : (
                 <>
                   <span className="pane__spinner" />

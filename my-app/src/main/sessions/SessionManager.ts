@@ -173,6 +173,20 @@ export class SessionManager extends EventEmitter {
     return abortController;
   }
 
+  /** Called when the session's WebContents is gone (closed by user or crashed)
+   *  while the agent itself isn't running. An idle session whose browser has
+   *  been torn down is functionally over — flip status to 'stopped' so the UI
+   *  stops showing "Idle" and renders the proper ended state. */
+  markBrowserEnded(id: string): void {
+    const session = this.sessions.get(id);
+    if (!session) return;
+    if (session.status !== 'idle') return;
+    session.status = 'stopped';
+    this.db.updateSessionStatus(id, 'stopped');
+    mainLogger.info('SessionManager.markBrowserEnded', { id });
+    this.emitEvent('session-updated', { ...session });
+  }
+
   cancelSession(id: string): void {
     const session = this.sessions.get(id);
     if (!session) {
