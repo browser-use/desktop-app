@@ -1233,6 +1233,25 @@ app.whenReady().then(async () => {
     openSettingsWindow();
   });
 
+  ipcMain.handle('pill:open-hub', () => {
+    mainLogger.info('main.pill:open-hub');
+    if (shellWindow && !shellWindow.isDestroyed()) {
+      shellWindow.show();
+      shellWindow.focus();
+    }
+    hidePill();
+  });
+
+  ipcMain.handle('pill:open-settings', () => {
+    mainLogger.info('main.pill:open-settings');
+    if (shellWindow && !shellWindow.isDestroyed()) {
+      shellWindow.show();
+      shellWindow.focus();
+      shellWindow.webContents.send('open-settings');
+    }
+    hidePill();
+  });
+
   ipcMain.handle('settings:close', () => {
     mainLogger.info('main.settings:close');
     closeSettingsWindow();

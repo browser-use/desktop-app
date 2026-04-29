@@ -48,7 +48,7 @@ log.info('preload.pill', { message: 'Pill preload script initializing' });
 // ---------------------------------------------------------------------------
 
 contextBridge.exposeInMainWorld('pillAPI', {
-  listSessions: (): Promise<Array<{ id: string; prompt: string; status: string; createdAt: number }>> => {
+  listSessions: (): Promise<Array<{ id: string; prompt: string; status: string; createdAt: number; primarySite?: string | null; lastActivityAt?: number }>> => {
     return ipcRenderer.invoke('sessions:list');
   },
   /**
@@ -103,6 +103,22 @@ contextBridge.exposeInMainWorld('pillAPI', {
   hide: (): void => {
     log.info('preload.pill.hide', { message: 'Invoking pill:hide' });
     ipcRenderer.invoke('pill:hide');
+  },
+
+  /**
+   * Show + focus the shell (hub) window and hide the pill.
+   */
+  openHub: (): void => {
+    log.info('preload.pill.openHub', { message: 'Invoking pill:open-hub' });
+    ipcRenderer.invoke('pill:open-hub');
+  },
+
+  /**
+   * Open the settings window.
+   */
+  openSettings: (): void => {
+    log.info('preload.pill.openSettings', { message: 'Invoking pill:open-settings' });
+    ipcRenderer.invoke('pill:open-settings');
   },
 
   /**
