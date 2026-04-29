@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgentPane } from './AgentPane';
-import { ListView } from './ListView';
 import { Dashboard } from './Dashboard';
 import { KeybindingsOverlay } from './KeybindingsOverlay';
 import { CommandBar } from './CommandBar';
@@ -24,7 +23,7 @@ function groupSessions(sessions: AgentSession[]): { group: string; sessions: Age
   return Array.from(groups, ([group, items]) => ({ group, sessions: items }));
 }
 
-type ViewMode = 'dashboard' | 'grid' | 'list';
+type ViewMode = 'dashboard' | 'grid';
 
 let sessionCounter = MOCK_SESSIONS.length + 1;
 let entryCounter = 1000;
@@ -52,14 +51,6 @@ function GridIcon(): React.ReactElement {
   );
 }
 
-function ListIcon(): React.ReactElement {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M2 3.5h10M2 7h10M2 10.5h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function DashboardIcon(): React.ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -75,11 +66,10 @@ interface HubViewToggleProps {
   setViewMode: (mode: ViewMode) => void;
   tipDashboard: string;
   tipGrid: string;
-  tipList: string;
 }
 
 const HubViewToggle = React.memo(function HubViewToggle({
-  viewMode, setViewMode, tipDashboard, tipGrid, tipList,
+  viewMode, setViewMode, tipDashboard, tipGrid,
 }: HubViewToggleProps): React.ReactElement {
   return (
     <div className="hub-toolbar__view-toggle" role="radiogroup" aria-label="View mode">
@@ -98,14 +88,6 @@ const HubViewToggle = React.memo(function HubViewToggle({
         data-tip={tipGrid}
       >
         <GridIcon />
-      </button>
-      <button
-        className={`hub-toolbar__view-btn${viewMode === 'list' ? ' hub-toolbar__view-btn--active' : ''}`}
-        onClick={() => setViewMode('list')}
-        aria-label="List view"
-        data-tip={tipList}
-      >
-        <ListIcon />
       </button>
     </div>
   );
@@ -132,7 +114,7 @@ export function HubApp(): React.ReactElement {
 
   const [viewMode, setViewModeRaw] = useState<ViewMode>(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('hub-view-mode') : null;
-    if (saved === 'dashboard' || saved === 'grid' || saved === 'list') return saved;
+    if (saved === 'dashboard' || saved === 'grid') return saved;
     return 'dashboard';
   });
   const setViewMode = useCallback((mode: ViewMode) => {
@@ -200,7 +182,6 @@ export function HubApp(): React.ReactElement {
     },
     'goto.dashboard': () => setViewMode('dashboard'),
     'goto.agents': () => setViewMode('grid'),
-    'goto.list': () => setViewMode('list'),
     'goto.settings': () => { window.electronAPI?.pill.hide(); hideBrowserViews(); setSettingsOpen(true); },
     'search.open': () => { window.electronAPI?.pill.toggle(); },
     'action.create': () => { window.electronAPI?.pill.toggle(); },
@@ -228,11 +209,11 @@ export function HubApp(): React.ReactElement {
       window.electronAPI?.logs.focusFollowUp(s.id);
     },
     'scroll.halfDown': () => {
-      const el = document.querySelector('.hub-grid, .list-view__body, .dashboard');
+      const el = document.querySelector('.hub-grid, .dashboard');
       if (el) el.scrollBy({ top: el.clientHeight / 2, behavior: 'smooth' });
     },
     'scroll.halfUp': () => {
-      const el = document.querySelector('.hub-grid, .list-view__body, .dashboard');
+      const el = document.querySelector('.hub-grid, .dashboard');
       if (el) el.scrollBy({ top: -(el.clientHeight / 2), behavior: 'smooth' });
     },
     'meta.help': () => { window.electronAPI?.pill.hide(); hideBrowserViews(); setSettingsOpen(true); },
@@ -287,7 +268,7 @@ export function HubApp(): React.ReactElement {
   // the hub to switch to a specific view regardless of the saved preference.
   useEffect(() => {
     const unsub = window.electronAPI?.on?.forceViewMode?.((mode) => {
-      setViewMode(mode);
+      if (mode === 'dashboard' || mode === 'grid') setViewMode(mode);
     });
     return unsub;
   }, [setViewMode]);
@@ -482,7 +463,6 @@ export function HubApp(): React.ReactElement {
             setViewMode={setViewMode}
             tipDashboard={tip('Dashboard', 'goto.dashboard')}
             tipGrid={tip('Grid view', 'goto.agents')}
-            tipList={tip('List view', 'goto.list')}
           />
         </div>
         <div className="hub-toolbar__right">
@@ -547,7 +527,7 @@ export function HubApp(): React.ReactElement {
             setViewMode('grid');
           }}
         />
-      ) : viewMode === 'grid' ? (
+      ) : (
         (() => {
           const visibleSessions = sessions;
           const pageSize = gridColumns;
@@ -612,18 +592,6 @@ export function HubApp(): React.ReactElement {
             </div>
           );
         })()
-      ) : (
-        <ListView
-          sessions={sessions}
-          onSelectSession={(id) => {
-            handleSelectSession(id);
-            sessionsQuery.refetch();
-            const idx = sessions.findIndex((s) => s.id === id);
-            if (idx >= 0) setGridPage(Math.floor(idx / 4));
-            setViewMode('grid');
-          }}
-          focusIndex={focusIndex}
-        />
       )}
 
       </div>

@@ -1,6 +1,6 @@
 export type ActionId =
   | 'nav.down' | 'nav.up' | 'nav.top' | 'nav.bottom' | 'nav.open'
-  | 'goto.dashboard' | 'goto.agents' | 'goto.list' | 'goto.settings'
+  | 'goto.dashboard' | 'goto.agents' | 'goto.settings'
   | 'search.open'
   | 'action.create' | 'action.createPane' | 'action.dismiss' | 'action.cancel' | 'action.followUp'
   | 'scroll.halfDown' | 'scroll.halfUp'
@@ -21,7 +21,6 @@ export const DEFAULT_KEYBINDINGS: KeyBinding[] = [
   { id: 'nav.open', label: 'Open session', keys: ['Enter'], category: 'Navigation' },
   { id: 'goto.dashboard', label: 'Dashboard', keys: ['g d'], category: 'Views' },
   { id: 'goto.agents', label: 'Grid view', keys: ['g a'], category: 'Views' },
-  { id: 'goto.list', label: 'List view', keys: ['g l'], category: 'Views' },
   { id: 'goto.settings', label: 'Settings', keys: ['Cmd+,'], category: 'Views' },
   { id: 'search.open', label: 'Search', keys: ['/'], category: 'Actions' },
   { id: 'action.create', label: 'New agent', keys: [], category: 'Actions' },
@@ -36,13 +35,12 @@ export const DEFAULT_KEYBINDINGS: KeyBinding[] = [
   { id: 'meta.escape', label: 'Close overlay', keys: ['Escape'], category: 'Meta' },
 ];
 
-export type ScreenId = 'dashboard' | 'grid' | 'list';
+export type ScreenId = 'dashboard' | 'grid';
 
 export const SCREEN_COMMANDS: Record<ScreenId, ActionId[]> = {
   dashboard: [
     'action.createPane',
     'goto.agents',
-    'goto.list',
     'goto.settings',
   ],
   grid: [
@@ -52,14 +50,5 @@ export const SCREEN_COMMANDS: Record<ScreenId, ActionId[]> = {
     'action.followUp',
     'action.dismiss',
     'goto.dashboard',
-  ],
-  list: [
-    'nav.down',
-    'nav.up',
-    'nav.open',
-    'action.create',
-    'goto.dashboard',
-    'goto.agents',
-    'goto.settings',
   ],
 };
