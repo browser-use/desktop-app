@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  classifyAttachmentMime,
   maxBytesForAttachmentMime,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_TOTAL_ATTACHMENT_BYTES,
@@ -108,11 +107,11 @@ function statusTagClass(status: string): string {
 
 function statusLabel(status: string): string {
   switch (status) {
-    case 'running': return 'RUN';
+    case 'running': return 'RUNNING';
     case 'stuck': return 'STUCK';
     case 'idle': return 'IDLE';
     case 'draft': return 'DRAFT';
-    case 'stopped': return 'STOP';
+    case 'stopped': return 'STOPPED';
     default: return status.toUpperCase();
   }
 }
@@ -120,7 +119,7 @@ function statusLabel(status: string): string {
 export function Pill(): React.ReactElement {
   const [value, setValue] = useState('');
   const [sessions, setSessions] = useState<SessionLite[]>([]);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [selectedIdx, setSelectedIdx] = useState(-1);
   const [followUp, setFollowUp] = useState<{ sessionId: string; sessionPrompt: string } | null>(null);
   const [engine, setEngine] = useState<string>('claude-code');
   const [engineMenuOpen, setEngineMenuOpen] = useState(false);
@@ -143,7 +142,7 @@ export function Pill(): React.ReactElement {
   }, []);
 
   useEffect(() => {
-    setSelectedIdx(0);
+    setSelectedIdx(-1);
   }, [value]);
 
   const results = useMemo(() => {
@@ -161,9 +160,9 @@ export function Pill(): React.ReactElement {
       ta.style.height = 'auto';
       ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
     }
-    const textareaHeight = ta ? Math.min(ta.scrollHeight, 240) : 28;
-    const baseHeight = 116 + textareaHeight;
-    const resultHeight = hasResults ? Math.min(results.length + 1, 9) * 44 + 2 : 0;
+    const textareaHeight = ta ? Math.max(28, Math.min(ta.scrollHeight, 240)) : 28;
+    const baseHeight = 113 + textareaHeight;
+    const resultHeight = hasResults ? Math.min(results.length, 8) * 44 + 2 : 0;
     // Chips row is ~24px; wraps every ~3 chips. Error row adds ~18px.
     const chipsRows = attachments.length > 0 ? Math.ceil(attachments.length / 3) : 0;
     const chipsHeight = chipsRows * 26;
@@ -184,11 +183,7 @@ export function Pill(): React.ReactElement {
         break;
       }
       const mime = f.type || 'application/octet-stream';
-      if (classifyAttachmentMime(mime) === null) {
-        setAttachError(`Unsupported: ${mime || 'unknown'} (${f.name})`);
-        continue;
-      }
-      const max = maxBytesForAttachmentMime(mime) ?? 0;
+      const max = maxBytesForAttachmentMime(mime);
       if (f.size > max) {
         setAttachError(`${f.name} exceeds ${formatBytes(max)}`);
         continue;
@@ -226,15 +221,8 @@ export function Pill(): React.ReactElement {
     }
     if (!trimmed) return;
     const attachArg = attachments.length > 0 ? attachments : undefined;
-    if (hasResults && selectedIdx === 0) {
-      window.pillAPI.submit(trimmed, attachArg, engine);
-      setValue('');
-      setAttachments([]);
-      setAttachError(null);
-      return;
-    }
-    if (hasResults && selectedIdx > 0 && selectedIdx <= results.length) {
-      window.pillAPI.selectSession(results[selectedIdx - 1].id);
+    if (hasResults && selectedIdx >= 0 && selectedIdx < results.length) {
+      window.pillAPI.selectSession(results[selectedIdx].id);
       setValue('');
       return;
     }
@@ -255,10 +243,10 @@ export function Pill(): React.ReactElement {
         window.pillAPI.hide();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.min(i + 1, results.length));
+        setSelectedIdx((i) => Math.min(i + 1, results.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIdx((i) => Math.max(i - 1, 0));
+        setSelectedIdx((i) => Math.max(i - 1, -1));
       } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         const trimmed = value.trim();
@@ -390,22 +378,16 @@ export function Pill(): React.ReactElement {
         </div>
 
         {hasResults && !followUp && (
-          <div className="cmdbar__results">
-            <button
-              className={`cmdbar__result cmdbar__result--create${selectedIdx === 0 ? ' cmdbar__result--active' : ''}`}
-              onClick={submit}
-              onMouseEnter={() => setSelectedIdx(0)}
-            >
-              <span className="cmdbar__result-create-icon">+</span>
-              <span className="cmdbar__result-prompt">New agent: &ldquo;{value}&rdquo;</span>
-              <kbd className="cmdbar__result-kbd">{'\u2318\u21B5'}</kbd>
-            </button>
+          <div
+            className="cmdbar__results"
+            onMouseLeave={() => setSelectedIdx(-1)}
+          >
             {results.map((s, i) => (
               <button
                 key={s.id}
-                className={`cmdbar__result${i + 1 === selectedIdx ? ' cmdbar__result--active' : ''}`}
+                className={`cmdbar__result${i === selectedIdx ? ' cmdbar__result--active' : ''}`}
                 onClick={() => { window.pillAPI.selectSession(s.id); setValue(''); }}
-                onMouseEnter={() => setSelectedIdx(i + 1)}
+                onMouseEnter={() => setSelectedIdx(i)}
               >
                 <span className={`cmdbar__dot ${statusDot(s.status)}`} />
                 <span className="cmdbar__result-prompt">{s.prompt}</span>
@@ -422,7 +404,12 @@ export function Pill(): React.ReactElement {
 
         <div className="cmdbar__footer">
           <span className="cmdbar__hint">
-            <kbd className="cmdbar__kbd">Enter</kbd> {followUp ? 'follow up' : hasResults ? 'select' : 'create'}
+            <kbd className="cmdbar__kbd">Enter</kbd>{' '}
+            {followUp
+              ? 'follow up'
+              : hasResults && selectedIdx >= 0
+                ? 'open'
+                : 'create'}
           </span>
           {hasResults && !followUp && (
             <span className="cmdbar__hint">

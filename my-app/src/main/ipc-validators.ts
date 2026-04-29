@@ -54,7 +54,6 @@ export function assertAttachments(value: unknown, field = 'attachments'): Valida
     const name = assertString(raw.name, `${field}[${i}].name`, 255);
     const mime = assertString(raw.mime, `${field}[${i}].mime`, 255);
     const kind = classifyMime(mime);
-    if (kind === null) throw new Error(`Unsupported file type: ${mime} (${name})`);
 
     let buf: Buffer;
     if (raw.bytes instanceof Uint8Array) buf = Buffer.from(raw.bytes);
@@ -62,7 +61,7 @@ export function assertAttachments(value: unknown, field = 'attachments'): Valida
     else if (Buffer.isBuffer(raw.bytes)) buf = raw.bytes;
     else throw new Error(`${field}[${i}].bytes must be bytes (Uint8Array/ArrayBuffer/Buffer)`);
 
-    const max = maxBytesForMime(mime) ?? 0;
+    const max = maxBytesForMime(mime);
     if (buf.byteLength > max) {
       throw new Error(`${name} is ${Math.round(buf.byteLength / 1024 / 1024 * 10) / 10}MB — exceeds ${Math.round(max / 1024 / 1024)}MB limit for ${kind}`);
     }

@@ -93,11 +93,7 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
       }
       const mime = f.type || 'application/octet-stream';
       const kind = classifyAttachmentMime(mime);
-      if (kind === null) {
-        setErrorMsg(`Unsupported file type: ${mime || 'unknown'} (${f.name})`);
-        continue;
-      }
-      const max = maxBytesForAttachmentMime(mime) ?? 0;
+      const max = maxBytesForAttachmentMime(mime);
       if (f.size > max) {
         setErrorMsg(`${f.name} is ${formatBytes(f.size)} — exceeds ${formatBytes(max)} ${kind} limit`);
         continue;

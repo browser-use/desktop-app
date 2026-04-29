@@ -59,6 +59,55 @@ function isProgrammaticBoundsChange(): boolean {
   return Date.now() < programmaticBoundsChangeUntil;
 }
 
+type MacWindowFullscreenApi = BrowserWindow & {
+  isSimpleFullScreen?: () => boolean;
+  setFullScreenable?: (fullscreenable: boolean) => void;
+  setSimpleFullScreen?: (flag: boolean) => void;
+};
+
+function applyLogsWindowStatePolicy(win: BrowserWindow): void {
+  const macWin = win as MacWindowFullscreenApi;
+  try { macWin.setFullScreenable?.(false); } catch (err) {
+    log.warn('logs.setFullScreenable.error', { error: (err as Error).message });
+  }
+  try { win.setMaximizable(false); } catch (err) {
+    log.warn('logs.setMaximizable.error', { error: (err as Error).message });
+  }
+  try { win.setMinimizable(false); } catch (err) {
+    log.warn('logs.setMinimizable.error', { error: (err as Error).message });
+  }
+}
+
+function restoreLogsWindowFromDisallowedState(reason: string): void {
+  if (!logsWindow || logsWindow.isDestroyed()) return;
+  const win = logsWindow as MacWindowFullscreenApi;
+  log.warn('logs.disallowedWindowState', { reason, mode });
+  applyLogsWindowStatePolicy(logsWindow);
+
+  try {
+    if (logsWindow.isFullScreen()) logsWindow.setFullScreen(false);
+  } catch (err) {
+    log.warn('logs.leaveFullScreen.error', { error: (err as Error).message });
+  }
+
+  try {
+    if (win.isSimpleFullScreen?.()) win.setSimpleFullScreen?.(false);
+  } catch (err) {
+    log.warn('logs.leaveSimpleFullScreen.error', { error: (err as Error).message });
+  }
+
+  try {
+    if (logsWindow.isMaximized()) logsWindow.unmaximize();
+  } catch (err) {
+    log.warn('logs.unmaximize.error', { error: (err as Error).message });
+  }
+
+  if (anchorWindow && !anchorWindow.isDestroyed()) {
+    beginProgrammaticBoundsChange();
+    logsWindow.setBounds(computeLogsBounds(anchorWindow, lastAnchor));
+  }
+}
+
 function safeSend(channel: string, ...args: unknown[]): void {
   if (!logsWindow || logsWindow.isDestroyed()) {
     log.warn('logs.safeSend.no-window', { channel });
@@ -166,6 +215,7 @@ export function createLogsWindow(): BrowserWindow {
       sandbox: true,
     },
   });
+  applyLogsWindowStatePolicy(logsWindow);
 
   // User-drag resize/move detection — once the user manually changes bounds,
   // stop auto-repositioning. A mode-switch or explicit show resets the flag.
@@ -181,6 +231,9 @@ export function createLogsWindow(): BrowserWindow {
     userCustomized = true;
     log.debug('logs.userMoved', { bounds: logsWindow?.getBounds() });
   });
+  logsWindow.on('enter-full-screen', () => restoreLogsWindowFromDisallowedState('enter-full-screen'));
+  logsWindow.on('enter-html-full-screen', () => restoreLogsWindowFromDisallowedState('enter-html-full-screen'));
+  logsWindow.on('maximize', () => restoreLogsWindowFromDisallowedState('maximize'));
 
   // Pin to the Space where the hub lives so a 3/4-finger swipe hides the
   // logs overlay along with the hub. The previous 'screen-saver' level
@@ -373,6 +426,7 @@ export function showLogs(sessionId: string, anchor: PaneAnchor | null = null): v
     return;
   }
   if (anchorWindow && !anchorWindow.isDestroyed() && !userCustomized) {
+    applyLogsWindowStatePolicy(logsWindow);
     beginProgrammaticBoundsChange();
     logsWindow.setBounds(computeLogsBounds(anchorWindow, lastAnchor));
   }
@@ -462,6 +516,7 @@ export function setLogsMode(next: LogsMode): void {
   mode = next;
   userCustomized = false;
   log.info('logs.setMode', { mode });
+  applyLogsWindowStatePolicy(logsWindow);
   // Adjust the OS-level minimum size before setBounds, otherwise the 'dot'
   // target (36×36) gets clamped up to the normal-mode minimum and renders
   // as a stretched ellipse in the corner.

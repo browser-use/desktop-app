@@ -27,6 +27,8 @@ html, body {
 }
 
 .cmdbar {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   background-color: var(--color-bg-base);
@@ -145,8 +147,12 @@ html, body {
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: var(--space-3) var(--space-6);
+  margin-top: auto;
+  min-height: 52px;
+  padding: 0 var(--space-6);
   border-top: 1px solid var(--color-border-subtle);
+  -webkit-app-region: drag;
+  cursor: move;
 }
 
 .cmdbar__hint {
@@ -250,7 +256,7 @@ html, body {
   padding: 2px var(--space-3);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  min-width: 56px;
+  min-width: 68px;
   text-align: center;
   background-color: color-mix(in srgb, currentColor 14%, transparent);
 }
@@ -354,6 +360,7 @@ html, body {
   justify-content: center;
   width: 28px;
   height: 28px;
+  margin-left: -7px;
   padding: 0;
   line-height: 0;
   color: var(--color-fg-secondary);
@@ -382,12 +389,13 @@ html, body {
 
 .cmdbar__attach.has-tooltip::after {
   bottom: auto;
-  top: calc(100% + 6px);
-  transform: translateX(-50%) translateY(-2px);
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%) translateX(-2px);
 }
 .cmdbar__attach.has-tooltip:hover::after,
 .cmdbar__attach.has-tooltip:focus-visible::after {
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(-50%) translateX(0);
 }
 
 /* ---------------------------------------------------------------------------
