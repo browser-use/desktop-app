@@ -7,7 +7,7 @@
 
 import { app, BrowserWindow, screen } from 'electron';
 import path from 'node:path';
-import { mainLogger } from './logger';
+import { mainLogger, rendererLogger } from './logger';
 import { registerViteDepStaleHeal } from './viteDepStaleHeal';
 
 const log = {
@@ -246,7 +246,7 @@ export function createLogsWindow(): BrowserWindow {
     log.error('logs.preload-error', { preloadPath, error: (err as Error).message });
   });
   logsWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-    log.info('logs.console', { level, message, line, sourceId });
+    rendererLogger.info('renderer.console', { window: 'logs', level, message, line, sourceId });
   });
 
   logsWindow.on('closed', () => {

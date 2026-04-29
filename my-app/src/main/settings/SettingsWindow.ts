@@ -17,7 +17,7 @@
 
 import path from 'node:path';
 import { BrowserWindow } from 'electron';
-import { mainLogger } from '../logger';
+import { mainLogger, rendererLogger } from '../logger';
 
 // ---------------------------------------------------------------------------
 // Forge VitePlugin globals (injected at build time)
@@ -97,7 +97,7 @@ export function openSettingsWindow(): BrowserWindow {
   });
 
   settingsWindow.webContents.on('console-message', (_e, level, message, line, source) => {
-    mainLogger.info('settingsRenderer.console', { level, source, line, message });
+    rendererLogger.info('renderer.console', { window: 'settings', level, source, line, message });
   });
 
   // Load the settings renderer

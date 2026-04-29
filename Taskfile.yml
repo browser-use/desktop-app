@@ -46,6 +46,107 @@ tasks:
     cmds:
       - npm run typecheck
 
+  logs:all:
+    desc: Tail all local app logs with colored human-readable formatting
+    silent: true
+    cmds:
+      - |
+        LOG_DIR="${AGB_LOG_DIR:-$HOME/Library/Application Support/Browser Use/logs}"
+        if ! ls "$LOG_DIR"/*.log >/dev/null 2>&1; then
+          echo "No logs found in $LOG_DIR"
+          exit 1
+        fi
+        tail -n "${LINES:-200}" -F "$LOG_DIR"/*.log | LOG_COLOR="${LOG_COLOR:-1}" node my-app/scripts/pretty-logs.mjs --mode=all
+
+  logs:service:
+    desc: Tail one local app log channel with colored formatting, e.g. task logs:service SERVICE=browser
+    silent: true
+    cmds:
+      - |
+        SERVICE="{{default "" .SERVICE}}"
+        if [ -z "$SERVICE" ]; then
+          echo "Set SERVICE, e.g. task logs:service SERVICE=browser"
+          exit 1
+        fi
+        LOG_DIR="${AGB_LOG_DIR:-$HOME/Library/Application Support/Browser Use/logs}"
+        FILE="$LOG_DIR/$SERVICE.log"
+        if [ ! -f "$FILE" ]; then
+          echo "No log file found: $FILE"
+          exit 1
+        fi
+        tail -n "${LINES:-200}" -F "$FILE" | LOG_COLOR="${LOG_COLOR:-1}" node my-app/scripts/pretty-logs.mjs --mode=all
+
+  logs:main:
+    desc: Tail main process logs
+    silent: true
+    cmds:
+      - task: logs:service
+        vars: { SERVICE: main }
+
+  logs:browser:
+    desc: Tail browser/WebContents logs
+    silent: true
+    cmds:
+      - task: logs:service
+        vars: { SERVICE: browser }
+
+  logs:renderer:
+    desc: Tail frontend renderer console logs
+    silent: true
+    cmds:
+      - task: logs:service
+        vars: { SERVICE: renderer }
+
+  logs:engine:
+    desc: Tail engine subprocess lifecycle logs
+    silent: true
+    cmds:
+      - task: logs:service
+        vars: { SERVICE: engine }
+
+  logs:startup:
+    desc: Tail browser startup timing logs with colored human-readable timing
+    silent: true
+    cmds:
+      - |
+        LOG_DIR="${AGB_LOG_DIR:-$HOME/Library/Application Support/Browser Use/logs}"
+        FILE="$LOG_DIR/browser.log"
+        if [ ! -f "$FILE" ]; then
+          echo "No log file found: $FILE"
+          exit 1
+        fi
+        tail -n "${LINES:-200}" -F "$FILE" | LOG_COLOR="${LOG_COLOR:-1}" node my-app/scripts/pretty-logs.mjs --mode=startup
+
+  logs:navigation:
+    desc: Tail browser URL navigation timing logs with colored human-readable timing
+    silent: true
+    cmds:
+      - |
+        LOG_DIR="${AGB_LOG_DIR:-$HOME/Library/Application Support/Browser Use/logs}"
+        FILE="$LOG_DIR/browser.log"
+        if [ ! -f "$FILE" ]; then
+          echo "No log file found: $FILE"
+          exit 1
+        fi
+        tail -n "${LINES:-200}" -F "$FILE" | LOG_COLOR="${LOG_COLOR:-1}" node my-app/scripts/pretty-logs.mjs --mode=navigation
+
+  logs:session:
+    desc: Tail log lines for one session, e.g. task logs:session SESSION_ID=abc123
+    silent: true
+    cmds:
+      - |
+        SESSION_ID="{{default "" .SESSION_ID}}"
+        if [ -z "$SESSION_ID" ]; then
+          echo "Set SESSION_ID, e.g. task logs:session SESSION_ID=abc123"
+          exit 1
+        fi
+        LOG_DIR="${AGB_LOG_DIR:-$HOME/Library/Application Support/Browser Use/logs}"
+        if ! ls "$LOG_DIR"/*.log >/dev/null 2>&1; then
+          echo "No logs found in $LOG_DIR"
+          exit 1
+        fi
+        tail -n "${LINES:-200}" -F "$LOG_DIR"/*.log | LOG_COLOR="${LOG_COLOR:-1}" node my-app/scripts/pretty-logs.mjs --mode=all --session="$SESSION_ID"
+
   package:
     desc: Build an unpackaged app (electron-forge package)
     dir: "{{.APP_DIR}}"

@@ -20,7 +20,7 @@ const { loggerSpy } = vi.hoisted(() => ({
   loggerSpy: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock('../../../src/main/logger', () => ({ mainLogger: loggerSpy }));
+vi.mock('../../../src/main/logger', () => ({ mainLogger: loggerSpy, rendererLogger: loggerSpy }));
 
 vi.mock('node:path', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:path')>();

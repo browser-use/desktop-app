@@ -10,7 +10,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { mainLogger } from '../../logger';
+import { engineLogger } from '../../logger';
 import { resolveAuth, loadOpenAIKey, loadClaudeSubscriptionType } from '../../identity/authStore';
 import { helpersPath, toolsPath, skillPath } from '../harness';
 import { get as getAdapter } from './registry';
@@ -67,7 +67,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     targetId = await resolveTargetIdForWebContents(opts.webContents);
   } catch (err) {
     const msg = `Failed to resolve CDP target id: ${(err as Error).message}`;
-    mainLogger.error('engines.run.resolveTarget.failed', { engineId: opts.engineId, error: msg });
+    engineLogger.error('engines.run.resolveTarget.failed', { engineId: opts.engineId, error: msg });
     opts.onEvent({ type: 'error', message: msg });
     return;
   }
@@ -79,7 +79,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     fs.mkdirSync(uploadsDir, { recursive: true });
     fs.mkdirSync(outputsDir, { recursive: true });
   } catch (err) {
-    mainLogger.warn('engines.run.mkdir.failed', { engineId: opts.engineId, error: (err as Error).message });
+    engineLogger.warn('engines.run.mkdir.failed', { engineId: opts.engineId, error: (err as Error).message });
   }
 
   const attachmentRefs: Array<{ relPath: string; mime: string; size: number }> = [];
@@ -95,7 +95,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
         size: buf.byteLength,
       });
     } catch (err) {
-      mainLogger.warn('engines.run.attachmentWrite.failed', { name: a.name, error: (err as Error).message });
+      engineLogger.warn('engines.run.attachmentWrite.failed', { name: a.name, error: (err as Error).message });
     }
   }
 
@@ -116,7 +116,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
       cliAuthed = (await adapter.probeAuthed()).authed;
     }
   } catch (err) {
-    mainLogger.warn('engines.run.auth.resolveFailed', { error: (err as Error).message });
+    engineLogger.warn('engines.run.auth.resolveFailed', { error: (err as Error).message });
   }
   // Headline auth-path log — greppable: `session.auth.path`. Tells you
   // which of the three cases this session falls into:
@@ -132,7 +132,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     : 'none';
   const chosen: 'apiKey' | 'subscription' | 'none' =
     savedApiKey ? 'apiKey' : cliAuthed ? 'subscription' : 'none';
-  mainLogger.info('session.auth.path', {
+  engineLogger.info('session.auth.path', {
     sessionId: opts.sessionId,
     engineId: adapter.id,
     path: authPath,
@@ -155,11 +155,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
       try {
         resolvedSubType = await loadClaudeSubscriptionType();
       } catch (err) {
-        mainLogger.warn('engines.run.subType.loadFailed', { error: (err as Error).message });
+        engineLogger.warn('engines.run.subType.loadFailed', { error: (err as Error).message });
       }
     }
   }
-  mainLogger.info('session.auth.resolved', {
+  engineLogger.info('session.auth.resolved', {
     sessionId: opts.sessionId,
     engineId: adapter.id,
     authMode: resolvedAuthMode,
@@ -167,7 +167,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
   });
   if (opts.onAuthResolved) {
     try { opts.onAuthResolved({ authMode: resolvedAuthMode, subscriptionType: resolvedSubType }); }
-    catch (err) { mainLogger.warn('engines.run.onAuthResolved.threw', { error: (err as Error).message }); }
+    catch (err) { engineLogger.warn('engines.run.onAuthResolved.threw', { error: (err as Error).message }); }
   }
 
   // 4. Build spawn context + let adapter compose args/env/prompt.
@@ -185,7 +185,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
   const args = adapter.buildSpawnArgs(spawnCtx, wrappedPrompt);
   const env = adapter.buildEnv(spawnCtx, { ...process.env });
 
-  mainLogger.info('engines.run.spawn', {
+  engineLogger.info('engines.run.spawn', {
     engineId: adapter.id,
     binary: adapter.binaryName,
     sessionId: opts.sessionId,
@@ -238,7 +238,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
       });
     });
   } catch (err) {
-    mainLogger.warn('engines.run.outputs.watchFailed', { outputsDir, error: (err as Error).message });
+    engineLogger.warn('engines.run.outputs.watchFailed', { outputsDir, error: (err as Error).message });
   }
 
   // 6. Generic post-processor over tool_call events: detect harness/skill
@@ -314,13 +314,13 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
         const result = adapter.parseLine(line, parseCtx);
         if (result.capturedSessionId && opts.onSessionId) {
           try { opts.onSessionId(result.capturedSessionId); }
-          catch (err) { mainLogger.warn('engines.run.onSessionId.threw', { error: (err as Error).message }); }
+          catch (err) { engineLogger.warn('engines.run.onSessionId.threw', { error: (err as Error).message }); }
         }
         for (const raw of result.events) {
           for (const out of postProcess(raw)) emit(out);
         }
       } catch (err) {
-        mainLogger.warn('engines.run.parse.failed', {
+        engineLogger.warn('engines.run.parse.failed', {
           engineId: adapter.id,
           line: line.slice(0, 200),
           error: (err as Error).message,
@@ -333,7 +333,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     child.on('close', (code, sig) => {
       opts.signal?.removeEventListener('abort', onAbort);
       try { outputsWatcher?.close(); } catch { /* already closed */ }
-      mainLogger.info('engines.run.exit', {
+      engineLogger.info('engines.run.exit', {
         engineId: adapter.id,
         code,
         signal: sig,
@@ -349,12 +349,12 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
         const detail = stderrTrim || stdoutTrim || `exit_code=${code} (no stderr/stdout — check main.log engines.run.spawn + engines.run.exit)`;
         opts.onEvent({ type: 'error', message: `${adapter.id}_exit: ${detail.slice(-800)}` });
       } else if (code !== 0) {
-        mainLogger.warn('engines.run.exit.postDoneNonZero', { engineId: adapter.id, code, stderrTail: stderrBuf.slice(-200) });
+        engineLogger.warn('engines.run.exit.postDoneNonZero', { engineId: adapter.id, code, stderrTail: stderrBuf.slice(-200) });
       } else if (!doneEmitted) {
         // Clean exit (code 0) but the adapter never emitted `done`. Without
         // this fallback the session would hang in 'running' until the stuck
         // timer fires, and follow-ups would fail (need 'idle' status).
-        mainLogger.info('engines.run.exit.cleanNoDone', { engineId: adapter.id, msg: 'emitting synthetic done' });
+        engineLogger.info('engines.run.exit.cleanNoDone', { engineId: adapter.id, msg: 'emitting synthetic done' });
         opts.onEvent({ type: 'done', summary: 'completed', iterations: 0 });
       }
       resolve();

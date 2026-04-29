@@ -1,9 +1,11 @@
 /**
  * Structured rotating logger for Browser Use Desktop.
  *
- * Outputs JSONL (one JSON object per line) to:
+ * Outputs JSONL (one JSON object per line) to channel-specific files:
  *   ~/Library/Application Support/Browser Use/logs/main.log
- *   ~/Library/Application Support/Browser Use/logs/daemon.log
+ *   ~/Library/Application Support/Browser Use/logs/browser.log
+ *   ~/Library/Application Support/Browser Use/logs/renderer.log
+ *   ~/Library/Application Support/Browser Use/logs/engine.log
  *   ~/Library/Application Support/Browser Use/logs/agent-task-{taskId}.log
  *
  * Rotation: 10 MB per file, keep 5 rotated files.
@@ -37,6 +39,16 @@ export interface LogEntry {
   channel: string;
   msg: string;
   [key: string]: unknown;
+}
+
+export function sanitizeLogChannel(channel: string): string {
+  const safe = channel
+    .trim()
+    .replace(/[\0/\\]/g, '_')
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/^\.+/, '');
+
+  return safe || 'log';
 }
 
 // ---------------------------------------------------------------------------
@@ -213,22 +225,23 @@ export class LoggerFactory {
 
   /**
    * Get or create a channel logger.
-   * Channel names map to filenames:
+   * Channel names are sanitized before mapping to filenames:
    *   'main'          → main.log
    *   'daemon'        → daemon.log
    *   'agent-task-X'  → agent-task-X.log
    */
   getLogger(channel: string, minLevel?: LogLevel): ChannelLogger {
-    const cached = this.cache.get(channel);
+    const safeChannel = sanitizeLogChannel(channel);
+    const cached = this.cache.get(safeChannel);
     if (cached) return cached;
 
-    const filename = `${channel}.log`;
+    const filename = `${safeChannel}.log`;
     const filePath = path.join(this.logsDir, filename);
     const writer = new RotatingFileWriter(filePath);
-    const logger = new ChannelLogger(channel, writer, minLevel);
+    const logger = new ChannelLogger(safeChannel, writer, minLevel);
 
-    this.cache.set(channel, logger);
-    console.log(`${LOG_PREFIX} Created channel logger: ${channel} → ${filePath}`);
+    this.cache.set(safeChannel, logger);
+    console.log(`${LOG_PREFIX} Created channel logger: ${safeChannel} → ${filePath}`);
     return logger;
   }
 
@@ -241,4 +254,8 @@ export class LoggerFactory {
 // Singleton exports
 // ---------------------------------------------------------------------------
 
-export const mainLogger = new LoggerFactory().getLogger('main');
+export const loggerFactory = new LoggerFactory();
+export const mainLogger = loggerFactory.getLogger('main');
+export const browserLogger = loggerFactory.getLogger('browser');
+export const rendererLogger = loggerFactory.getLogger('renderer');
+export const engineLogger = loggerFactory.getLogger('engine');

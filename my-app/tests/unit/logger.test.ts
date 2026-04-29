@@ -17,6 +17,7 @@ import {
   RotatingFileWriter,
   ChannelLogger,
   LoggerFactory,
+  sanitizeLogChannel,
 } from '../../src/main/logger';
 
 // ---------------------------------------------------------------------------
@@ -306,6 +307,32 @@ describe('LoggerFactory — channel management', () => {
   it('getFilePath() returns the correct absolute path for main logger', () => {
     const logger = factory.getLogger('main');
     expect(logger.getFilePath()).toBe(path.join(tmpDir, 'logs', 'main.log'));
+  });
+
+  it('sanitizes unsafe channel names before writing files', () => {
+    const logger = factory.getLogger('../bad/channel\0name');
+    logger.info('safe write');
+
+    const expected = path.join(tmpDir, 'logs', '_bad_channel_name.log');
+    expect(logger.getFilePath()).toBe(expected);
+    expect(fs.existsSync(expected)).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'bad', 'channel.log'))).toBe(false);
+  });
+});
+
+describe('sanitizeLogChannel', () => {
+  it('keeps normal channel names stable', () => {
+    expect(sanitizeLogChannel('browser')).toBe('browser');
+    expect(sanitizeLogChannel('agent-task-abc_123')).toBe('agent-task-abc_123');
+  });
+
+  it('removes path traversal and filesystem separators', () => {
+    expect(sanitizeLogChannel('../renderer/logs')).toBe('_renderer_logs');
+  });
+
+  it('falls back for empty or dot-only channel names', () => {
+    expect(sanitizeLogChannel('')).toBe('log');
+    expect(sanitizeLogChannel('...')).toBe('log');
   });
 });
 
