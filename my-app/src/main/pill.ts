@@ -17,7 +17,7 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
 import type { AgentEvent } from '../shared/types';
-import { mainLogger } from './logger';
+import { mainLogger, rendererLogger } from './logger';
 
 // ---------------------------------------------------------------------------
 // Scoped logger shim — delegates to mainLogger with component prefix
@@ -36,7 +36,7 @@ const log = {
 
 const PILL_WIDTH = 600;
 const PILL_HEIGHT_COLLAPSED = 110;
-const PILL_HEIGHT_EXPANDED = 400;
+const PILL_HEIGHT_EXPANDED = 520;
 const PILL_TOP_OFFSET = 160;
 
 // ---------------------------------------------------------------------------
@@ -134,15 +134,17 @@ export function createPillWindow(): BrowserWindow {
   pillWindow = new BrowserWindow({
     width: PILL_WIDTH,
     height: PILL_HEIGHT_COLLAPSED,
-    transparent: false,
+    transparent: true,
     frame: false,
     alwaysOnTop: true,
     hasShadow: true,
     resizable: false,
-    backgroundColor: '#141416',
+    backgroundColor: '#00000000',
     roundedCorners: true,
     skipTaskbar: true,
     show: false,
+    vibrancy: 'hud',
+    visualEffectState: 'active',
     // Ensure it appears above full-screen apps on macOS
     type: 'panel',
     webPreferences: {
@@ -185,6 +187,10 @@ export function createPillWindow(): BrowserWindow {
     log.info('pill.webContents.ready', {
       message: 'Pill renderer loaded and ready',
     });
+  });
+
+  pillWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    rendererLogger.info('renderer.console', { window: 'pill', level, source: sourceId, line, message });
   });
 
   pillWindow.on('closed', () => {
@@ -346,7 +352,7 @@ export function setPillHeight(height: number): void {
   if (!pillWindow || pillWindow.isDestroyed()) return;
 
   const current = pillWindow.getBounds();
-  pillWindow.setBounds({ ...current, height: nextHeight });
+  pillWindow.setBounds({ ...current, height: nextHeight }, true);
 
   log.debug('pill.setPillHeight', {
     message: 'Pill height updated',
