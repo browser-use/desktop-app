@@ -63,10 +63,27 @@ export interface TermTranslatorState {
    *  the first user_input so the initial prompt doesn't start on a blank
    *  row. */
   hasEmitted: boolean;
+  /** When the most recent tool_call targeted a domain-skills file, we
+   *  suppressed its row in favor of the synthetic skill_used / skill_written
+   *  event. Stash the tool name so we can also suppress the matching
+   *  tool_result row that follows. */
+  pendingSkillToolName: string | null;
 }
 
 export function createTermTranslatorState(): TermTranslatorState {
-  return { inThinking: false, hasEmitted: false };
+  return { inThinking: false, hasEmitted: false, pendingSkillToolName: null };
+}
+
+const SKILL_PATH_RE = /(?:domain-skills|interaction-skills)\/[^/]+\/[^/]+\.md$/;
+
+function extractSkillPath(args: unknown): string | null {
+  if (!args || typeof args !== 'object') return null;
+  const a = args as Record<string, unknown>;
+  const candidates = [a.file_path, a.path, a.target_file];
+  for (const c of candidates) {
+    if (typeof c === 'string' && SKILL_PATH_RE.test(c)) return c;
+  }
+  return null;
 }
 
 /**
@@ -113,6 +130,14 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
     }
 
     case 'tool_call': {
+      // Suppress reads/writes of domain-skills files — the synthetic
+      // skill_used / skill_written event renders a cleaner labeled row.
+      // Stash the tool name so we also drop the matching tool_result.
+      if (extractSkillPath(event.args)) {
+        state.pendingSkillToolName = event.name;
+        return finish();
+      }
+      state.pendingSkillToolName = null;
       const args = truncate(stringifyArgs(event.args), 160);
       out.push(`${FG.cyan}⏺ ${event.name}${RESET}`);
       if (args) out.push(` ${FG.grey}${args}${RESET}`);
@@ -121,6 +146,11 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
     }
 
     case 'tool_result': {
+      // Drop the result row paired with a suppressed skill tool_call.
+      if (state.pendingSkillToolName === event.name) {
+        state.pendingSkillToolName = null;
+        return finish();
+      }
       const glyph = event.ok ? `${FG.green}✓` : `${FG.red}✗`;
       const preview = firstLine(event.preview || '', 160);
       out.push(`${glyph} ${event.name}${RESET}`);
@@ -130,12 +160,14 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
       return finish();
     }
 
-    case 'skill_written':
-      out.push(`${FG.magenta}★ learned ${event.domain}/${event.topic}${RESET}\r\n`);
+    case 'skill_written': {
+      const verb = event.action === 'patch' ? 'Edited skill' : 'Wrote skill';
+      out.push(`${FG.magenta}★ ${verb} ${event.domain}/${event.topic}${RESET}\r\n`);
       return finish();
+    }
 
     case 'skill_used':
-      out.push(`${FG.magenta}☆ skill ${event.domain ?? ''}${event.domain ? '/' : ''}${event.topic}${RESET}\r\n`);
+      out.push(`${FG.magenta}★ Read skill ${event.domain ?? ''}${event.domain ? '/' : ''}${event.topic}${RESET}\r\n`);
       return finish();
 
     case 'harness_edited': {

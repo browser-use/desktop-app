@@ -7,7 +7,7 @@ export type HlEvent =
   | { type: 'done';        summary: string; iterations: number }
   | { type: 'error';       message: string }
   | { type: 'user_input';  text: string }
-  | { type: 'skill_written'; path: string; domain: string; topic: string; bytes: number }
+  | { type: 'skill_written'; path: string; domain: string; topic: string; bytes: number; action: 'write' | 'patch' }
   | { type: 'skill_used'; path: string; domain?: string; topic: string }
   | { type: 'harness_edited'; target: 'helpers' | 'tools'; action: 'write' | 'patch'; path: string; added?: string[]; removed?: string[]; changed?: string[] }
   | { type: 'file_output'; name: string; path: string; size: number; mime: string }
@@ -91,7 +91,7 @@ export function hlEventToOutputEntry(event: HlEvent, timestamp: number): OutputE
     case 'user_input':
       return { id, type: 'user_input', timestamp, content: event.text };
     case 'skill_written':
-      return { id, type: 'skill_written', timestamp, content: `${event.domain}/${event.topic}`, tool: event.path };
+      return { id, type: 'skill_written', timestamp, content: `${event.domain}/${event.topic}`, tool: event.path, harnessAction: event.action };
     case 'skill_used':
       return { id, type: 'skill_used', timestamp, content: event.domain ? `${event.domain}/${event.topic}` : event.topic, tool: event.path };
     case 'harness_edited':
@@ -128,7 +128,37 @@ export function adaptSession(session: AgentSession): {
   const visibleOutput = session.output.filter(
     (e): e is Exclude<HlEvent, { type: 'turn_usage' }> => e.type !== 'turn_usage',
   );
-  const raw = visibleOutput.map((e, i) => hlEventToOutputEntry(e, session.createdAt + i));
+
+  // When the agent reads/writes a domain-skills/interaction-skills .md file,
+  // postProcess (runEngine) emits BOTH the original tool_call (e.g. Read with
+  // /path/to/domain-skills/github/repo.md) AND a synthetic skill_used /
+  // skill_written event. The synthetic row carries a clean "Read skill /
+  // Wrote skill / Edited skill" label with domain/topic — render only that,
+  // and suppress the noisy bare path row plus its paired tool_result.
+  const skillPathRe = /(?:domain-skills|interaction-skills)\/[^/]+\/[^/]+\.md$/;
+  const skipIdx = new Set<number>();
+  for (let i = 0; i < visibleOutput.length; i++) {
+    const e = visibleOutput[i];
+    if (e.type !== 'tool_call') continue;
+    const args = e.args as Record<string, unknown> | undefined;
+    const rawPath =
+      typeof args?.file_path === 'string' ? args.file_path
+      : typeof args?.path === 'string' ? args.path
+      : typeof args?.target_file === 'string' ? args.target_file
+      : undefined;
+    if (!rawPath || !skillPathRe.test(rawPath)) continue;
+    skipIdx.add(i);
+    for (let j = i + 1; j < visibleOutput.length; j++) {
+      const next = visibleOutput[j];
+      if (next.type === 'tool_call') break;
+      if (next.type === 'tool_result' && next.name === e.name) {
+        skipIdx.add(j);
+        break;
+      }
+    }
+  }
+  const filteredOutput = visibleOutput.filter((_, i) => !skipIdx.has(i));
+  const raw = filteredOutput.map((e, i) => hlEventToOutputEntry(e, session.createdAt + i));
 
   const merged: OutputEntry[] = [];
   for (const entry of raw) {

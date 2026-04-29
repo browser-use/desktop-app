@@ -269,7 +269,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
         extra.push({ type: 'harness_edited', target: 'tools', action, path: resolved });
       } else {
         const m = resolved.match(skillPathRe);
-        if (m) extra.push({ type: 'skill_written', path: resolved, domain: m[1], topic: m[2], bytes: 0 });
+        if (m) extra.push({ type: 'skill_written', path: resolved, domain: m[1], topic: m[2], bytes: 0, action });
       }
     } else if (isRead) {
       const m = resolved.match(skillPathRe);

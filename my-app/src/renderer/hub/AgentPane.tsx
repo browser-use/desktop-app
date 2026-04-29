@@ -416,6 +416,7 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
   }
 
   if (entry.type === 'skill_written') {
+    const label = entry.harnessAction === 'patch' ? 'Edited skill' : 'Wrote skill';
     return (
       <div className="step step--skill">
         <span className="step__icon">
@@ -424,7 +425,7 @@ function OutputRow({ entry }: { entry: OutputEntry }): React.ReactElement {
             <path d="M5 5h4M5 7.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
         </span>
-        <span className="step__skill-label">Learned</span>
+        <span className="step__skill-label">{label}</span>
         <span className="step__skill-topic">{entry.content}</span>
       </div>
     );
