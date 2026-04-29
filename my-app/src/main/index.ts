@@ -642,7 +642,7 @@ app.whenReady().then(async () => {
       const abortController = sessionManager.startSession(id);
       mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'startSession', ms: Date.now() - t0 });
 
-      view = browserPool.create(id);
+      view = browserPool.create(id, t0);
       mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'poolCreate', ms: Date.now() - t0 });
       if (!view) {
         sessionManager.failSession(id, `Browser pool full (max ${browserPool.activeCount}), session queued`);
@@ -833,6 +833,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('sessions:rerun', async (_event, id: string) => {
     const validatedId = assertString(id, 'id', 100);
+    const t0 = Date.now();
     mainLogger.info('main.sessions:rerun', { id: validatedId });
 
     const session = sessionManager.getSession(validatedId);
@@ -845,7 +846,7 @@ app.whenReady().then(async () => {
       engine: sessionManager.getSessionEngine(validatedId) ?? 'unknown',
     });
 
-    const view = browserPool.create(validatedId);
+    const view = browserPool.create(validatedId, t0);
     if (!view) {
       sessionManager.failSession(validatedId, 'Browser pool full');
       return { error: 'Browser pool full' };
