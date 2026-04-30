@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { CookieBrowser, type CookieBrowserApi } from '../shared/CookieBrowser';
+import { OnboardingCookieList } from './OnboardingCookieList';
 import introImage from './intro.png';
 import chromeLogo from './chrome-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';
@@ -278,6 +278,7 @@ export function OnboardingApp() {
   const [profiles, setProfiles] = useState<ChromeProfile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);
+  const [importedProfile, setImportedProfile] = useState<ChromeProfile | null>(null);
   const [importResult, setImportResult] = useState<CookieImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -514,15 +515,17 @@ export function OnboardingApp() {
     setImporting(profileDir);
     setImportError(null);
     setImportResult(null);
+    setImportedProfile(null);
     try {
       const result = await window.onboardingAPI.importChromeProfileCookies(profileDir);
       setImportResult(result);
+      setImportedProfile(profiles.find((p) => p.directory === profileDir) ?? null);
     } catch (err) {
       setImportError((err as Error).message);
     } finally {
       setImporting(null);
     }
-  }, []);
+  }, [profiles]);
 
   const handleSkipProfile = useCallback(() => setStep('apikey'), []);
 
@@ -829,14 +832,25 @@ export function OnboardingApp() {
                   </span>
                 </span>
 
-                <CookieBrowser
-                  hideHeader
-                  api={{
-                    detectProfiles: () => window.onboardingAPI.detectChromeProfiles(),
-                    importCookies: (dir) => window.onboardingAPI.importChromeProfileCookies(dir),
-                    listCookies: () => window.onboardingAPI.listSessionCookies(),
-                    getSyncs: () => window.onboardingAPI.getChromeProfileSyncs(),
-                  } satisfies CookieBrowserApi}
+                {importedProfile && (
+                  <div className="import-summary-card">
+                    <div className="profile-avatar">
+                      {importedProfile.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="profile-info">
+                      <div className="profile-name">{importedProfile.name}</div>
+                      {importedProfile.email && (
+                        <div className="profile-email">{importedProfile.email}</div>
+                      )}
+                      <div className="import-summary-meta">
+                        {importResult.imported.toLocaleString()} cookies · {importResult.domains.length} domains
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <OnboardingCookieList
+                  listCookies={() => window.onboardingAPI.listSessionCookies()}
                 />
 
                 <div className="apikey-actions">
@@ -852,6 +866,7 @@ export function OnboardingApp() {
                   className="back-btn"
                   onClick={() => {
                     setImportResult(null);
+                    setImportedProfile(null);
                     setImportError(null);
                   }}
                 >
