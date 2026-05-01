@@ -193,7 +193,13 @@ function buildTrayMenu(sessionManager: SessionManager): Menu {
 }
 
 export function createTray(sessionManager: SessionManager): Tray | null {
-  mainLogger.info('main.tray.start', { appPath: app.getAppPath(), assetDir: trayAssetDir() });
+  // stderr write bypasses mainLogger so we still get a signal even if logger is wedged.
+  process.stderr.write(`[tray.entry] called appPath=${app.getAppPath()}\n`);
+  try {
+    mainLogger.info('main.tray.start', { appPath: app.getAppPath(), assetDir: trayAssetDir() });
+  } catch (err) {
+    process.stderr.write(`[tray.startLogFailed] ${(err as Error).message}\n`);
+  }
 
   if (currentTray && !currentTray.isDestroyed()) {
     mainLogger.info('main.tray.reuse');
