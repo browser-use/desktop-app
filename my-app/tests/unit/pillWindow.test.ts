@@ -18,6 +18,7 @@ class MockBrowserWindow {
     setZoomFactor: vi.fn(),
     setVisualZoomLevelLimits: vi.fn(),
     once: vi.fn(),
+    on: vi.fn(),
     send: vi.fn(),
   };
 
@@ -70,6 +71,12 @@ vi.mock('electron', () => ({
 
 vi.mock('../../src/main/logger', () => ({
   mainLogger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+  rendererLogger: {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
