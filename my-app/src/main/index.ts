@@ -97,6 +97,7 @@ import { forwardAgentEvent } from './pill';
 // Session management
 import { SessionManager } from './sessions/SessionManager';
 import { BrowserPool } from './sessions/BrowserPool';
+import { BrowserGifRecorder, type GifOutput } from './sessions/GifRecorder';
 // Settings window (no browser-feature IPC handlers)
 import { openSettingsWindow, closeSettingsWindow, getSettingsWindow } from './settings/SettingsWindow';
 // Channels (WhatsApp)
@@ -165,9 +166,11 @@ const sessionManager = new SessionManager(path.join(app.getPath('userData'), 'se
 // to <userData>/harness/ on first run, preserves user edits on subsequent runs.
 bootstrapHarness();
 const browserPool = new BrowserPool();
+const gifRecorder = new BrowserGifRecorder();
 // Push browser-gone notifications to the shell renderer so the UI can stop
 // showing "Browser starting…" when a WebContents is destroyed or crashes.
 browserPool.setOnGone((sessionId) => {
+  gifRecorder.stop(sessionId);
   if (shellWindow && !shellWindow.isDestroyed()) {
     shellWindow.webContents.send('sessions:browser-gone', sessionId);
   }
@@ -185,6 +188,26 @@ browserPool.setOnNavigate((sessionId, url) => {
 const accountStore = new AccountStore();
 const whatsAppAdapter = new WhatsAppAdapter();
 const channelRouter = new ChannelRouter(sessionManager, whatsAppAdapter);
+
+function outputsDirForSession(sessionId: string): string {
+  return path.join(harnessDir(), 'outputs', sessionId);
+}
+
+async function publishSessionGif(sessionId: string): Promise<GifOutput> {
+  const output = await gifRecorder.finishToFile(sessionId, outputsDirForSession(sessionId));
+  const session = sessionManager.getSession(sessionId);
+  const alreadyEmitted = session?.output.some((event) => event.type === 'file_output' && event.path === output.path) ?? false;
+  if (!alreadyEmitted) {
+    sessionManager.appendOutput(sessionId, {
+      type: 'file_output',
+      name: output.name,
+      path: output.path,
+      size: output.size,
+      mime: output.mime,
+    });
+  }
+  return output;
+}
 
 // ---------------------------------------------------------------------------
 // Shell window factory
@@ -671,6 +694,7 @@ app.whenReady().then(async () => {
 
       await view.webContents.loadURL('about:blank');
       mainLogger.info('main.startSessionWithAgent.timing', { id, step: 'loadBlank', ms: Date.now() - t0 });
+      gifRecorder.start(id, view.webContents, resolvedCdp.port);
 
       const attachmentsForRun = sessionManager.loadAttachmentsForRun(id);
       if (attachmentsForRun.length > 0) {
@@ -693,8 +717,12 @@ app.whenReady().then(async () => {
           if (event.type === 'done') {
             sessionManager.appendOutput(id, event);
             sessionManager.completeSession(id);
+            publishSessionGif(id).catch((err: Error) => {
+              mainLogger.warn('main.startSessionWithAgent.gifExportFailed', { id, error: err.message });
+            });
           } else if (event.type === 'error') {
             sessionManager.failSession(id, event.message);
+            gifRecorder.stop(id);
             browserPool.destroy(id, shellWindow ?? undefined);
           } else {
             sessionManager.appendOutput(id, event);
@@ -795,6 +823,7 @@ app.whenReady().then(async () => {
     }
 
     const abortController = sessionManager.resumeSession(validatedId, validatedPrompt);
+    gifRecorder.start(validatedId, webContents, resolvedCdp.port);
     if (resumeAttachments.length > 0) {
       mainLogger.info('main.sessions:resume.attachments', { id: validatedId, count: resumeAttachments.length });
     }
@@ -821,8 +850,12 @@ app.whenReady().then(async () => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
           sessionManager.completeSession(validatedId);
+          publishSessionGif(validatedId).catch((err: Error) => {
+            mainLogger.warn('main.sessions:resume.gifExportFailed', { id: validatedId, error: err.message });
+          });
         } else if (event.type === 'error') {
           sessionManager.failSession(validatedId, event.message);
+          gifRecorder.stop(validatedId);
           browserPool.destroy(validatedId, shellWindow ?? undefined);
         } else {
           sessionManager.appendOutput(validatedId, event);
@@ -872,6 +905,7 @@ app.whenReady().then(async () => {
     } catch (err) {
       mainLogger.warn('main.sessions:rerun.loadBlank.failed', { id: validatedId, error: (err as Error).message });
     }
+    gifRecorder.start(validatedId, view.webContents, resolvedCdp.port);
 
     const rerunAttachments = sessionManager.loadAttachmentsForRun(validatedId);
     if (rerunAttachments.length > 0) {
@@ -895,8 +929,12 @@ app.whenReady().then(async () => {
         if (event.type === 'done') {
           sessionManager.appendOutput(validatedId, event);
           sessionManager.completeSession(validatedId);
+          publishSessionGif(validatedId).catch((err: Error) => {
+            mainLogger.warn('main.sessions:rerun.gifExportFailed', { id: validatedId, error: err.message });
+          });
         } else if (event.type === 'error') {
           sessionManager.failSession(validatedId, event.message);
+          gifRecorder.stop(validatedId);
           browserPool.destroy(validatedId, shellWindow ?? undefined);
         } else {
           sessionManager.appendOutput(validatedId, event);
@@ -917,6 +955,7 @@ app.whenReady().then(async () => {
     const validatedId = assertString(id, 'id', 100);
     mainLogger.info('main.sessions:cancel', { id: validatedId });
     sessionManager.cancelSession(validatedId);
+    gifRecorder.stop(validatedId);
     browserPool.destroy(validatedId, shellWindow ?? undefined);
     steerQueues.delete(validatedId);
   });
@@ -951,8 +990,25 @@ app.whenReady().then(async () => {
   ipcMain.handle('sessions:delete', (_event, id: string) => {
     const validatedId = assertString(id, 'id', 100);
     mainLogger.info('main.sessions:delete', { id: validatedId });
+    gifRecorder.stop(validatedId);
     browserPool.destroy(validatedId, shellWindow ?? undefined);
     sessionManager.deleteSession(validatedId);
+  });
+
+  ipcMain.handle('sessions:export-gif', async (_event, id: string) => {
+    const validatedId = assertString(id, 'id', 100);
+    mainLogger.info('main.sessions:export-gif', { id: validatedId });
+    const session = sessionManager.getSession(validatedId);
+    if (!session) return { error: 'Session not found' };
+    if (!browserPool.getWebContents(validatedId)) return { error: 'Browser session expired' };
+    try {
+      const output = await publishSessionGif(validatedId);
+      captureEvent('session_gif_exported', { source: 'hub', size: output.size });
+      return output;
+    } catch (err) {
+      mainLogger.warn('main.sessions:export-gif.failed', { id: validatedId, error: (err as Error).message });
+      return { error: (err as Error).message };
+    }
   });
 
   /**

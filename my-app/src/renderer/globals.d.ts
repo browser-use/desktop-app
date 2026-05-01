@@ -60,6 +60,7 @@ interface ElectronSessionAPI {
     attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
   ) => Promise<{ resumed?: boolean; error?: string }>;
   rerun: (id: string) => Promise<{ rerun?: boolean; error?: string }>;
+  exportGif: (id: string) => Promise<{ name: string; path: string; size: number; mime: string } | { error: string }>;
   list: () => Promise<import('./hub/types').AgentSession[]>;
   listAll: () => Promise<import('./hub/types').AgentSession[]>;
   get: (id: string) => Promise<import('./hub/types').AgentSession | null>;

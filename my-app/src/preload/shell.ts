@@ -141,6 +141,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sessions:resume', { id, prompt, attachments }),
     rerun: (id: string): Promise<{ rerun?: boolean; error?: string }> =>
       ipcRenderer.invoke('sessions:rerun', id),
+    exportGif: (id: string): Promise<{ name: string; path: string; size: number; mime: string } | { error: string }> =>
+      ipcRenderer.invoke('sessions:export-gif', id),
     list: async (): Promise<AgentSession[]> => {
       const raw = await ipcRenderer.invoke('sessions:list');
       return validateSessionList(raw);

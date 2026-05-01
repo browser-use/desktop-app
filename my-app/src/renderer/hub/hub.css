@@ -843,6 +843,36 @@
   background-color: var(--color-surface-interactive-hover);
 }
 
+.pane__action-btn:disabled {
+  color: var(--color-fg-disabled);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.pane__action-btn:disabled:hover {
+  color: var(--color-fg-disabled);
+  background-color: transparent;
+}
+
+.pane__action-note {
+  color: var(--color-status-error);
+  font-size: var(--font-size-2xs);
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane__mini-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--color-border-subtle);
+  border-top-color: currentColor;
+  border-radius: var(--radius-full);
+  animation: spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
 .pane__action-btn--primary {
   border: 1px solid var(--color-border-default);
   background-color: var(--color-bg-elevated);
@@ -4483,4 +4513,3 @@ button:focus:not(:focus-visible) {
   font-size: 12px;
   align-self: flex-start;
 }
-
