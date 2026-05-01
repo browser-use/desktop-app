@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { appOn, loggerSpy, MockBrowserWindow } = vi.hoisted(() => {
+const { appHandlers, appOn, loggerSpy, MockBrowserWindow } = vi.hoisted(() => {
   const loggerSpy = { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() };
-  const appOn = vi.fn();
+  const appHandlers = new Map<string, () => void>();
+  const appOn = vi.fn((event: string, handler: () => void) => {
+    appHandlers.set(event, handler);
+  });
 
   class MockBrowserWindow {
     static last: MockBrowserWindow | null = null;
     static handlers = new Map<string, () => void>();
+    static focusedWindow: MockBrowserWindow | null = null;
 
     id = 1;
     isDestroyed = vi.fn(() => false);
@@ -25,6 +29,7 @@ const { appOn, loggerSpy, MockBrowserWindow } = vi.hoisted(() => {
     setAlwaysOnTop = vi.fn();
     setBounds = vi.fn();
     getBounds = vi.fn(() => ({ x: 0, y: 0, width: 380, height: 220 }));
+    getContentBounds = vi.fn(() => ({ x: 0, y: 0, width: 900, height: 700 }));
     showInactive = vi.fn();
     hide = vi.fn();
     focus = vi.fn();
@@ -44,9 +49,13 @@ const { appOn, loggerSpy, MockBrowserWindow } = vi.hoisted(() => {
       MockBrowserWindow.last = this;
       MockBrowserWindow.handlers = new Map();
     }
+
+    static getFocusedWindow(): MockBrowserWindow | null {
+      return MockBrowserWindow.focusedWindow;
+    }
   }
 
-  return { appOn, loggerSpy, MockBrowserWindow };
+  return { appHandlers, appOn, loggerSpy, MockBrowserWindow };
 });
 
 vi.mock('../../src/main/logger', () => ({ mainLogger: loggerSpy, rendererLogger: loggerSpy }));
@@ -67,7 +76,9 @@ describe('logsPill', () => {
     vi.clearAllMocks();
     vi.resetModules();
     MockBrowserWindow.last = null;
+    MockBrowserWindow.focusedWindow = null;
     MockBrowserWindow.handlers = new Map();
+    appHandlers.clear();
   });
 
   it('creates the logs window as non-fullscreenable and non-maximizable', async () => {
@@ -118,5 +129,22 @@ describe('logsPill', () => {
     expect(win.setFullScreenable).toHaveBeenCalledWith(false);
     expect(win.setMaximizable).toHaveBeenCalledWith(false);
     expect(win.setMinimizable).toHaveBeenCalledWith(false);
+  });
+
+  it('hides the logs window when the app deactivates', async () => {
+    vi.useFakeTimers();
+    const { attachToHub, createLogsWindow } = await import('../../src/main/logsPill');
+
+    createLogsWindow();
+    const win = MockBrowserWindow.last!;
+    win.isVisible.mockReturnValue(true);
+    const hub = new MockBrowserWindow({});
+    attachToHub(hub as unknown as Electron.BrowserWindow);
+
+    appHandlers.get('did-resign-active')?.();
+    vi.advanceTimersByTime(60);
+
+    expect(win.hide).toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

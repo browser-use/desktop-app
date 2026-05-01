@@ -5,7 +5,7 @@
  * Distinct from the command pill.
  */
 
-import { app, BrowserWindow, screen } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { mainLogger, rendererLogger } from './logger';
 import { registerViteDepStaleHeal } from './viteDepStaleHeal';
@@ -130,6 +130,22 @@ function flushPending(): void {
     logsWindow.webContents.send(channel, ...(args as [unknown, ...unknown[]]));
   }
   pendingMessages.length = 0;
+}
+
+function hasFocusedAppWindow(): boolean {
+  return BrowserWindow.getFocusedWindow() !== null;
+}
+
+function hideLogsForAppDeactivation(reason: string): void {
+  setTimeout(() => {
+    if (!logsWindow || logsWindow.isDestroyed()) return;
+    if (!logsWindow.isVisible()) return;
+    if (hasFocusedAppWindow()) return;
+
+    wasVisibleBeforeBlur = true;
+    log.info('logs.autohide.appDeactivated', { reason });
+    logsWindow.hide();
+  }, 50);
 }
 
 /**
@@ -358,38 +374,14 @@ export function attachToHub(hub: BrowserWindow): void {
     }
   });
 
-  // Display-aware app-blur auto-hide. Hide the logs window only if the
-  // user switched to another app *on the same monitor* as the logs —
-  // multi-monitor setups keep the logs visible on their own screen so
-  // users can reference them while working in another app elsewhere.
-  //
-  // Listen at app-level, not hub-level: if the logs window itself had
+  // App-level auto-hide. Listen at app-level, not hub-level: if the logs window itself had
   // focus (user typing a follow-up), switching away fires blur on LOGS,
   // not on hub. hub.on('blur') would miss that path entirely.
   app.on('browser-window-blur', () => {
-    setTimeout(() => {
-      if (!logsWindow || logsWindow.isDestroyed()) return;
-      if (!logsWindow.isVisible()) return;
-      const focused = BrowserWindow.getFocusedWindow();
-      if (focused !== null) return; // still inside our own app
-      try {
-        const cursor = screen.getCursorScreenPoint();
-        const cursorDisplay = screen.getDisplayNearestPoint(cursor);
-        const logsDisplay = screen.getDisplayMatching(logsWindow.getBounds());
-        log.info('logs.blur.displayCheck', {
-          cursorDisplay: cursorDisplay.id,
-          logsDisplay: logsDisplay.id,
-          sameScreen: cursorDisplay.id === logsDisplay.id,
-        });
-        if (cursorDisplay.id !== logsDisplay.id) return; // different monitor, keep visible
-      } catch (err) {
-        log.warn('logs.blur.displayCheck.error', { error: (err as Error).message });
-        // On error, fall through and hide — safer default.
-      }
-      wasVisibleBeforeBlur = true;
-      log.info('logs.autohide.appBlurSameScreen', {});
-      logsWindow.hide();
-    }, 50);
+    hideLogsForAppDeactivation('browser-window-blur');
+  });
+  app.on('did-resign-active', () => {
+    hideLogsForAppDeactivation('did-resign-active');
   });
 
   hub.on('focus', () => {
