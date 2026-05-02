@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM node:22-bookworm AS linux-package
+FROM node:22-bookworm AS linux-package
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ELECTRON_CACHE=/root/.cache/electron
@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rpm \
     xz-utils \
   && rm -rf /var/lib/apt/lists/*
+
+RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.com/" \
+  && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
 WORKDIR /workspace
 
