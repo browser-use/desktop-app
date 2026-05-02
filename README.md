@@ -18,7 +18,7 @@ Built on [Browser Harness](https://github.com/browser-use/browser-harness).
 
 **macOS (Apple Silicon):** [Browser-Use-arm64.dmg](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
 
-**Linux:** `.deb` and `.rpm` packages are published on GitHub Releases.
+**Linux:** [Browser-Use-x64.AppImage](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-x64.AppImage) supports in-app auto-updates. `.deb` and `.rpm` packages are also published on GitHub Releases for manual installs.
 
 The link always points to the latest release.
 

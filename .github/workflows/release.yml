@@ -596,16 +596,40 @@ jobs:
           fi
           echo "Package version matches release tag: ${package_version}"
 
-      - name: Build Linux .deb/.rpm in Docker
+      - name: Build Linux .deb/.rpm/AppImage in Docker
         run: bash scripts/build-linux-docker.sh
+
+      - name: Prepare Linux release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf linux-release-assets
+          mkdir -p linux-release-assets
+
+          find my-app/out/make/deb/x64 -type f -name '*.deb' -exec cp {} linux-release-assets/ \;
+          find my-app/out/make/rpm/x64 -type f -name '*.rpm' -exec cp {} linux-release-assets/ \;
+          find my-app/out/make/appimage/x64 -type f -name '*.AppImage' -exec cp {} linux-release-assets/ \;
+          cp my-app/out/make/latest-linux.yml linux-release-assets/
+
+          appimage_count="$(find linux-release-assets -maxdepth 1 -type f -name '*.AppImage' | wc -l | tr -d ' ')"
+          if [[ "$appimage_count" -ne 1 ]]; then
+            echo "::error::Expected exactly one Linux AppImage, found ${appimage_count}."
+            ls -la linux-release-assets || true
+            exit 1
+          fi
+          cp "$(find linux-release-assets -maxdepth 1 -type f -name '*.AppImage' | head -n 1)" \
+            linux-release-assets/Browser-Use-x64.AppImage
+
+          node scripts/verify-linux-artifacts.mjs linux-release-assets
+          echo "Prepared Linux release assets:"
+          ls -la linux-release-assets
 
       - name: Upload Linux artifact (backup)
         uses: actions/upload-artifact@v7
         with:
           name: linux-packages-${{ github.sha }}
           path: |
-            my-app/out/make/deb/x64/*.deb
-            my-app/out/make/rpm/x64/*.rpm
+            linux-release-assets/*
           if-no-files-found: error
           retention-days: 14
 
@@ -619,5 +643,66 @@ jobs:
           target_commitish: ${{ github.sha }}
           fail_on_unmatched_files: false
           files: |
-            my-app/out/make/deb/x64/*.deb
-            my-app/out/make/rpm/x64/*.rpm
+            linux-release-assets/*
+
+      - name: Verify published Linux update feed
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          base_url="https://github.com/${REPOSITORY}/releases/download/${TAG}"
+          for attempt in {1..12}; do
+            if curl -fsSL "${base_url}/latest-linux.yml" -o latest-linux.yml; then
+              break
+            fi
+            if [[ "$attempt" -eq 12 ]]; then
+              echo "::error::latest-linux.yml is not publicly downloadable at ${base_url}/latest-linux.yml. Linux AppImage updates run without GitHub credentials, so release assets must be public."
+              exit 1
+            fi
+            echo "Waiting for latest-linux.yml to become publicly downloadable (attempt ${attempt}/12)"
+            sleep 5
+          done
+          node <<'NODE' > linux-update-assets.txt
+          const fs = require('fs');
+          const manifest = fs.readFileSync('latest-linux.yml', 'utf8');
+          const pathMatch = manifest.match(/^path:\s*['"]?([^'"\n]+)['"]?/m);
+          if (!pathMatch || !pathMatch[1].endsWith('.AppImage')) {
+            throw new Error('latest-linux.yml must use an AppImage as its primary path');
+          }
+          const urls = [...manifest.matchAll(/url:\s*['"]?([^'"\n]+)['"]?/g)].map((match) => match[1]);
+          if (!urls.some((url) => url.endsWith('.AppImage'))) {
+            throw new Error('latest-linux.yml does not reference a Linux AppImage');
+          }
+          for (const url of urls) {
+            console.log(url);
+          }
+          NODE
+          while IFS= read -r asset; do
+            [[ -z "$asset" ]] && continue
+            echo "Verifying ${base_url}/${asset}"
+            for attempt in {1..12}; do
+              if curl -fsIL "${base_url}/${asset}" >/dev/null; then
+                break
+              fi
+              if [[ "$attempt" -eq 12 ]]; then
+                echo "::error::${asset} is not publicly downloadable at ${base_url}/${asset}. Linux AppImage updates cannot install unless every manifest asset URL is public."
+                exit 1
+              fi
+              echo "Waiting for ${asset} to become publicly downloadable (attempt ${attempt}/12)"
+              sleep 5
+            done
+          done < linux-update-assets.txt
+          echo "Verifying ${base_url}/Browser-Use-x64.AppImage"
+          for attempt in {1..12}; do
+            if curl -fsIL "${base_url}/Browser-Use-x64.AppImage" >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" -eq 12 ]]; then
+              echo "::error::Browser-Use-x64.AppImage is not publicly downloadable at ${base_url}/Browser-Use-x64.AppImage. The README download link would 404."
+              exit 1
+            fi
+            echo "Waiting for Browser-Use-x64.AppImage to become publicly downloadable (attempt ${attempt}/12)"
+            sleep 5
+          done

@@ -8,7 +8,11 @@
  *
  * Windows uses Electron's native autoUpdater against the same GitHub release
  * asset directory. Squirrel.Windows expects RELEASES + .nupkg assets, not the
- * electron-updater YAML manifest used by macOS.
+ * electron-updater YAML manifests used by macOS and Linux.
+ *
+ * Linux uses electron-updater only for the AppImage channel. Distro packages
+ * (.deb/.rpm) stay manual/package-manager style and must not attempt to
+ * rewrite themselves from inside the app.
  *
  * Flow:
  *   1. App becomes ready → initUpdater() schedules an initial check +
@@ -33,9 +37,9 @@ import type { AppUpdater } from 'electron-updater';
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
 // Generic GitHub release-asset feed — see release.yml. The explicit
-// /releases/latest/download URL makes electron-updater fetch latest-mac.yml
-// directly from the published release assets and avoids depending on
-// electron-builder's GitHub provider metadata generation.
+// /releases/latest/download URL makes electron-updater fetch latest-mac.yml or
+// latest-linux.yml directly from the published release assets and avoids
+// depending on electron-builder's GitHub provider metadata generation.
 const UPDATE_FEED_URL = 'https://github.com/browser-use/desktop-app/releases/latest/download';
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
@@ -64,7 +68,7 @@ export function shouldSkipUpdates(): boolean {
  * Configure the electron-updater autoUpdater instance. Split out for tests
  * so the lifecycle wiring can be verified without a real AppUpdater.
  */
-function configureMacAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
+function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
   autoUpdater.setFeedURL({
     provider: 'generic',
     url: UPDATE_FEED_URL,
@@ -115,7 +119,7 @@ function configureMacAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
       })
       .then(({ response }) => {
         if (response === 0) {
-          autoUpdater.quitAndInstall();
+          autoUpdater.quitAndInstall(false, true);
         }
       })
       .catch((err: unknown) => {
@@ -178,8 +182,10 @@ function configureWindowsAutoUpdater(autoUpdater: WindowsAutoUpdater): UpdateChe
   };
 }
 
-export function supportsUpdates(platform = process.platform): boolean {
-  return platform === 'darwin' || platform === 'win32';
+export function supportsUpdates(platform = process.platform, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (platform === 'darwin' || platform === 'win32') return true;
+  if (platform === 'linux') return Boolean(env.APPIMAGE);
+  return false;
 }
 
 /**
@@ -198,8 +204,8 @@ export async function initUpdater(): Promise<void> {
     console.log('[updater] Skipping auto-update init — dev mode / not packaged');
     return;
   }
-  if (!supportsUpdates()) {
-    console.log(`[updater] Skipping auto-update init — unsupported platform: ${process.platform}`);
+  if (!supportsUpdates(process.platform, process.env)) {
+    console.log(`[updater] Skipping auto-update init — unsupported platform/channel: ${process.platform}`);
     return;
   }
 
@@ -231,7 +237,7 @@ export async function initUpdater(): Promise<void> {
       console.warn('[updater] electron-updater failed to load — auto-update disabled:', (err as Error)?.message ?? err);
       return;
     }
-    checkForUpdates = configureMacAutoUpdater(autoUpdater);
+    checkForUpdates = configureGenericAutoUpdater(autoUpdater);
   }
 
   initialized = true;

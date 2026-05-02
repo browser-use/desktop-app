@@ -166,12 +166,12 @@ tasks:
       - npm run make
 
   linux:make:docker:
-    desc: Build Linux .deb and .rpm packages inside Docker
+    desc: Build Linux .deb, .rpm, and AppImage packages inside Docker
     cmds:
       - bash scripts/build-linux-docker.sh
 
   linux:verify-artifacts:
-    desc: Verify Linux .deb and .rpm packages exist under my-app/out/make
+    desc: Verify Linux .deb, .rpm, AppImage, and update feed artifacts exist under my-app/out/make
     cmds:
       - node scripts/verify-linux-artifacts.mjs
 

@@ -26,7 +26,11 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$ROOT_DIR/my-app/out/make"
-rm -rf "$ROOT_DIR/my-app/out/make/deb" "$ROOT_DIR/my-app/out/make/rpm"
+rm -rf \
+  "$ROOT_DIR/my-app/out/make/deb" \
+  "$ROOT_DIR/my-app/out/make/rpm" \
+  "$ROOT_DIR/my-app/out/make/appimage" \
+  "$ROOT_DIR/my-app/out/make/latest-linux.yml"
 docker cp "$container_id:/workspace/my-app/out/make" "$tmp_dir/make"
 cp -R "$tmp_dir/make/." "$ROOT_DIR/my-app/out/make/"
 

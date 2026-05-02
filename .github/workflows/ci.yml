@@ -148,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build Linux .deb/.rpm in Docker
+      - name: Build Linux .deb/.rpm/AppImage in Docker
         run: bash scripts/build-linux-docker.sh
 
       - name: Upload Linux package artifacts
@@ -158,4 +158,6 @@ jobs:
           path: |
             my-app/out/make/deb/x64/*.deb
             my-app/out/make/rpm/x64/*.rpm
+            my-app/out/make/appimage/x64/*.AppImage
+            my-app/out/make/latest-linux.yml
           if-no-files-found: error

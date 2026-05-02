@@ -158,6 +158,7 @@ async function loadUpdaterFresh(
 describe('updater (Issue #202)', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalPlatform = process.platform;
+  const originalAppImage = process.env.APPIMAGE;
 
   beforeEach(() => {
     process.env.NODE_ENV = 'production';
@@ -165,6 +166,11 @@ describe('updater (Issue #202)', () => {
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv;
+    if (originalAppImage === undefined) {
+      delete process.env.APPIMAGE;
+    } else {
+      process.env.APPIMAGE = originalAppImage;
+    }
     Object.defineProperty(process, 'platform', {
       value: originalPlatform,
       configurable: true,
@@ -190,11 +196,12 @@ describe('updater (Issue #202)', () => {
       expect(updater.shouldSkipUpdates()).toBe(false);
     });
 
-    it('supports macOS and Windows update backends only', async () => {
+    it('supports macOS, Windows, and Linux AppImage update backends', async () => {
       const { updater } = await loadUpdaterFresh(false);
       expect(updater.supportsUpdates('darwin')).toBe(true);
       expect(updater.supportsUpdates('win32')).toBe(true);
-      expect(updater.supportsUpdates('linux')).toBe(false);
+      expect(updater.supportsUpdates('linux', {})).toBe(false);
+      expect(updater.supportsUpdates('linux', { APPIMAGE: '/tmp/Browser-Use.AppImage' })).toBe(true);
     });
   });
 
@@ -242,6 +249,29 @@ describe('updater (Issue #202)', () => {
       expect(fakeAutoUpdater.feedURL).toBeNull();
 
       updater.stopUpdater();
+    });
+
+    it('skips Linux distro packages and only configures updates for AppImage launches', async () => {
+      delete process.env.APPIMAGE;
+      let loaded = await loadUpdaterFresh(true, 'linux');
+
+      await loaded.updater.initUpdater();
+
+      expect(fakeAutoUpdater.feedURL).toBeNull();
+      expect(fakeAutoUpdater.checkCount).toBe(0);
+
+      process.env.APPIMAGE = '/tmp/Browser-Use-1.2.3-x64.AppImage';
+      loaded = await loadUpdaterFresh(true, 'linux');
+
+      await loaded.updater.initUpdater();
+
+      expect(fakeAutoUpdater.feedURL).toEqual({
+        provider: 'generic',
+        url: 'https://github.com/browser-use/desktop-app/releases/latest/download',
+      });
+      expect(fakeAutoUpdater.checkCount).toBe(1);
+
+      loaded.updater.stopUpdater();
     });
 
     it('enables full-download background updates and install-on-quit', async () => {

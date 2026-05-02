@@ -93,10 +93,13 @@ The workflow flips `prerelease: true` based on substring match.
   publishing fails partway.
 
 **Auto-update feed.** The workflow publishes `latest-mac.yml` plus
-`Browser-Use-<arch>-mac.zip` to the GitHub Release. The app's
-`electron-updater` integration reads that feed from GitHub Releases, downloads
-the ZIP in the background, and applies it through Squirrel.Mac on restart or
-next quit. The DMG remains the first-install/manual-download artifact.
+`Browser-Use-<arch>-mac.zip` for macOS, and `latest-linux.yml` plus
+`Browser-Use-<version>-x64.AppImage` for Linux. The app's `electron-updater`
+integration reads those feeds from GitHub Releases, downloads the update in
+the background, and applies it on restart or next quit. The DMG remains the
+macOS first-install/manual-download artifact; Linux `.deb` and `.rpm` builds
+remain manual install artifacts while AppImage is the self-updating Linux
+channel.
 
 **Version field.** `my-app/package.json`'s `version` is consumed by Forge
 when it names the DMG (`my-app-<version>-arm64.dmg`) and by
