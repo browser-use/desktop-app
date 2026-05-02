@@ -58,7 +58,7 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       mainLogger.error('onboardingHandlers.saveApiKey.failed', {
         error: (err as Error).message,
       });
-      throw new Error('Failed to save API key to keychain');
+      throw new Error('Failed to save API key to the OS credential store');
     }
   });
 
@@ -152,15 +152,15 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
 
   /**
    * DEPRECATED but kept for back-compat with older onboarding UI bundles:
-   * previously extracted a Keychain token and saved it for our own use.
+   * previously extracted a Claude CLI token and saved it for our own use.
    * The new flow just confirms the user is logged into Claude CLI — our
-   * spawned `claude -p` subprocess reads Keychain directly on each run.
+   * spawned `claude -p` subprocess reads the CLI's own credentials on each run.
    */
   ipcMain.handle('onboarding:use-claude-code', async () => {
     const result = await probeClaudeCli();
     if (!result.authed) throw new Error('Claude CLI is not logged in. Run `claude login` first.');
     // Flip the auth mode so resolveAuth() skips any stored API key and lets the
-    // spawned `claude` subprocess use its own Keychain OAuth. Stored key is
+    // spawned `claude` subprocess use its own OAuth credentials. Stored key is
     // preserved — saving a new API key later flips the mode back to 'apiKey'.
     await authSetMode('claudeCode').catch((err) => {
       mainLogger.warn('onboardingHandlers.useClaudeCode.setModeFailed', { error: (err as Error).message });
@@ -283,7 +283,7 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       await authSaveOpenAIKey(validated);
     } catch (err) {
       mainLogger.error('onboardingHandlers.saveOpenAIKey.failed', { error: (err as Error).message });
-      throw new Error('Failed to save OpenAI key to keychain');
+      throw new Error('Failed to save OpenAI key to the OS credential store');
     }
   });
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Long-running CDP WebSocket holder + Unix socket relay.
+ * Long-running CDP WebSocket holder + local IPC relay.
  *
  * Chrome 144+: reads ws URL from <profile>/DevToolsActivePort (written when user
  * enables chrome://inspect/#remote-debugging). Avoids the per-connect "Allow?"
@@ -16,16 +16,40 @@ const os = require('os');
 const WebSocket = require('ws');
 
 const NAME = process.env.BU_NAME || 'default';
-const SOCK = `/tmp/bh-${NAME}.sock`;
-const LOG = `/tmp/bh-${NAME}.log`;
-const PID = `/tmp/bh-${NAME}.pid`;
+const SAFE_NAME = NAME.replace(/[^a-zA-Z0-9_.-]/g, '_');
+const RUN_DIR = process.env.BU_RUN_DIR || os.tmpdir();
+const SOCK = process.platform === 'win32'
+  ? `\\\\.\\pipe\\browser-use-bh-${SAFE_NAME}`
+  : path.join(RUN_DIR, `bh-${SAFE_NAME}.sock`);
+const LOG = path.join(RUN_DIR, `bh-${SAFE_NAME}.log`);
+const PID = path.join(RUN_DIR, `bh-${SAFE_NAME}.pid`);
 const BUF = 500;
 
-const PROFILES = [
-  path.join(os.homedir(), 'Library/Application Support/Google/Chrome'),
-  path.join(os.homedir(), '.config/google-chrome'),
-  path.join(os.homedir(), 'AppData/Local/Google/Chrome/User Data'),
-];
+function chromeProfileCandidates() {
+  const home = os.homedir();
+  if (process.platform === 'darwin') {
+    return [
+      path.join(home, 'Library', 'Application Support', 'Google', 'Chrome'),
+      path.join(home, 'Library', 'Application Support', 'Chromium'),
+      path.join(home, 'Library', 'Application Support', 'Google', 'Chrome Canary'),
+    ];
+  }
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    return [
+      path.join(localAppData, 'Google', 'Chrome', 'User Data'),
+      path.join(localAppData, 'Google', 'Chrome SxS', 'User Data'),
+      path.join(localAppData, 'Chromium', 'User Data'),
+    ];
+  }
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+  return [
+    path.join(configHome, 'google-chrome'),
+    path.join(configHome, 'google-chrome-beta'),
+    path.join(configHome, 'google-chrome-unstable'),
+    path.join(configHome, 'chromium'),
+  ];
+}
 
 const INTERNAL = ['chrome://', 'chrome-untrusted://', 'devtools://', 'chrome-extension://', 'about:'];
 
@@ -36,14 +60,15 @@ function log(msg) {
 function getWsUrl() {
   const override = process.env.BU_CDP_WS;
   if (override) return override;
-  for (const base of PROFILES) {
+  const profiles = chromeProfileCandidates();
+  for (const base of profiles) {
     try {
       const raw = fs.readFileSync(path.join(base, 'DevToolsActivePort'), 'utf-8').trim();
       const [port, wsPath] = raw.split('\n', 2);
       return `ws://127.0.0.1:${port.trim()}${wsPath.trim()}`;
     } catch { continue; }
   }
-  throw new Error(`DevToolsActivePort not found in ${JSON.stringify(PROFILES)} — enable chrome://inspect/#remote-debugging`);
+  throw new Error(`DevToolsActivePort not found in ${JSON.stringify(profiles)} — enable chrome://inspect/#remote-debugging`);
 }
 
 function isRealPage(t) {
@@ -181,7 +206,9 @@ function alreadyRunning() {
 }
 
 async function serve(daemon) {
-  try { fs.unlinkSync(SOCK); } catch {}
+  if (process.platform !== 'win32') {
+    try { fs.unlinkSync(SOCK); } catch {}
+  }
 
   const server = net.createServer((conn) => {
     let buf = '';
@@ -206,7 +233,7 @@ async function serve(daemon) {
   });
 
   server.listen(SOCK, () => {
-    fs.chmodSync(SOCK, 0o600);
+    if (process.platform !== 'win32') fs.chmodSync(SOCK, 0o600);
     log(`listening on ${SOCK}`);
   });
 }
@@ -230,14 +257,21 @@ main().catch(e => {
   process.exit(1);
 });
 
-process.on('SIGTERM', () => {
+function cleanup() {
   try { fs.unlinkSync(PID); } catch {}
-  try { fs.unlinkSync(SOCK); } catch {}
+  if (process.platform !== 'win32') {
+    try { fs.unlinkSync(SOCK); } catch {}
+  }
+}
+
+process.on('exit', cleanup);
+
+process.on('SIGTERM', () => {
+  cleanup();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  try { fs.unlinkSync(PID); } catch {}
-  try { fs.unlinkSync(SOCK); } catch {}
+  cleanup();
   process.exit(0);
 });

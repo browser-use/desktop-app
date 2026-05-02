@@ -1,9 +1,11 @@
 /**
  * Claude Code OAuth token bridge.
  *
- * Reads the OAuth credentials that Claude Code (the CLI) stores in the
- * macOS Keychain under service "Claude Code-credentials". Supports refresh
- * via the Anthropic OAuth token endpoint.
+ * Legacy Claude Code OAuth token bridge.
+ *
+ * Reads the OAuth credentials that Claude Code (the CLI) stores in its
+ * OS credential store under service "Claude Code-credentials". Supports
+ * refresh via the Anthropic OAuth token endpoint.
  *
  * This is undocumented — Anthropic could change storage/format/behavior at
  * any time. Use as an opportunistic onboarding shortcut, not a core path.
@@ -62,11 +64,9 @@ export interface ClaudeAuthStatus {
 /**
  * Probe Claude Code's auth state by shelling out to `claude auth status
  * --json`. Strongly preferred over `readClaudeCodeCredentials()` for the
- * Settings UI hot path: that function reads Claude's keychain entry from
- * OUR process, which triggers a "Browser Use wants to access Claude Code-
- * credentials" prompt every time Claude rewrites the entry (i.e. on every
- * fresh `claude auth login`). The CLI subprocess reads its OWN keychain
- * entry — Apple's prompt rules consider that allowed-by-default.
+ * Settings UI hot path: that function reads Claude's credential entry from
+ * OUR process, which can trigger OS credential prompts every time Claude
+ * rewrites the entry. The CLI subprocess reads its OWN credential entry.
  */
 export function probeClaudeAuthStatus(timeoutMs = 5000): Promise<ClaudeAuthStatus> {
   return new Promise((resolve) => {
@@ -110,11 +110,11 @@ export function probeClaudeAuthStatus(timeoutMs = 5000): Promise<ClaudeAuthStatu
 }
 
 /**
- * Read Claude Code's OAuth credentials from the local Keychain.
+ * Read Claude Code's OAuth credentials from the local OS credential store.
  * Returns null if Claude Code isn't installed or has never been signed in.
  *
  * NOTE: callers that only need the loggedIn flag + subscriptionType should
- * prefer probeClaudeAuthStatus() — that doesn't trigger a macOS keychain
+ * prefer probeClaudeAuthStatus() — that avoids cross-process credential-store
  * prompt. This function is kept for paths that genuinely need the raw
  * tokens (refresh flows, etc.).
  */

@@ -9,10 +9,16 @@ const net = require('net');
 const fs = require('fs');
 const { execSync, spawn } = require('child_process');
 const path = require('path');
+const os = require('os');
 
 const NAME = process.env.BU_NAME || 'default';
-const SOCK = `/tmp/bh-${NAME}.sock`;
-const PID = `/tmp/bh-${NAME}.pid`;
+const SAFE_NAME = NAME.replace(/[^a-zA-Z0-9_.-]/g, '_');
+const RUN_DIR = process.env.BU_RUN_DIR || os.tmpdir();
+const SOCK = process.platform === 'win32'
+  ? `\\\\.\\pipe\\browser-use-bh-${SAFE_NAME}`
+  : path.join(RUN_DIR, `bh-${SAFE_NAME}.sock`);
+const LOG = path.join(RUN_DIR, `bh-${SAFE_NAME}.log`);
+const PID = path.join(RUN_DIR, `bh-${SAFE_NAME}.pid`);
 const INTERNAL = ['chrome://', 'chrome-untrusted://', 'devtools://', 'chrome-extension://', 'about:'];
 
 function _send(req) {
@@ -68,7 +74,7 @@ async function ensure_daemon(wait = 60.0) {
     if (await daemon_alive()) return;
     await new Promise(r => setTimeout(r, 200));
   }
-  throw new Error(`daemon didn't come up — check /tmp/bh-${NAME}.log`);
+  throw new Error(`daemon didn't come up — check ${LOG}`);
 }
 
 async function kill_daemon() {
@@ -125,7 +131,7 @@ async function scroll(x, y, dy = -300, dx = 0) {
 }
 // --- visual ---
 
-async function screenshot(filepath = '/tmp/shot.png', full = false) {
+async function screenshot(filepath = path.join(os.tmpdir(), 'shot.png'), full = false) {
   const r = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: full });
   fs.writeFileSync(filepath, Buffer.from(r.data, 'base64'));
   return filepath;
@@ -247,5 +253,5 @@ module.exports = {
   list_tabs, current_tab, switch_tab, new_tab, ensure_real_tab, iframe_target,
   wait, wait_for_load, js, dispatch_key, upload_file,
   capture_dialogs, dialogs, http_get,
-  SOCK, PID, NAME, INTERNAL,
+  SOCK, LOG, PID, NAME, INTERNAL,
 };

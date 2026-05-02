@@ -5,14 +5,13 @@
  *   - active auth-mode flag ('apiKey' | 'claudeCode')
  *
  * Claude Code subscription OAuth tokens are NOT stored here. They live in
- * the Claude CLI's own macOS Keychain entry; we read them on demand via
- * `readClaudeCodeCredentials()` so the Settings UI always reflects the
- * actual CLI state. Storing a copy of those tokens here only created drift
- * (our copy could go stale, log out from the terminal would not propagate)
- * and a redundant keychain prompt for a value the agent never reads at
- * runtime — the spawned `claude` CLI uses its own keychain entry directly.
+ * the Claude CLI's own OS credential store; we probe the CLI so the Settings
+ * UI reflects the actual CLI state. Storing a copy of those tokens here only
+ * created drift (our copy could go stale, log out from the terminal would not
+ * propagate) and redundant credential prompts for a value the agent never
+ * reads at runtime — the spawned `claude` CLI uses its own credentials.
  *
- * Storage layout in macOS Keychain (via keytar):
+ * Storage layout in the OS credential store (via keytar):
  *   service = "com.browser-use.desktop.credentials"
  *   account = "default"
  *   password = JSON.stringify(Credentials)   (one entry → one prompt)
@@ -76,7 +75,7 @@ let loadingPromise: Promise<Credentials> | null = null;
 
 /**
  * Resolve and cache the credentials blob. Concurrent calls reuse the same
- * in-flight load so we never hit keychain twice.
+ * in-flight load so we never hit the credential store twice.
  */
 async function getAll(): Promise<Credentials> {
   if (cached) return cached;
@@ -104,7 +103,7 @@ async function getAll(): Promise<Credentials> {
       }
       // No new blob yet — try the legacy 4-entry layout. We DROP the legacy
       // anthropic-oauth blob: subscription state now comes live from
-      // readClaudeCodeCredentials() (the Claude CLI's own keychain entry).
+      // the Claude CLI's own credential-store entry).
       const [authModeRaw, apiKeyRaw, oauthRaw, openaiRaw] = await Promise.all([
         keytar.getPassword(AUTH_MODE_SERVICE, DEFAULT_ACCOUNT),
         keytar.getPassword(API_KEY_SERVICE, DEFAULT_ACCOUNT),
@@ -205,8 +204,8 @@ export async function deleteOpenAIKey(): Promise<void> {
 
 /**
  * Mark the user's choice to use Claude Code subscription. We don't copy the
- * CLI's OAuth tokens into our keychain — the agent spawns `claude` directly
- * and it reads from its own keychain. This call exists so the auth-mode
+ * CLI's OAuth tokens into our credential store — the agent spawns `claude`
+ * directly and it reads from its own store. This call exists so the auth-mode
  * flag is consistent with what the user clicked in Settings/onboarding.
  */
 export async function useClaudeCodeSubscription(): Promise<void> {
@@ -217,7 +216,7 @@ export async function useClaudeCodeSubscription(): Promise<void> {
 }
 
 /** Forget the saved Anthropic API key. Claude CLI subscription is unaffected
- *  — that lives in the CLI's own keychain. To log out of the subscription,
+ *  — that lives in the CLI's own credential store. To log out of the subscription,
  *  callers should run `claude auth logout` (apiKeyIpc.ts handles that). Also
  *  clears the authMode flag so a subsequent `claude auth login` is honoured
  *  without the user having to also explicitly pick the subscription path. */
@@ -233,7 +232,7 @@ async function loadApiKey(): Promise<string | null> {
   return (await getAll()).anthropicApiKey;
 }
 
-/** Probe the Claude CLI's own keychain entry to read the subscription tier
+/** Probe the Claude CLI's own credential entry to read the subscription tier
  *  ("max" | "pro" | ...). Returns null if the CLI isn't authed. Used at
  *  session-spawn time so the session record reflects which subscription
  *  ran it. */
@@ -248,8 +247,8 @@ export async function loadClaudeSubscriptionType(): Promise<string | null> {
 }
 
 /** Aggregated status surface for the Settings UI. Anthropic state combines
- *  the saved API key (our keychain) with the Claude CLI's live auth state
- *  (the CLI's keychain), so the panel always matches reality even if the
+ *  the saved API key (our credential store) with the Claude CLI's live auth
+ *  state, so the panel always matches reality even if the
  *  user `claude auth logout`s from a terminal. */
 export interface CredentialStatus {
   anthropic:
@@ -298,7 +297,7 @@ export async function getCredentialStatus(): Promise<CredentialStatus> {
 
 /**
  * Resolve the API-key auth (or null). The OAuth/subscription branch was
- * unused at runtime — Claude CLI handles its own auth via its own keychain
+ * unused at runtime — Claude CLI handles its own auth via its own credential store
  * — so this function only returns a stored API key when the user has
  * explicitly chosen 'apiKey' mode, plus an env-var fallback for dev.
  */
