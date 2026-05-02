@@ -207,7 +207,7 @@ tasks:
         npm run make
 
   release:publish:
-    desc: Cut a new notarized release on GitHub. Auto-bumps patch from latest tag, or pass VERSION=X.Y.Z. Pushes tag to trigger CI; CI runs ONLY on tag pushes, never on regular commits.
+    desc: Cut a full GitHub release for all platforms. Auto-bumps patch from latest tag, or pass VERSION=X.Y.Z. Pushes a tag to trigger release.yml.
     silent: true
     cmds:
       - |
@@ -259,7 +259,7 @@ tasks:
           echo "→ package version already at $VERSION"
         fi
 
-        echo "→ tagging $tag → release.yml will build a notarized DMG, update ZIP, latest-mac.yml, and publish to GitHub Releases"
+        echo "→ tagging $tag → release.yml will build and publish all platform assets"
         git tag -a "$tag" -m "Release $tag"
         git push origin "$tag"
         echo
@@ -272,6 +272,45 @@ tasks:
         fi
         echo "Once green:"
         echo "  https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/releases/tag/$tag"
+
+  release:dispatch:
+    desc: Manually run release.yml for PLATFORM=all|mac|windows|linux without creating a tag locally. Optional TAG=... SIGNING_MODE=unsigned|signed|notarized.
+    silent: true
+    cmds:
+      - |
+        set -euo pipefail
+        platform="{{default "all" .PLATFORM}}"
+        signing_mode="{{default "signed" .SIGNING_MODE}}"
+        tag="{{default "" .TAG}}"
+
+        case "$platform" in
+          all|mac|windows|linux) ;;
+          *)
+            echo "✗ Invalid PLATFORM '$platform' (expected all, mac, windows, or linux)"
+            exit 1
+            ;;
+        esac
+        case "$signing_mode" in
+          unsigned|signed|notarized) ;;
+          *)
+            echo "✗ Invalid SIGNING_MODE '$signing_mode' (expected unsigned, signed, or notarized)"
+            exit 1
+            ;;
+        esac
+
+        if [ -n "$tag" ]; then
+          gh workflow run release.yml --ref main -f platform="$platform" -f signing-mode="$signing_mode" -f tag="$tag"
+        else
+          gh workflow run release.yml --ref main -f platform="$platform" -f signing-mode="$signing_mode"
+        fi
+
+        echo "✓ queued release.yml for platform=$platform signing-mode=$signing_mode"
+        sleep 3
+        run_id=$(gh run list --repo "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+        if [ -n "$run_id" ]; then
+          echo "  gh run watch $run_id"
+          echo "  https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/actions/runs/$run_id"
+        fi
 
   notary:setup:
     desc: One-time — store Apple notary credentials in macOS keychain so notary:* tasks work without env vars

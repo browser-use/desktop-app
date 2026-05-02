@@ -1,15 +1,16 @@
 name: Release
 
-# Produces downloadable macOS and Windows installers plus the update feeds for
-# a given ref and attaches them to a GitHub Release page. Two entry points:
+# Produces downloadable macOS, Windows, and Linux installers plus update feeds
+# for a given ref and attaches them to a GitHub Release page. Two entry points:
 #
 #   1. Push a git tag matching v*.*.* (e.g. `git tag v1.2.3 && git push origin v1.2.3`).
 #      This is the primary way to cut a release. The release name equals the tag.
 #
-#   2. Manual `workflow_dispatch` for dry-runs / tester builds. The optional
+#   2. Manual `workflow_dispatch` for dry-runs / tester builds. The `platform`
+#      input can publish `mac`, `windows`, `linux`, or `all`. The optional
 #      `tag` input defaults to a timestamp-based pre-release tag
-#      (`v0.0.0-dev-<timestamp>`) so the manual path always yields a
-#      prerelease that is easy to identify and discard.
+#      (`v0.0.0-dev-<run-id>`) so the manual path always yields a prerelease
+#      that is easy to identify and discard.
 #
 # Signing has three modes: unsigned, signed (Developer ID only), and
 # notarized (signed + Apple notary). Tag pushes default to `signed` while
@@ -26,6 +27,15 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Platform assets to build and publish'
+        type: choice
+        options:
+          - all
+          - mac
+          - windows
+          - linux
+        default: all
       signing-mode:
         description: 'unsigned (fastest), signed (Developer ID, no notarization), notarized (signed + Apple notarization)'
         type: choice
@@ -53,6 +63,7 @@ env:
 jobs:
   make:
     name: Package + make DMG (macOS)
+    if: ${{ github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'mac' }}
     runs-on: macos-latest
     # 90 min covers a slow Apple notary queue (we've seen 30+ min of "In
     # Progress"). If the workflow times out mid-notarize, no release is
@@ -395,6 +406,7 @@ jobs:
 
   make-windows:
     name: Package + make Squirrel (Windows)
+    if: ${{ github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -551,6 +563,7 @@ jobs:
 
   make-linux:
     name: Package Linux distros (Docker)
+    if: ${{ github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
