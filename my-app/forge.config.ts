@@ -34,6 +34,7 @@ const WINDOWS_SIGN_WITH_PARAMS = process.env.WINDOWS_SIGN_WITH_PARAMS ?? '';
 const IS_MAC = process.platform === 'darwin';
 const SHOULD_SIGN = IS_MAC && !SKIP_SIGNING && SIGNING_IDENTITY !== '';
 const WINDOWS_ICON_PATH = path.resolve(__dirname, 'assets/icon.ico');
+const LINUX_ICON_PATH = path.resolve(__dirname, 'assets/icon.png');
 
 // ---------------------------------------------------------------------------
 // Forge configuration
@@ -178,9 +179,37 @@ const config: ForgeConfig = {
       ...(WINDOWS_SIGN_WITH_PARAMS ? { signWithParams: WINDOWS_SIGN_WITH_PARAMS } : {}),
     }),
 
-    // Linux: deb + rpm (unchanged from scaffold)
-    new MakerDeb({}),
-    new MakerRpm({}),
+    // Linux: distro packages. Built in docker/linux.Dockerfile so host
+    // toolchain drift does not decide whether dpkg/rpmbuild succeeds.
+    new MakerDeb({
+      options: {
+        name: 'browser-use-desktop',
+        productName: 'Browser Use',
+        genericName: 'Agent Browser',
+        description: 'Desktop agent hub for Claude Code and Codex',
+        productDescription: 'Browser Use is a desktop agent hub for Claude Code and Codex.',
+        section: 'utils',
+        priority: 'optional',
+        maintainer: 'Browser Use <support@browser-use.com>',
+        homepage: 'https://github.com/browser-use/desktop-app',
+        icon: LINUX_ICON_PATH,
+        categories: ['Utility', 'Network'],
+      },
+    }),
+    new MakerRpm({
+      options: {
+        name: 'browser-use-desktop',
+        productName: 'Browser Use',
+        genericName: 'Agent Browser',
+        description: 'Desktop agent hub for Claude Code and Codex',
+        productDescription: 'Browser Use is a desktop agent hub for Claude Code and Codex.',
+        license: 'MIT',
+        group: 'Applications/Internet',
+        homepage: 'https://github.com/browser-use/desktop-app',
+        icon: LINUX_ICON_PATH,
+        categories: ['Utility', 'Network'],
+      },
+    }),
   ],
 
   plugins: [

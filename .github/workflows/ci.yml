@@ -140,3 +140,22 @@ jobs:
           name: windows-squirrel-x64
           path: my-app/out/make/squirrel.windows/x64/
           if-no-files-found: error
+
+  linux-make:
+    name: Linux packages (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build Linux .deb/.rpm in Docker
+        run: bash scripts/build-linux-docker.sh
+
+      - name: Upload Linux package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-packages-x64
+          path: |
+            my-app/out/make/deb/x64/*.deb
+            my-app/out/make/rpm/x64/*.rpm
+          if-no-files-found: error

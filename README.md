@@ -18,6 +18,8 @@ Built on [Browser Harness](https://github.com/browser-use/browser-harness).
 
 **macOS (Apple Silicon):** [Browser-Use-arm64.dmg](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
 
+**Linux:** `.deb` and `.rpm` packages are published on GitHub Releases.
+
 The link always points to the latest release.
 
 ## Providers
@@ -37,6 +39,12 @@ Requires [Task](https://taskfile.dev) (`brew install go-task`).
 
 ```bash
 task up    # Install deps and start the app
+```
+
+Linux packages are built in Docker so local distro tools do not affect the output:
+
+```bash
+task linux:make:docker
 ```
 
 ## License
