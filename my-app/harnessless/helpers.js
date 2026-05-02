@@ -10,15 +10,13 @@ const fs = require('fs');
 const { execSync, spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
+const { runtimePaths } = require('./paths');
 
-const NAME = process.env.BU_NAME || 'default';
-const SAFE_NAME = NAME.replace(/[^a-zA-Z0-9_.-]/g, '_');
-const RUN_DIR = process.env.BU_RUN_DIR || os.tmpdir();
-const SOCK = process.platform === 'win32'
-  ? `\\\\.\\pipe\\browser-use-bh-${SAFE_NAME}`
-  : path.join(RUN_DIR, `bh-${SAFE_NAME}.sock`);
-const LOG = path.join(RUN_DIR, `bh-${SAFE_NAME}.log`);
-const PID = path.join(RUN_DIR, `bh-${SAFE_NAME}.pid`);
+const PATHS = runtimePaths();
+const NAME = PATHS.name;
+const SOCK = PATHS.socketPath;
+const LOG = PATHS.logPath;
+const PID = PATHS.pidPath;
 const INTERNAL = ['chrome://', 'chrome-untrusted://', 'devtools://', 'chrome-extension://', 'about:'];
 
 function _send(req) {

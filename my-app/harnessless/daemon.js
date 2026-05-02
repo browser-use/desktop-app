@@ -12,48 +12,21 @@
 const fs = require('fs');
 const net = require('net');
 const path = require('path');
-const os = require('os');
 const WebSocket = require('ws');
+const { chromeProfileCandidates, runtimePaths } = require('./paths');
 
-const NAME = process.env.BU_NAME || 'default';
-const SAFE_NAME = NAME.replace(/[^a-zA-Z0-9_.-]/g, '_');
-const RUN_DIR = process.env.BU_RUN_DIR || os.tmpdir();
-const SOCK = process.platform === 'win32'
-  ? `\\\\.\\pipe\\browser-use-bh-${SAFE_NAME}`
-  : path.join(RUN_DIR, `bh-${SAFE_NAME}.sock`);
-const LOG = path.join(RUN_DIR, `bh-${SAFE_NAME}.log`);
-const PID = path.join(RUN_DIR, `bh-${SAFE_NAME}.pid`);
+const PATHS = runtimePaths();
+const NAME = PATHS.name;
+const RUN_DIR = PATHS.runDir;
+const SOCK = PATHS.socketPath;
+const LOG = PATHS.logPath;
+const PID = PATHS.pidPath;
 const BUF = 500;
-
-function chromeProfileCandidates() {
-  const home = os.homedir();
-  if (process.platform === 'darwin') {
-    return [
-      path.join(home, 'Library', 'Application Support', 'Google', 'Chrome'),
-      path.join(home, 'Library', 'Application Support', 'Chromium'),
-      path.join(home, 'Library', 'Application Support', 'Google', 'Chrome Canary'),
-    ];
-  }
-  if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    return [
-      path.join(localAppData, 'Google', 'Chrome', 'User Data'),
-      path.join(localAppData, 'Google', 'Chrome SxS', 'User Data'),
-      path.join(localAppData, 'Chromium', 'User Data'),
-    ];
-  }
-  const configHome = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
-  return [
-    path.join(configHome, 'google-chrome'),
-    path.join(configHome, 'google-chrome-beta'),
-    path.join(configHome, 'google-chrome-unstable'),
-    path.join(configHome, 'chromium'),
-  ];
-}
 
 const INTERNAL = ['chrome://', 'chrome-untrusted://', 'devtools://', 'chrome-extension://', 'about:'];
 
 function log(msg) {
+  fs.mkdirSync(RUN_DIR, { recursive: true });
   fs.appendFileSync(LOG, msg + '\n');
 }
 
@@ -243,6 +216,7 @@ async function main() {
     process.stderr.write(`daemon already running on ${SOCK}\n`);
     process.exit(0);
   }
+  fs.mkdirSync(RUN_DIR, { recursive: true });
   fs.writeFileSync(LOG, '');
   fs.writeFileSync(PID, String(process.pid));
 
