@@ -5,7 +5,7 @@
 > Run a team of browser agents on your desktop.
 
 [![Download for macOS](https://img.shields.io/badge/Download_for_macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
-[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-Setup.exe)
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-0078D4?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA4OCA4OCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMTIuNCAzNiA3LjV2MzQuOEgwem00MC4zLTUuNUw4OCAwdjQxLjhINDAuM3pNMCA0NS43aDM2djM0LjhMMCA3NS42em00MC4zLjVIODhWODhsLTQ3LjctNi43eiIvPjwvc3ZnPg%3D%3D&logoColor=white)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-Setup.exe)
 [![Download for Linux](https://img.shields.io/badge/Download_for_Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-x64.AppImage)
 
 Every AI browser tries to be both a browser *and* an agent. Keep your normal Chrome — this is just the agent half.
