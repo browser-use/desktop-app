@@ -2,13 +2,15 @@
 
 # Browser Use Desktop App
 
-> Run a team of browser agents on your Mac.
+> Run a team of browser agents on your desktop.
 
-[![Download for Mac](https://img.shields.io/badge/Download_for_Mac-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
+[![Download for macOS](https://img.shields.io/badge/Download_for_macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
+[![Download for Windows](https://img.shields.io/badge/Download_for_Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-Setup.exe)
+[![Download for Linux](https://img.shields.io/badge/Download_for_Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-x64.AppImage)
 
 Every AI browser tries to be both a browser *and* an agent. Keep your normal Chrome — this is just the agent half.
 
-Ports your cookies into a fresh Chromium so agents are logged in everywhere you are, and spawns tasks from anywhere on your Mac with a keyboard shortcut.
+Ports your cookies into a fresh Chromium so agents are logged in everywhere you are, and spawns tasks from anywhere with a keyboard shortcut.
 
 Built on [Browser Harness](https://github.com/browser-use/browser-harness).
 
@@ -18,9 +20,11 @@ Built on [Browser Harness](https://github.com/browser-use/browser-harness).
 
 **macOS (Apple Silicon):** [Browser-Use-arm64.dmg](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-arm64.dmg)
 
+**Windows (x64):** [Browser-Use-Setup.exe](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-Setup.exe)
+
 **Linux:** [Browser-Use-x64.AppImage](https://github.com/browser-use/desktop-app/releases/latest/download/Browser-Use-x64.AppImage) supports in-app auto-updates. `.deb` and `.rpm` packages are also published on GitHub Releases for manual installs.
 
-The link always points to the latest release.
+The buttons and links always point to the latest release.
 
 ## Providers
 
