@@ -539,7 +539,10 @@ jobs:
 
           $packages = Get-Content $releaseFile |
             Where-Object { $_.Trim() } |
-            ForEach-Object { ($_ -split '\s+')[-1] } |
+            ForEach-Object {
+              $tokens = $_.TrimStart([char]0xFEFF) -split '\s+'
+              $tokens | Where-Object { $_ -like '*.nupkg' }
+            } |
             Where-Object { $_ -like '*.nupkg' }
           if (@($packages).Count -eq 0) {
             Write-Error 'RELEASES does not reference any .nupkg package'
