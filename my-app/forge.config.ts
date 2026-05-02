@@ -47,6 +47,7 @@ const config: ForgeConfig = {
     // @electron/packager; the field is now `name`. The runtime semantics
     // are identical: the bundled .app/.exe will be named after this.
     name: 'Browser Use',
+    executableName: 'browser-use-desktop',
 
     // Exclude dev-only files from the packaged app.asar. Without this,
     // Forge ships src/, tests/, personal planning .md files, Vite
