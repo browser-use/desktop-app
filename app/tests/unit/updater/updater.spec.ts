@@ -27,6 +27,7 @@ class FakeAutoUpdater {
   public checkCount = 0;
   public quitAndInstallCount = 0;
   public quitAndInstallCalled = false;
+  public onQuitAndInstall: (() => void) | null = null;
   public downloadedUpdateHelper = {
     clear: vi.fn(async () => {}),
   };
@@ -53,6 +54,7 @@ class FakeAutoUpdater {
   }
 
   quitAndInstall(): void {
+    this.onQuitAndInstall?.();
     this.quitAndInstallCount += 1;
     this.quitAndInstallCalled = true;
   }
@@ -67,6 +69,7 @@ class FakeWindowsAutoUpdater {
   public checkCount = 0;
   public quitAndInstallCount = 0;
   public quitAndInstallCalled = false;
+  public onQuitAndInstall: (() => void) | null = null;
   private listeners = new Map<string, Listener[]>();
 
   reset(): void {
@@ -74,6 +77,7 @@ class FakeWindowsAutoUpdater {
     this.checkCount = 0;
     this.quitAndInstallCount = 0;
     this.quitAndInstallCalled = false;
+    this.onQuitAndInstall = null;
     this.listeners = new Map<string, Listener[]>();
   }
 
@@ -97,6 +101,7 @@ class FakeWindowsAutoUpdater {
   }
 
   quitAndInstall(): void {
+    this.onQuitAndInstall?.();
     this.quitAndInstallCount += 1;
     this.quitAndInstallCalled = true;
   }
@@ -148,6 +153,7 @@ async function loadUpdaterFresh(
   fakeAutoUpdater.checkCount = 0;
   fakeAutoUpdater.quitAndInstallCount = 0;
   fakeAutoUpdater.quitAndInstallCalled = false;
+  fakeAutoUpdater.onQuitAndInstall = null;
   fakeAutoUpdater.downloadedUpdateHelper.clear.mockClear();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (fakeAutoUpdater as any).listeners = new Map<string, Listener[]>();
@@ -440,6 +446,30 @@ describe('updater (Issue #202)', () => {
 
       expect(result.action).toBe('install-started');
       expect(fakeAutoUpdater.quitAndInstallCalled).toBe(true);
+
+      unsubscribe();
+      updater.stopUpdater();
+    });
+
+    it('signals the app quit path before calling quitAndInstall', async () => {
+      const { updater, electron } = await loadUpdaterFresh(true);
+      vi.spyOn(electron.dialog, 'showMessageBox').mockResolvedValue({
+        response: 1,
+        checkboxChecked: false,
+      });
+      const order: string[] = [];
+      const unsubscribe = updater.onBeforeQuitForUpdate(() => {
+        order.push('before-quit-for-update');
+      });
+      fakeAutoUpdater.onQuitAndInstall = () => {
+        order.push('quit-and-install');
+      };
+
+      await updater.initUpdater();
+      fakeAutoUpdater.emit('update-downloaded', { version: '0.0.27' });
+      updater.installDownloadedUpdate();
+
+      expect(order).toEqual(['before-quit-for-update', 'quit-and-install']);
 
       unsubscribe();
       updater.stopUpdater();

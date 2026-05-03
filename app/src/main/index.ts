@@ -110,6 +110,7 @@ import {
   getUpdateStatus,
   initUpdater,
   installDownloadedUpdate,
+  onBeforeQuitForUpdate,
   onUpdateStatusChanged,
   stopUpdater,
 } from './updater';
@@ -1276,6 +1277,12 @@ app.whenReady().then(async () => {
     }
   });
   app.once('will-quit', unsubscribeUpdateStatus);
+
+  const unsubscribeBeforeQuitForUpdate = onBeforeQuitForUpdate(() => {
+    isQuitting = true;
+    mainLogger.info('main.beforeQuitForUpdate', { msg: 'Allowing updater to close windows for install' });
+  });
+  app.once('will-quit', unsubscribeBeforeQuitForUpdate);
 
   ipcMain.handle('pill:open-hub', () => {
     mainLogger.info('main.pill:open-hub');

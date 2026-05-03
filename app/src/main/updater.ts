@@ -51,6 +51,7 @@ let initialized = false;
 let activeCheckForUpdates: UpdateCheck | null = null;
 let activeInstallUpdate: (() => void) | null = null;
 let installInProgress = false;
+let updateQuitInProgress = false;
 
 type UpdateCheck = () => Promise<void>;
 
@@ -65,6 +66,10 @@ type AppUpdaterWithDownloadedUpdateHelper = AppUpdater & {
   downloadedUpdateHelper?: {
     clear?: () => Promise<void>;
   } | null;
+};
+
+type BeforeQuitForUpdateEmitter = {
+  on(event: 'before-quit-for-update', listener: () => void): unknown;
 };
 
 export type UpdateStatus =
@@ -89,6 +94,7 @@ export type UpdateStatusEvent = {
 };
 
 const updateStatusEmitter = new EventEmitter();
+const updateQuitEmitter = new EventEmitter();
 let currentUpdateStatus: UpdateStatusEvent = { status: 'idle' };
 
 function logInfo(message: string, extra?: Record<string, unknown>): void {
@@ -162,6 +168,24 @@ export function getUpdateStatus(): UpdateStatusEvent {
 export function onUpdateStatusChanged(listener: (event: UpdateStatusEvent) => void): () => void {
   updateStatusEmitter.on('status', listener);
   return () => updateStatusEmitter.off('status', listener);
+}
+
+export function onBeforeQuitForUpdate(listener: () => void): () => void {
+  updateQuitEmitter.on('before-quit-for-update', listener);
+  return () => updateQuitEmitter.off('before-quit-for-update', listener);
+}
+
+function emitBeforeQuitForUpdate(): void {
+  if (updateQuitInProgress) return;
+  updateQuitInProgress = true;
+  logInfo('beforeQuitForUpdate');
+  updateQuitEmitter.emit('before-quit-for-update');
+}
+
+function onElectronBeforeQuitForUpdate(autoUpdater: BeforeQuitForUpdateEmitter): void {
+  autoUpdater.on('before-quit-for-update', () => {
+    emitBeforeQuitForUpdate();
+  });
 }
 
 function getVersionFromArgs(args: unknown[]): string | undefined {
@@ -249,11 +273,17 @@ function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
     });
   });
 
+  onElectronBeforeQuitForUpdate(autoUpdater as unknown as BeforeQuitForUpdateEmitter);
+
   autoUpdater.on('update-downloaded', (info) => {
     logInfo('downloaded', { version: info.version });
     installInProgress = false;
+    updateQuitInProgress = false;
     activeInstallUpdate = () => {
-      runInstallUpdate(() => autoUpdater.quitAndInstall(false, true));
+      runInstallUpdate(() => {
+        emitBeforeQuitForUpdate();
+        autoUpdater.quitAndInstall(false, true);
+      });
     };
     emitUpdateStatus({
       status: 'ready',
@@ -282,6 +312,7 @@ function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
 
   autoUpdater.on('error', (err: Error) => {
     installInProgress = false;
+    updateQuitInProgress = false;
     logError('error', { error: err.message, stack: err.stack });
     void clearCachedUpdate(autoUpdater, `error: ${err.message}`);
     emitUpdateStatus({ status: 'error', error: err.message, message: 'Failed to check for updates.' });
@@ -325,8 +356,12 @@ function configureWindowsAutoUpdater(autoUpdater: WindowsAutoUpdater): UpdateChe
     const version = getVersionFromArgs(args);
     logInfo('windows.downloaded', { version });
     installInProgress = false;
+    updateQuitInProgress = false;
     activeInstallUpdate = () => {
-      runInstallUpdate(() => autoUpdater.quitAndInstall());
+      runInstallUpdate(() => {
+        emitBeforeQuitForUpdate();
+        autoUpdater.quitAndInstall();
+      });
     };
     emitUpdateStatus({
       status: 'ready',
@@ -353,9 +388,12 @@ function configureWindowsAutoUpdater(autoUpdater: WindowsAutoUpdater): UpdateChe
 
   autoUpdater.on('error', (err: Error) => {
     installInProgress = false;
+    updateQuitInProgress = false;
     logError('windows.error', { error: err.message, stack: err.stack });
     emitUpdateStatus({ status: 'error', error: err.message, message: 'Failed to check for updates.' });
   });
+
+  onElectronBeforeQuitForUpdate(autoUpdater);
 
   return async () => {
     autoUpdater.checkForUpdates();
@@ -594,5 +632,7 @@ export function stopUpdater(): void {
   initialized = false;
   activeCheckForUpdates = null;
   activeInstallUpdate = null;
+  installInProgress = false;
+  updateQuitInProgress = false;
   currentUpdateStatus = { status: 'idle' };
 }
