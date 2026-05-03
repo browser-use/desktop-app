@@ -225,11 +225,59 @@ interface ElectronSettingsCodexAPI {
   logout: () => Promise<{ opened: boolean; error?: string }>;
 }
 
+interface ElectronSettingsAppAPI {
+  getUpdateStatus: () => Promise<{
+    status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
+    version?: string;
+    message?: string;
+    error?: string;
+    progress?: {
+      percent: number | null;
+      transferred: number | null;
+      total: number | null;
+      bytesPerSecond: number | null;
+    };
+  }>;
+  getInfo: () => Promise<{
+    version: string;
+    latestVersion: string | null;
+    isLatestVersion: boolean | null;
+    platform: string;
+    packaged: boolean;
+    updateSupported: boolean;
+    canDownloadUpdate: boolean;
+    updateFeedUrl: string;
+  }>;
+  downloadLatest: () => Promise<{
+    ok: boolean;
+    action: 'started-update-check' | 'unavailable';
+    message: string;
+  }>;
+  installUpdate: () => Promise<{
+    ok: boolean;
+    action: 'install-started' | 'not-ready';
+    message: string;
+  }>;
+  onUpdateStatus: (cb: (event: {
+    status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
+    version?: string;
+    message?: string;
+    error?: string;
+    progress?: {
+      percent: number | null;
+      transferred: number | null;
+      total: number | null;
+      bytesPerSecond: number | null;
+    };
+  }) => void) => () => void;
+}
+
 interface ElectronSettingsAPI {
   apiKey: ElectronSettingsApiKeyAPI;
   claudeCode?: ElectronSettingsClaudeCodeAPI;
   openaiKey?: ElectronSettingsOpenAiKeyAPI;
   codex?: ElectronSettingsCodexAPI;
+  app?: ElectronSettingsAppAPI;
 }
 
 interface ElectronAPI {

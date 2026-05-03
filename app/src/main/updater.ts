@@ -31,6 +31,7 @@
  * release workflow handles that when the Apple secrets are present.
  */
 
+import { EventEmitter } from 'node:events';
 import { app, autoUpdater as electronAutoUpdater, dialog } from 'electron';
 import type { AppUpdater } from 'electron-updater';
 
@@ -41,9 +42,12 @@ const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 // latest-linux.yml directly from the published release assets and avoids
 // depending on electron-builder's GitHub provider metadata generation.
 const UPDATE_FEED_URL = 'https://github.com/browser-use/desktop-app/releases/latest/download';
+const LATEST_RELEASE_API_URL = 'https://api.github.com/repos/browser-use/desktop-app/releases/latest';
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
+let activeCheckForUpdates: UpdateCheck | null = null;
+let activeInstallUpdate: (() => void) | null = null;
 
 type UpdateCheck = () => Promise<void>;
 
@@ -53,6 +57,53 @@ type WindowsAutoUpdater = {
   checkForUpdates(): void;
   quitAndInstall(): void;
 };
+
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'ready'
+  | 'error'
+  | 'unavailable';
+
+export type UpdateStatusEvent = {
+  status: UpdateStatus;
+  version?: string;
+  message?: string;
+  error?: string;
+  progress?: {
+    percent: number | null;
+    transferred: number | null;
+    total: number | null;
+    bytesPerSecond: number | null;
+  };
+};
+
+const updateStatusEmitter = new EventEmitter();
+let currentUpdateStatus: UpdateStatusEvent = { status: 'idle' };
+
+function emitUpdateStatus(event: UpdateStatusEvent): void {
+  currentUpdateStatus = event;
+  updateStatusEmitter.emit('status', event);
+}
+
+export function getUpdateStatus(): UpdateStatusEvent {
+  return currentUpdateStatus;
+}
+
+export function onUpdateStatusChanged(listener: (event: UpdateStatusEvent) => void): () => void {
+  updateStatusEmitter.on('status', listener);
+  return () => updateStatusEmitter.off('status', listener);
+}
+
+function getVersionFromArgs(args: unknown[]): string | undefined {
+  const first = args[0];
+  if (first && typeof first === 'object' && 'version' in first) {
+    const version = (first as { version?: unknown }).version;
+    return typeof version === 'string' ? version : undefined;
+  }
+  return undefined;
+}
 
 /**
  * Return true when auto-update should be skipped (dev / non-packaged /
@@ -85,14 +136,25 @@ function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[updater] Checking for update');
+    emitUpdateStatus({ status: 'checking', message: 'Checking for updates...' });
   });
 
   autoUpdater.on('update-available', (info) => {
     console.log('[updater] Update available:', info.version, 'current:', app.getVersion());
+    emitUpdateStatus({
+      status: 'downloading',
+      version: info.version,
+      message: `Downloading version ${info.version}...`,
+    });
   });
 
   autoUpdater.on('update-not-available', (info) => {
     console.log('[updater] No update available. Current version is latest:', info.version);
+    emitUpdateStatus({
+      status: 'idle',
+      version: info.version,
+      message: `Version ${app.getVersion()} is the latest version.`,
+    });
   });
 
   autoUpdater.on('download-progress', (progress) => {
@@ -102,10 +164,28 @@ function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
       `(${progress.transferred}/${progress.total} bytes)`,
       `speed: ${progress.bytesPerSecond} B/s`,
     );
+    emitUpdateStatus({
+      status: 'downloading',
+      message: `Downloading update (${pct}%)...`,
+      progress: {
+        percent: typeof progress.percent === 'number' ? progress.percent : null,
+        transferred: typeof progress.transferred === 'number' ? progress.transferred : null,
+        total: typeof progress.total === 'number' ? progress.total : null,
+        bytesPerSecond: typeof progress.bytesPerSecond === 'number' ? progress.bytesPerSecond : null,
+      },
+    });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[updater] Update downloaded:', info.version);
+    activeInstallUpdate = () => {
+      autoUpdater.quitAndInstall(false, true);
+    };
+    emitUpdateStatus({
+      status: 'ready',
+      version: info.version,
+      message: `Version ${info.version} is ready to install.`,
+    });
     // Prompt the user. If they dismiss, autoInstallOnAppQuit handles it on
     // the next natural quit, so we never block an update forever.
     dialog
@@ -119,7 +199,7 @@ function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
       })
       .then(({ response }) => {
         if (response === 0) {
-          autoUpdater.quitAndInstall(false, true);
+          activeInstallUpdate?.();
         }
       })
       .catch((err: unknown) => {
@@ -129,6 +209,7 @@ function configureGenericAutoUpdater(autoUpdater: AppUpdater): UpdateCheck {
 
   autoUpdater.on('error', (err: Error) => {
     console.error('[updater] Auto-update error:', err.message);
+    emitUpdateStatus({ status: 'error', error: err.message, message: 'Failed to check for updates.' });
     // Non-fatal — log and continue. Do not crash the app on update errors.
   });
 
@@ -142,18 +223,40 @@ function configureWindowsAutoUpdater(autoUpdater: WindowsAutoUpdater): UpdateChe
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[updater] Checking for Windows update');
+    emitUpdateStatus({ status: 'checking', message: 'Checking for updates...' });
   });
 
   autoUpdater.on('update-available', (...args) => {
     console.log('[updater] Windows update available:', ...args);
+    const version = getVersionFromArgs(args);
+    emitUpdateStatus({
+      status: 'downloading',
+      version,
+      message: version ? `Downloading version ${version}...` : 'Downloading update...',
+    });
   });
 
   autoUpdater.on('update-not-available', (...args) => {
     console.log('[updater] No Windows update available:', ...args);
+    const version = getVersionFromArgs(args);
+    emitUpdateStatus({
+      status: 'idle',
+      version,
+      message: `Version ${app.getVersion()} is the latest version.`,
+    });
   });
 
   autoUpdater.on('update-downloaded', (...args) => {
     console.log('[updater] Windows update downloaded:', ...args);
+    const version = getVersionFromArgs(args);
+    activeInstallUpdate = () => {
+      autoUpdater.quitAndInstall();
+    };
+    emitUpdateStatus({
+      status: 'ready',
+      version,
+      message: version ? `Version ${version} is ready to install.` : 'An update is ready to install.',
+    });
     dialog
       .showMessageBox({
         type: 'info',
@@ -165,7 +268,7 @@ function configureWindowsAutoUpdater(autoUpdater: WindowsAutoUpdater): UpdateChe
       })
       .then(({ response }) => {
         if (response === 0) {
-          autoUpdater.quitAndInstall();
+          activeInstallUpdate?.();
         }
       })
       .catch((err: unknown) => {
@@ -175,6 +278,7 @@ function configureWindowsAutoUpdater(autoUpdater: WindowsAutoUpdater): UpdateChe
 
   autoUpdater.on('error', (err: Error) => {
     console.error('[updater] Windows auto-update error:', err.message);
+    emitUpdateStatus({ status: 'error', error: err.message, message: 'Failed to check for updates.' });
   });
 
   return async () => {
@@ -186,6 +290,130 @@ export function supportsUpdates(platform = process.platform, env: NodeJS.Process
   if (platform === 'darwin' || platform === 'win32') return true;
   if (platform === 'linux') return Boolean(env.APPIMAGE);
   return false;
+}
+
+function getUpdateUnavailableMessage(platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+  if (shouldSkipUpdates()) {
+    return 'In-app updates are available after installing a packaged release build.';
+  }
+  if (!supportsUpdates(platform, env)) {
+    return 'In-app updates are only available for macOS, Windows, and Linux AppImage builds.';
+  }
+  return 'In-app updates are unavailable in this build.';
+}
+
+export type UpdateRuntimeInfo = {
+  version: string;
+  latestVersion: string | null;
+  isLatestVersion: boolean | null;
+  platform: NodeJS.Platform;
+  packaged: boolean;
+  updateSupported: boolean;
+  canDownloadUpdate: boolean;
+  updateFeedUrl: string;
+};
+
+export type ManualUpdateResult = {
+  ok: boolean;
+  action: 'started-update-check' | 'unavailable';
+  message: string;
+};
+
+export type InstallUpdateResult = {
+  ok: boolean;
+  action: 'install-started' | 'not-ready';
+  message: string;
+};
+
+function normalizeVersion(version: string): string {
+  return version.trim().replace(/^v/i, '');
+}
+
+async function fetchLatestReleaseVersion(): Promise<string | null> {
+  if (typeof fetch !== 'function') return null;
+  try {
+    const res = await fetch(LATEST_RELEASE_API_URL, {
+      headers: {
+        accept: 'application/vnd.github+json',
+        'user-agent': 'Browser-Use-Desktop-Updater',
+      },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { tag_name?: unknown };
+    return typeof data.tag_name === 'string' ? normalizeVersion(data.tag_name) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getUpdateRuntimeInfo(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<UpdateRuntimeInfo> {
+  const version = app.getVersion();
+  const latestVersion = await fetchLatestReleaseVersion();
+  const updateSupported = supportsUpdates(platform, env);
+  const canDownloadUpdate = app.isPackaged && updateSupported && !(env.NODE_ENV && env.NODE_ENV !== 'production');
+  return {
+    version,
+    latestVersion,
+    isLatestVersion: latestVersion === null ? null : normalizeVersion(version) === latestVersion,
+    platform,
+    packaged: app.isPackaged,
+    updateSupported,
+    canDownloadUpdate,
+    updateFeedUrl: UPDATE_FEED_URL,
+  };
+}
+
+export async function downloadLatestVersion(): Promise<ManualUpdateResult> {
+  if (shouldSkipUpdates() || !supportsUpdates(process.platform, process.env)) {
+    const message = getUpdateUnavailableMessage();
+    emitUpdateStatus({ status: 'unavailable', message });
+    return {
+      ok: false,
+      action: 'unavailable',
+      message,
+    };
+  }
+
+  if (!activeCheckForUpdates) {
+    await initUpdater();
+  }
+
+  if (!activeCheckForUpdates) {
+    const message = 'In-app updates are unavailable in this build.';
+    emitUpdateStatus({ status: 'unavailable', message });
+    return {
+      ok: false,
+      action: 'unavailable',
+      message,
+    };
+  }
+
+  emitUpdateStatus({ status: 'checking', message: 'Checking for updates...' });
+  await activeCheckForUpdates();
+  return {
+    ok: true,
+    action: 'started-update-check',
+    message: 'Checking for updates. If a newer version exists, it will download in the background and prompt when ready.',
+  };
+}
+
+export function installDownloadedUpdate(): InstallUpdateResult {
+  if (!activeInstallUpdate || currentUpdateStatus.status !== 'ready') {
+    return {
+      ok: false,
+      action: 'not-ready',
+      message: 'No downloaded update is ready to install.',
+    };
+  }
+  activeInstallUpdate();
+  return {
+    ok: true,
+    action: 'install-started',
+    message: 'Restarting to install the update...',
+  };
 }
 
 /**
@@ -241,6 +469,7 @@ export async function initUpdater(): Promise<void> {
   }
 
   initialized = true;
+  activeCheckForUpdates = checkForUpdates;
 
   // Initial check on startup.
   try {
@@ -271,4 +500,7 @@ export function stopUpdater(): void {
     console.log('[updater] Stopped periodic update check timer');
   }
   initialized = false;
+  activeCheckForUpdates = null;
+  activeInstallUpdate = null;
+  currentUpdateStatus = { status: 'idle' };
 }

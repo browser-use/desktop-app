@@ -176,6 +176,7 @@ describe('updater (Issue #202)', () => {
       configurable: true,
     });
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   describe('shouldSkipUpdates', () => {
@@ -319,6 +320,104 @@ describe('updater (Issue #202)', () => {
 
       updater.stopUpdater();
     });
+  });
+
+  describe('manual update download', () => {
+    it('reports when the running app version matches the latest release tag', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ tag_name: 'v0.1.0-test' }),
+      })));
+      const { updater } = await loadUpdaterFresh(false);
+
+      const info = await updater.getUpdateRuntimeInfo();
+
+      expect(info.version).toBe('0.1.0-test');
+      expect(info.latestVersion).toBe('0.1.0-test');
+      expect(info.isLatestVersion).toBe(true);
+      expect(info.canDownloadUpdate).toBe(false);
+    });
+
+    it('reports when a newer release is available', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ tag_name: 'v9.9.9' }),
+      })));
+      const { updater } = await loadUpdaterFresh(false);
+
+      const info = await updater.getUpdateRuntimeInfo();
+
+      expect(info.latestVersion).toBe('9.9.9');
+      expect(info.isLatestVersion).toBe(false);
+    });
+
+    it('does not open a browser URL when updater cannot run in the current build', async () => {
+      const { updater, electron } = await loadUpdaterFresh(false);
+      const openExternal = vi.spyOn(electron.shell, 'openExternal');
+
+      const result = await updater.downloadLatestVersion();
+
+      expect(result.ok).toBe(false);
+      expect(result.action).toBe('unavailable');
+      expect(updater.getUpdateStatus()).toMatchObject({
+        status: 'unavailable',
+      });
+      expect(openExternal).not.toHaveBeenCalled();
+      expect(fakeAutoUpdater.checkCount).toBe(0);
+    });
+
+    it('starts an updater check when packaged updates are supported', async () => {
+      const { updater } = await loadUpdaterFresh(true);
+
+      const result = await updater.downloadLatestVersion();
+
+      expect(result.action).toBe('started-update-check');
+      expect(fakeAutoUpdater.feedURL).toEqual({
+        provider: 'generic',
+        url: 'https://github.com/browser-use/desktop-app/releases/latest/download',
+      });
+      expect(fakeAutoUpdater.checkCount).toBeGreaterThanOrEqual(2);
+
+      updater.stopUpdater();
+    });
+
+    it('publishes live update status and installs once an update is ready', async () => {
+      const { updater, electron } = await loadUpdaterFresh(true);
+      vi.spyOn(electron.dialog, 'showMessageBox').mockResolvedValue({
+        response: 1,
+        checkboxChecked: false,
+      });
+      const statuses: string[] = [];
+      const unsubscribe = updater.onUpdateStatusChanged((event) => {
+        statuses.push(event.status);
+      });
+
+      await updater.initUpdater();
+      fakeAutoUpdater.emit('update-available', { version: '9.9.9' });
+      fakeAutoUpdater.emit('download-progress', {
+        percent: 42,
+        transferred: 42,
+        total: 100,
+        bytesPerSecond: 1000,
+      });
+      fakeAutoUpdater.emit('update-downloaded', { version: '9.9.9' });
+
+      expect(statuses).toContain('downloading');
+      expect(updater.getUpdateStatus()).toMatchObject({
+        status: 'ready',
+        version: '9.9.9',
+      });
+      expect(fakeAutoUpdater.quitAndInstallCalled).toBe(false);
+
+      const result = updater.installDownloadedUpdate();
+
+      expect(result.action).toBe('install-started');
+      expect(fakeAutoUpdater.quitAndInstallCalled).toBe(true);
+
+      unsubscribe();
+      updater.stopUpdater();
+    });
+
   });
 
   describe('stopUpdater', () => {

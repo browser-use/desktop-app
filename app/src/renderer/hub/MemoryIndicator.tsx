@@ -15,6 +15,10 @@ interface MemoryData {
   processCount: number;
 }
 
+interface AppInfo {
+  version: string;
+}
+
 function formatGb(mb: number): string {
   if (mb < 1024) return `${Math.round(mb)} MB`;
   return `${(mb / 1024).toFixed(1)} GB`;
@@ -47,6 +51,16 @@ export function MemoryIndicator({ onOpenSettings }: MemoryIndicatorProps): React
     staleTime: 4000,
   });
 
+  const { data: appInfo } = useQuery<AppInfo | null>({
+    queryKey: ['app-info'],
+    queryFn: async () => {
+      const api = window.electronAPI?.settings?.app;
+      if (!api) return null;
+      return api.getInfo();
+    },
+    staleTime: Infinity,
+  });
+
   if (!data) return null;
 
   return (
@@ -74,6 +88,11 @@ export function MemoryIndicator({ onOpenSettings }: MemoryIndicatorProps): React
         </svg>
         <span>Settings</span>
       </button>
+      {appInfo?.version && (
+        <span className="mem-indicator__version" title={`Browser Use v${appInfo.version}`}>
+          v{appInfo.version}
+        </span>
+      )}
       {open && (
         <>
           <div className="mem-indicator__scrim" onClick={() => setOpen(false)} />

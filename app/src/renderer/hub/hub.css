@@ -349,6 +349,18 @@
   background-color: var(--color-bg-hover);
 }
 
+.mem-indicator__version {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--color-fg-disabled);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .mem-indicator__btn {
   display: flex;
   align-items: center;
@@ -3311,6 +3323,31 @@ button:focus:not(:focus-visible) {
   margin-top: 2px;
 }
 
+.settings-pane__value {
+  color: var(--color-fg-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.settings-pane__progress {
+  width: min(220px, 100%);
+  height: 3px;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-elevated);
+}
+
+.settings-pane__progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent-default);
+  transition: width var(--duration-normal) var(--ease-out);
+}
+
 .settings-pane__toggle {
   position: relative;
   width: 32px;
@@ -4483,4 +4520,3 @@ button:focus:not(:focus-visible) {
   font-size: 12px;
   align-self: flex-start;
 }
-

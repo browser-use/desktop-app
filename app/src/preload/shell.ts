@@ -98,6 +98,67 @@ contextBridge.exposeInMainWorld('electronAPI', {
       openSystemNotifications: (): Promise<{ ok: boolean; error?: string }> =>
         ipcRenderer.invoke('settings:open-system-notifications'),
     },
+    app: {
+      getInfo: (): Promise<{
+        version: string;
+        latestVersion: string | null;
+        isLatestVersion: boolean | null;
+        platform: string;
+        packaged: boolean;
+        updateSupported: boolean;
+        canDownloadUpdate: boolean;
+        updateFeedUrl: string;
+      }> => ipcRenderer.invoke('settings:app:get-info'),
+      downloadLatest: (): Promise<{
+        ok: boolean;
+        action: 'started-update-check' | 'unavailable';
+        message: string;
+      }> => ipcRenderer.invoke('settings:app:download-latest'),
+      getUpdateStatus: (): Promise<{
+        status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
+        version?: string;
+        message?: string;
+        error?: string;
+        progress?: {
+          percent: number | null;
+          transferred: number | null;
+          total: number | null;
+          bytesPerSecond: number | null;
+        };
+      }> => ipcRenderer.invoke('settings:app:get-update-status'),
+      installUpdate: (): Promise<{
+        ok: boolean;
+        action: 'install-started' | 'not-ready';
+        message: string;
+      }> => ipcRenderer.invoke('settings:app:install-update'),
+      onUpdateStatus: (cb: (event: {
+        status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
+        version?: string;
+        message?: string;
+        error?: string;
+        progress?: {
+          percent: number | null;
+          transferred: number | null;
+          total: number | null;
+          bytesPerSecond: number | null;
+        };
+      }) => void): (() => void) => {
+        const handler = (_event: unknown, payload: {
+          status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
+          version?: string;
+          message?: string;
+          error?: string;
+          progress?: {
+            percent: number | null;
+            transferred: number | null;
+            total: number | null;
+            bytesPerSecond: number | null;
+          };
+        }) => cb(payload);
+        ipcRenderer.on('settings:app:update-status', handler);
+        return () => ipcRenderer.removeListener('settings:app:update-status', handler);
+      },
+    },
   },
   telemetry: {
     capture: (name: string, props?: Record<string, string | number | boolean>): void => {

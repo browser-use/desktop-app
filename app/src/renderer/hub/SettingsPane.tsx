@@ -8,6 +8,189 @@ type ElectronPrivacyAPI = {
   openSystemNotifications: () => Promise<{ ok: boolean; error?: string }>;
 };
 
+type ElectronAppAPI = {
+  getUpdateStatus: () => Promise<UpdateStatusEvent>;
+  getInfo: () => Promise<{
+    version: string;
+    latestVersion: string | null;
+    isLatestVersion: boolean | null;
+    platform: string;
+    packaged: boolean;
+    updateSupported: boolean;
+    canDownloadUpdate: boolean;
+    updateFeedUrl: string;
+  }>;
+  downloadLatest: () => Promise<{
+    ok: boolean;
+    action: 'started-update-check' | 'unavailable';
+    message: string;
+  }>;
+  installUpdate: () => Promise<{
+    ok: boolean;
+    action: 'install-started' | 'not-ready';
+    message: string;
+  }>;
+  onUpdateStatus: (cb: (event: UpdateStatusEvent) => void) => () => void;
+};
+
+type UpdateStatusEvent = {
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
+  version?: string;
+  message?: string;
+  error?: string;
+  progress?: {
+    percent: number | null;
+    transferred: number | null;
+    total: number | null;
+    bytesPerSecond: number | null;
+  };
+};
+
+function AppSection(): React.ReactElement {
+  const [info, setInfo] = useState<Awaited<ReturnType<ElectronAppAPI['getInfo']>> | null>(null);
+  const [updateStatusEvent, setUpdateStatusEvent] = useState<UpdateStatusEvent>({ status: 'idle' });
+  const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const api = window.electronAPI?.settings?.app;
+  const onLatest = info?.isLatestVersion === true;
+  const canDownloadUpdate = info?.canDownloadUpdate === true;
+  const updateReady = updateStatusEvent.status === 'ready';
+  const updateBusy = updateStatusEvent.status === 'checking' || updateStatusEvent.status === 'downloading';
+  const downloadProgress = updateStatusEvent.progress?.percent;
+  const progressWidth = typeof downloadProgress === 'number'
+    ? `${Math.max(2, Math.min(100, downloadProgress))}%`
+    : updateStatusEvent.status === 'downloading'
+      ? '18%'
+      : '0%';
+  const updateStatus = updateStatusEvent.message ?? (
+    !info
+      ? 'Checking latest version...'
+      : updateReady
+        ? 'Update is ready to install.'
+        : updateBusy
+          ? 'Checking for updates...'
+          : onLatest
+            ? 'You are on the latest version.'
+            : info.latestVersion
+              ? `Latest version is ${info.latestVersion}.`
+              : canDownloadUpdate
+                ? 'Checks on startup and every hour.'
+                : 'In-app updates are available in packaged release builds.'
+  );
+  const buttonLabel = !info || checking
+    ? 'Checking...'
+    : installing
+      ? 'Restarting...'
+      : updateReady
+        ? 'Restart to install'
+        : onLatest
+          ? 'On latest'
+          : canDownloadUpdate
+            ? 'Download update'
+            : 'Unavailable';
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api?.getInfo() ?? Promise.resolve(null),
+      api?.getUpdateStatus() ?? Promise.resolve<UpdateStatusEvent>({ status: 'idle' }),
+    ])
+      .then(([nextInfo, nextStatus]) => {
+        if (cancelled) return;
+        setInfo(nextInfo);
+        setUpdateStatusEvent(nextStatus);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInfo(null);
+        setUpdateStatusEvent({ status: 'error', message: 'Could not read update status.' });
+      });
+
+    const unsubscribe = api?.onUpdateStatus((nextStatus) => {
+      setUpdateStatusEvent(nextStatus);
+      if (nextStatus.status !== 'ready') setInstalling(false);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [api]);
+
+  const handleDownloadLatest = useCallback(async () => {
+    if (!api || checking || installing || onLatest || updateBusy || updateReady || !canDownloadUpdate) return;
+    setChecking(true);
+    setUpdateStatusEvent({ status: 'checking', message: 'Checking for updates...' });
+    try {
+      const result = await api.downloadLatest();
+      setUpdateStatusEvent((current) => (
+        current.status === 'checking' ? { status: result.ok ? 'checking' : 'unavailable', message: result.message } : current
+      ));
+      const next = await api.getInfo();
+      setInfo(next);
+    } catch {
+      setUpdateStatusEvent({ status: 'error', message: 'Could not start the in-app update check. Please try again later.' });
+    } finally {
+      setChecking(false);
+    }
+  }, [api, canDownloadUpdate, checking, installing, onLatest, updateBusy, updateReady]);
+
+  const handleInstallUpdate = useCallback(async () => {
+    if (!api || installing || !updateReady) return;
+    setInstalling(true);
+    try {
+      const result = await api.installUpdate();
+      setUpdateStatusEvent((current) => ({
+        ...current,
+        message: result.message,
+      }));
+    } catch {
+      setUpdateStatusEvent({ status: 'error', message: 'Could not restart to install the update.' });
+      setInstalling(false);
+    }
+  }, [api, installing, updateReady]);
+
+  const handleUpdateClick = updateReady ? handleInstallUpdate : handleDownloadLatest;
+
+  return (
+    <div className="settings-pane__section">
+      <span className="settings-pane__section-title">Application</span>
+      <div className="settings-pane__row">
+        <div>
+          <div className="settings-pane__label">Version</div>
+          <div className="settings-pane__sublabel">
+            {info ? `Browser Use ${info.version}` : 'Detecting version...'}
+          </div>
+        </div>
+        {info && <span className="settings-pane__value">v{info.version}</span>}
+      </div>
+      <div className="settings-pane__row">
+        <div>
+          <div className="settings-pane__label">Updates</div>
+          <div className="settings-pane__sublabel">
+            {updateStatus}
+          </div>
+          {(updateStatusEvent.status === 'downloading' || updateStatusEvent.status === 'ready') && (
+            <div className="settings-pane__progress" aria-hidden="true">
+              <span
+                className="settings-pane__progress-fill"
+                style={{ width: updateStatusEvent.status === 'ready' ? '100%' : progressWidth }}
+              />
+            </div>
+          )}
+        </div>
+        <button
+          className="conn-card__btn conn-card__btn--secondary"
+          onClick={handleUpdateClick}
+          disabled={!api || !info || checking || installing || updateBusy || onLatest || (!canDownloadUpdate && !updateReady)}
+        >
+          {buttonLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PrivacySection(): React.ReactElement {
   const [telemetry, setTelemetry] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
@@ -211,6 +394,7 @@ export function SettingsPane({ open, onClose, keybindings, overrides, onUpdateBi
           </button>
         </div>
         <div className="settings-pane__body">
+          <AppSection />
           <div className="settings-pane__section">
             <span className="settings-pane__section-title">Connections</span>
             <ConnectionsPane embedded />

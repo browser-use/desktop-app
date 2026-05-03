@@ -104,7 +104,15 @@ import { WhatsAppAdapter } from './channels/WhatsAppAdapter';
 import { ChannelRouter } from './channels/ChannelRouter';
 import { registerChannelHandlers, unregisterChannelHandlers } from './channels/ipc';
 // Auto-updater
-import { initUpdater, stopUpdater } from './updater';
+import {
+  downloadLatestVersion,
+  getUpdateRuntimeInfo,
+  getUpdateStatus,
+  initUpdater,
+  installDownloadedUpdate,
+  onUpdateStatusChanged,
+  stopUpdater,
+} from './updater';
 
 // ---------------------------------------------------------------------------
 // Crash telemetry: catch unhandled errors before anything else
@@ -1241,6 +1249,33 @@ app.whenReady().then(async () => {
     mainLogger.info('main.settings:open');
     openSettingsWindow();
   });
+
+  ipcMain.handle('settings:app:get-info', () => {
+    mainLogger.debug('main.settings:app:get-info');
+    return getUpdateRuntimeInfo();
+  });
+
+  ipcMain.handle('settings:app:download-latest', async () => {
+    mainLogger.info('main.settings:app:download-latest');
+    return downloadLatestVersion();
+  });
+
+  ipcMain.handle('settings:app:get-update-status', () => {
+    mainLogger.debug('main.settings:app:get-update-status');
+    return getUpdateStatus();
+  });
+
+  ipcMain.handle('settings:app:install-update', () => {
+    mainLogger.info('main.settings:app:install-update');
+    return installDownloadedUpdate();
+  });
+
+  const unsubscribeUpdateStatus = onUpdateStatusChanged((event) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('settings:app:update-status', event);
+    }
+  });
+  app.once('will-quit', unsubscribeUpdateStatus);
 
   ipcMain.handle('pill:open-hub', () => {
     mainLogger.info('main.pill:open-hub');
