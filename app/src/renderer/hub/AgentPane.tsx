@@ -11,6 +11,7 @@ import cursorLogoSrc from './cursor-logo.svg?raw';
 import vscodeLogo from './vscode-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';
 import openaiLogo from './openai-logo.svg';
+import opencodeLogo from './opencode-logo-dark.svg';
 import { adaptSession } from './types';
 import type { AgentSession, OutputEntry } from './types';
 
@@ -1030,6 +1031,9 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
           <span className="pane__prompt">{session.prompt}</span>
           {session.engine === 'codex' && (
             <img className="pane__engine-icon" src={openaiLogo} alt="Codex" title="Codex" />
+          )}
+          {session.engine === 'browsercode' && (
+            <img className="pane__engine-icon" src={opencodeLogo} alt="BrowserCode" title="BrowserCode" />
           )}
           {session.engine === 'claude-code' && (
             <img className="pane__engine-icon" src={claudeCodeLogo} alt="Claude Code" title="Claude Code" />

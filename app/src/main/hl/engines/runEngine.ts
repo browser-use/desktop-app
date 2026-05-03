@@ -11,7 +11,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { engineLogger } from '../../logger';
-import { resolveAuth, loadOpenAIKey, loadClaudeSubscriptionType } from '../../identity/authStore';
+import { resolveAuth, loadOpenAIKey, loadClaudeSubscriptionType, loadBrowserCodeConfig } from '../../identity/authStore';
 import { helpersPath, toolsPath, skillPath } from '../harness';
 import { get as getAdapter } from './registry';
 import { resolveCliSpawn } from './pathEnrich';
@@ -105,11 +105,21 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
   //    the key appropriate to its provider so we can't accidentally send an
   //    Anthropic key to OpenAI (or vice versa).
   let savedApiKey: string | undefined;
+  let browserCodeProviderId: string | undefined;
+  let browserCodeModel: string | undefined;
   let cliAuthed = false;
   try {
     if (adapter.id === 'codex') {
       const k = await loadOpenAIKey();
       if (k) savedApiKey = k;
+      cliAuthed = (await adapter.probeAuthed()).authed;
+    } else if (adapter.id === 'browsercode') {
+      const cfg = await loadBrowserCodeConfig();
+      if (cfg) {
+        savedApiKey = cfg.apiKey;
+        browserCodeProviderId = cfg.providerId;
+        browserCodeModel = cfg.model;
+      }
       cliAuthed = (await adapter.probeAuthed()).authed;
     } else {
       const auth = await resolveAuth();
@@ -180,6 +190,8 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     cdpPort: opts.cdpPort,
     resumeSessionId: opts.resumeSessionId,
     savedApiKey,
+    browserCodeProviderId,
+    browserCodeModel,
     attachmentRefs,
   };
   const wrappedPrompt = adapter.wrapPrompt(spawnCtx);

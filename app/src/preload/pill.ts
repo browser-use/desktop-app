@@ -242,7 +242,6 @@ contextBridge.exposeInMainWorld('pillAPI', {
 
 // Minimal `electronAPI.sessions` subset so shared components (EnginePicker)
 // used inside the pill renderer can reach the same engine IPCs the hub uses.
-// Only the three calls EnginePicker needs — don't grow this without a reason.
 contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
     platform: process.platform,
@@ -259,6 +258,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }> => ipcRenderer.invoke('sessions:engine-status', engineId),
     engineLogin: (engineId: string): Promise<{ opened: boolean; error?: string }> =>
       ipcRenderer.invoke('sessions:engine-login', engineId),
+    engineInstall: (engineId: string): Promise<{ opened: boolean; error?: string; command?: string; displayName?: string }> =>
+      ipcRenderer.invoke('sessions:engine-install', engineId),
+  },
+  settings: {
+    open: (): Promise<void> => {
+      log.info('preload.pill.electronAPI.settings.open', { message: 'Invoking pill:open-settings from shared renderer API' });
+      return ipcRenderer.invoke('pill:open-settings');
+    },
   },
 });
 

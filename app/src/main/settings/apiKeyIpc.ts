@@ -16,6 +16,9 @@ import {
   saveOpenAIKey,
   deleteOpenAIKey,
   getCredentialStatus,
+  saveBrowserCodeConfig,
+  deleteBrowserCodeConfig,
+  loadBrowserCodeConfig,
 } from '../identity/authStore';
 import { probeClaudeAuthStatus } from '../identity/claudeCodeAuth';
 import { enrichedEnv, resolveCliSpawn } from '../hl/engines/pathEnrich';
@@ -40,6 +43,44 @@ const CH_OAI_DELETE = 'settings:openai-key:delete';
 const CH_CODEX_LOGOUT = 'settings:codex:logout';
 const CH_CC_LOGIN = 'settings:claude-code:login';
 const CH_CC_LOGOUT = 'settings:claude-code:logout';
+const CH_BCODE_GET_STATUS = 'settings:browsercode:get-status';
+const CH_BCODE_SAVE = 'settings:browsercode:save';
+const CH_BCODE_TEST = 'settings:browsercode:test';
+const CH_BCODE_DELETE = 'settings:browsercode:delete';
+
+export interface BrowserCodeProviderOption {
+  id: string;
+  name: string;
+  apiBaseUrl: string;
+  defaultModel: string;
+  models: Array<{ id: string; label: string }>;
+}
+
+const BROWSER_CODE_PROVIDERS: BrowserCodeProviderOption[] = [
+  {
+    id: 'moonshotai',
+    name: 'Moonshot / Kimi',
+    apiBaseUrl: 'https://api.moonshot.ai/v1',
+    defaultModel: 'moonshotai/kimi-k2.6',
+    models: [
+      { id: 'moonshotai/kimi-k2.6', label: 'Kimi K2.6' },
+      { id: 'moonshotai/kimi-k2-thinking', label: 'Kimi K2 Thinking' },
+      { id: 'moonshotai/kimi-k2.5', label: 'Kimi K2.5' },
+      { id: 'moonshotai/kimi-k2-turbo-preview', label: 'Kimi K2 Turbo Preview' },
+    ],
+  },
+  {
+    id: 'kimi-for-coding',
+    name: 'Kimi for Coding',
+    apiBaseUrl: 'https://api.kimi.com/coding/v1',
+    defaultModel: 'kimi-for-coding/k2p6',
+    models: [
+      { id: 'kimi-for-coding/k2p6', label: 'K2P6' },
+      { id: 'kimi-for-coding/k2p5', label: 'K2P5' },
+      { id: 'kimi-for-coding/kimi-k2-thinking', label: 'Kimi K2 Thinking' },
+    ],
+  },
+];
 
 export interface AuthStatus {
   type: 'oauth' | 'apiKey' | 'none';
@@ -245,6 +286,126 @@ async function handleOpenAiDelete(): Promise<void> {
   await deleteOpenAIKey();
 }
 
+async function handleBrowserCodeGetStatus(): Promise<{
+  present: boolean;
+  providerId?: string;
+  model?: string;
+  masked?: string;
+  installed?: { installed: boolean; version?: string; error?: string };
+  providers: BrowserCodeProviderOption[];
+}> {
+  const { browserCode } = await getCredentialStatus();
+  let installed: { installed: boolean; version?: string; error?: string } | undefined;
+  try {
+    const { getAdapter } = await import('../hl/engines');
+    installed = await getAdapter('browsercode')?.probeInstalled();
+  } catch (err) {
+    installed = { installed: false, error: (err as Error).message };
+  }
+  mainLogger.info('apiKeyIpc.browserCode.getStatus', {
+    present: browserCode.present,
+    providerId: browserCode.present ? browserCode.providerId : undefined,
+    model: browserCode.present ? browserCode.model : undefined,
+    installed: installed?.installed,
+    installedError: installed?.error,
+  });
+  if (!browserCode.present) return { present: false, installed, providers: BROWSER_CODE_PROVIDERS };
+  return {
+    present: true,
+    providerId: browserCode.providerId,
+    model: browserCode.model,
+    masked: browserCode.masked,
+    installed,
+    providers: BROWSER_CODE_PROVIDERS,
+  };
+}
+
+function providerFromId(providerId: string): BrowserCodeProviderOption {
+  const provider = BROWSER_CODE_PROVIDERS.find((p) => p.id === providerId);
+  if (!provider) throw new Error(`Unsupported BrowserCode provider: ${providerId}`);
+  return provider;
+}
+
+function providerLocalModelId(provider: BrowserCodeProviderOption, model: string): string {
+  return model.startsWith(`${provider.id}/`) ? model.slice(provider.id.length + 1) : model;
+}
+
+async function testOpenAiCompatibleKey(provider: BrowserCodeProviderOption, key: string, model: string): Promise<{ success: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${provider.apiBaseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: providerLocalModelId(provider, model),
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+    clearTimeout(timeoutId);
+    if (response.ok) return { success: true };
+    let errorMsg = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { error?: { message?: string }; message?: string };
+      if (body?.error?.message) errorMsg = body.error.message;
+      else if (body?.message) errorMsg = body.message;
+    } catch { /* ignore */ }
+    mainLogger.warn('apiKeyIpc.browserCode.test.failed', { providerId: provider.id, status: response.status, error: errorMsg });
+    return { success: false, error: errorMsg };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const msg = (err as Error).message ?? 'Network error';
+    mainLogger.warn('apiKeyIpc.browserCode.test.exception', { providerId: provider.id, error: msg });
+    return { success: false, error: msg };
+  }
+}
+
+async function handleBrowserCodeTest(
+  _e: Electron.IpcMainInvokeEvent,
+  payload: { providerId: string; model: string; apiKey: string },
+): Promise<{ success: boolean; error?: string }> {
+  const providerId = assertString(payload?.providerId, 'providerId', 80);
+  const model = assertString(payload?.model, 'model', 160);
+  const key = assertString(payload?.apiKey, 'apiKey', 500);
+  const provider = providerFromId(providerId);
+  mainLogger.info('apiKeyIpc.browserCode.test', { providerId, model, keyLength: key.length });
+  const result = await testOpenAiCompatibleKey(provider, key, model);
+  mainLogger.info('apiKeyIpc.browserCode.test.result', { providerId, model, success: result.success, error: result.error });
+  return result;
+}
+
+async function handleBrowserCodeSave(
+  _e: Electron.IpcMainInvokeEvent,
+  payload: { providerId: string; model: string; apiKey: string },
+): Promise<void> {
+  const providerId = assertString(payload?.providerId, 'providerId', 80);
+  const model = assertString(payload?.model, 'model', 160);
+  const apiKeyInput = assertString(payload?.apiKey ?? '', 'apiKey', 500).trim();
+  providerFromId(providerId);
+  const { getAdapter } = await import('../hl/engines');
+  const installed = await getAdapter('browsercode')?.probeInstalled();
+  if (!installed?.installed) {
+    throw new Error(installed?.error ?? 'Install BrowserCode before adding a provider API key');
+  }
+  const existing = await loadBrowserCodeConfig();
+  const apiKey = apiKeyInput || (existing?.providerId === providerId ? existing.apiKey : '');
+  if (!apiKey) throw new Error('API key is required for this provider');
+  mainLogger.info('apiKeyIpc.browserCode.save', { providerId, model, keyLength: apiKey.length, reusedExistingKey: !apiKeyInput });
+  await saveBrowserCodeConfig({ providerId, model, apiKey });
+  mainLogger.info('apiKeyIpc.browserCode.save.ok', { providerId, model, reusedExistingKey: !apiKeyInput });
+}
+
+async function handleBrowserCodeDelete(): Promise<void> {
+  mainLogger.info('apiKeyIpc.browserCode.delete');
+  await deleteBrowserCodeConfig();
+  mainLogger.info('apiKeyIpc.browserCode.delete.ok');
+}
+
 /**
  * Run a logout CLI non-interactively. Logout is never a TTY flow — it just
  * deletes credentials and exits — so plain child_process.spawn works on
@@ -314,6 +475,9 @@ export function registerApiKeyHandlers(): void {
   ipcMain.handle(CH_CODEX_LOGOUT, handleCodexLogout);
   ipcMain.handle(CH_CC_LOGIN, handleClaudeCodeLogin);
   ipcMain.handle(CH_CC_LOGOUT, handleClaudeCodeLogout);
+  ipcMain.handle(CH_BCODE_GET_STATUS, handleBrowserCodeGetStatus);
+  ipcMain.handle(CH_BCODE_SAVE, handleBrowserCodeSave);
+  ipcMain.handle(CH_BCODE_TEST, handleBrowserCodeTest);
+  ipcMain.handle(CH_BCODE_DELETE, handleBrowserCodeDelete);
   mainLogger.info('apiKeyIpc.register.ok');
 }
-

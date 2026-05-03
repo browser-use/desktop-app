@@ -62,10 +62,17 @@ interface Credentials {
   authMode: AuthMode | null;
   anthropicApiKey: string | null;
   openaiApiKey: string | null;
+  browserCode: BrowserCodeConfig | null;
 }
 
 function emptyCredentials(): Credentials {
-  return { authMode: null, anthropicApiKey: null, openaiApiKey: null };
+  return { authMode: null, anthropicApiKey: null, openaiApiKey: null, browserCode: null };
+}
+
+export interface BrowserCodeConfig {
+  providerId: string;
+  model: string;
+  apiKey: string;
 }
 
 // In-memory cache. Populated on first read; mutated by save/clear functions
@@ -95,6 +102,7 @@ async function getAll(): Promise<Credentials> {
             authMode: parsed.authMode === 'apiKey' || parsed.authMode === 'claudeCode' ? parsed.authMode : null,
             anthropicApiKey: parsed.anthropicApiKey ?? null,
             openaiApiKey: parsed.openaiApiKey ?? null,
+            browserCode: normalizeBrowserCodeConfig((parsed as Partial<Credentials>).browserCode),
           };
           return cached;
         } catch (err) {
@@ -114,6 +122,7 @@ async function getAll(): Promise<Credentials> {
         authMode: authModeRaw === 'apiKey' || authModeRaw === 'claudeCode' ? authModeRaw : null,
         anthropicApiKey: apiKeyRaw ?? null,
         openaiApiKey: openaiRaw ?? null,
+        browserCode: null,
       };
       const hasLegacyData =
         cached.authMode !== null ||
@@ -195,6 +204,45 @@ export async function loadOpenAIKey(): Promise<string | null> {
   return (await getAll()).openaiApiKey;
 }
 
+function normalizeBrowserCodeConfig(value: unknown): BrowserCodeConfig | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<BrowserCodeConfig>;
+  if (
+    typeof candidate.providerId !== 'string' ||
+    typeof candidate.model !== 'string' ||
+    typeof candidate.apiKey !== 'string'
+  ) {
+    return null;
+  }
+  const providerId = candidate.providerId.trim();
+  const model = candidate.model.trim();
+  const apiKey = candidate.apiKey.trim();
+  if (!providerId || !model || !apiKey) return null;
+  return { providerId, model, apiKey };
+}
+
+export async function saveBrowserCodeConfig(config: BrowserCodeConfig): Promise<void> {
+  const c = await getAll();
+  c.browserCode = normalizeBrowserCodeConfig(config);
+  await persistCache();
+  mainLogger.info('authStore.browserCode.save', {
+    providerId: c.browserCode?.providerId ?? 'none',
+    model: c.browserCode?.model ?? 'none',
+    hasKey: !!c.browserCode?.apiKey,
+  });
+}
+
+export async function loadBrowserCodeConfig(): Promise<BrowserCodeConfig | null> {
+  return (await getAll()).browserCode;
+}
+
+export async function deleteBrowserCodeConfig(): Promise<void> {
+  const c = await getAll();
+  c.browserCode = null;
+  await persistCache();
+  mainLogger.info('authStore.browserCode.delete');
+}
+
 export async function deleteOpenAIKey(): Promise<void> {
   const c = await getAll();
   c.openaiApiKey = null;
@@ -256,6 +304,9 @@ export interface CredentialStatus {
     | { type: 'apiKey'; masked: string }
     | { type: 'none' };
   openai: { present: boolean; masked?: string };
+  browserCode:
+    | { present: true; providerId: string; model: string; masked: string }
+    | { present: false };
 }
 
 function maskKey(key: string): string {
@@ -292,7 +343,15 @@ export async function getCredentialStatus(): Promise<CredentialStatus> {
   const openai: CredentialStatus['openai'] = c.openaiApiKey
     ? { present: true, masked: maskKey(c.openaiApiKey) }
     : { present: false };
-  return { anthropic, openai };
+  const browserCode: CredentialStatus['browserCode'] = c.browserCode
+    ? {
+        present: true,
+        providerId: c.browserCode.providerId,
+        model: c.browserCode.model,
+        masked: maskKey(c.browserCode.apiKey),
+      }
+    : { present: false };
+  return { anthropic, openai, browserCode };
 }
 
 /**

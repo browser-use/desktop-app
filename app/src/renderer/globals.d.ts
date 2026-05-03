@@ -54,6 +54,7 @@ interface ElectronSessionAPI {
     authed: { authed: boolean; error?: string };
   }>;
   engineLogin: (engineId: string) => Promise<{ opened: boolean; error?: string }>;
+  engineInstall: (engineId: string) => Promise<{ opened: boolean; error?: string; command?: string; displayName?: string }>;
   resume: (
     id: string,
     prompt: string,
@@ -226,6 +227,25 @@ interface ElectronSettingsCodexAPI {
   logout: () => Promise<{ opened: boolean; error?: string }>;
 }
 
+interface ElectronSettingsBrowserCodeAPI {
+  getStatus: () => Promise<{
+    present: boolean;
+    providerId?: string;
+    model?: string;
+    masked?: string;
+    installed?: { installed: boolean; version?: string; error?: string };
+    providers: Array<{
+      id: string;
+      name: string;
+      defaultModel: string;
+      models: Array<{ id: string; label: string }>;
+    }>;
+  }>;
+  save: (payload: { providerId: string; model: string; apiKey: string }) => Promise<void>;
+  test: (payload: { providerId: string; model: string; apiKey: string }) => Promise<{ success: boolean; error?: string }>;
+  delete: () => Promise<void>;
+}
+
 interface ElectronSettingsAppAPI {
   getUpdateStatus: () => Promise<{
     status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'unavailable';
@@ -274,10 +294,12 @@ interface ElectronSettingsAppAPI {
 }
 
 interface ElectronSettingsAPI {
+  open?: () => Promise<void>;
   apiKey: ElectronSettingsApiKeyAPI;
   claudeCode?: ElectronSettingsClaudeCodeAPI;
   openaiKey?: ElectronSettingsOpenAiKeyAPI;
   codex?: ElectronSettingsCodexAPI;
+  browserCode?: ElectronSettingsBrowserCodeAPI;
   app?: ElectronSettingsAppAPI;
 }
 

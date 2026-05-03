@@ -1002,19 +1002,53 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('sessions:engine-status', async (_event, engineId: string) => {
     const validated = assertString(engineId, 'engineId', 50);
+    mainLogger.info('sessions.engine-status.request', { engineId: validated });
     const { getAdapter } = await import('./hl/engines');
     const adapter = getAdapter(validated);
     if (!adapter) throw new Error(`unknown engine: ${validated}`);
     const [installed, authed] = await Promise.all([adapter.probeInstalled(), adapter.probeAuthed()]);
+    mainLogger.info('sessions.engine-status.result', {
+      engineId: adapter.id,
+      installed: installed.installed,
+      installedError: installed.error,
+      authed: authed.authed,
+      authError: authed.error,
+    });
     return { id: adapter.id, displayName: adapter.displayName, installed, authed };
   });
 
   ipcMain.handle('sessions:engine-login', async (_event, engineId: string, opts?: { deviceAuth?: boolean }) => {
     const validated = assertString(engineId, 'engineId', 50);
+    mainLogger.info('sessions.engine-login.request', { engineId: validated, deviceAuth: !!opts?.deviceAuth });
     const { getAdapter } = await import('./hl/engines');
     const adapter = getAdapter(validated);
     if (!adapter) throw new Error(`unknown engine: ${validated}`);
-    return adapter.openLoginInTerminal(opts);
+    const result = await adapter.openLoginInTerminal(opts);
+    mainLogger.info('sessions.engine-login.result', {
+      engineId: adapter.id,
+      opened: result.opened,
+      hasError: !!result.error,
+      hasVerificationUrl: !!result.verificationUrl,
+      hasDeviceCode: !!result.deviceCode,
+    });
+    return result;
+  });
+
+  ipcMain.handle('sessions:engine-install', async (_event, engineId: string) => {
+    const validated = assertString(engineId, 'engineId', 50);
+    mainLogger.info('sessions.engine-install.request', { engineId: validated });
+    const { getAdapter } = await import('./hl/engines');
+    const adapter = getAdapter(validated);
+    if (!adapter) throw new Error(`unknown engine: ${validated}`);
+    const { openEngineInstallTerminal } = await import('./hl/engines/installer');
+    const result = openEngineInstallTerminal(adapter.id);
+    mainLogger.info('sessions.engine-install.result', {
+      engineId: adapter.id,
+      opened: result.opened,
+      hasError: !!result.error,
+      command: result.command,
+    });
+    return result;
   });
 
   ipcMain.handle('sessions:reveal-output', async (_event, filePath: string) => {

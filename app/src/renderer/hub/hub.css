@@ -1661,38 +1661,36 @@ button:focus:not(:focus-visible) {
 }
 
 .engine-picker__item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-fg-primary);
+  text-align: left;
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
 }
 
 .engine-picker__item--active {
   background-color: var(--color-bg-sunken);
 }
 
-.engine-picker__item-select {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: var(--color-fg-primary);
-  text-align: left;
-  padding: 6px 8px;
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+.engine-picker__item:hover {
+  background-color: var(--color-bg-hover, var(--color-border-subtle));
 }
 
-.engine-picker__item-select:hover {
-  background-color: var(--color-bg-hover, var(--color-border-subtle));
+.engine-picker__item--disabled {
+  cursor: default;
 }
 
 .engine-picker__item-name {
   flex: 1;
+  min-width: 0;
 }
 
 .engine-picker__check {
@@ -1701,31 +1699,17 @@ button:focus:not(:focus-visible) {
 }
 
 .engine-picker__item-login {
-  appearance: none;
-  background: transparent;
   border: 1px solid var(--color-border-default);
   color: var(--color-fg-secondary);
   font-size: var(--font-size-xs);
   padding: 3px 8px;
   border-radius: var(--radius-sm);
-  cursor: pointer;
-  margin-right: 4px;
-}
-
-.engine-picker__item-login:hover:not(:disabled) {
-  color: var(--color-fg-primary);
-  background-color: var(--color-bg-hover, var(--color-border-subtle));
-}
-
-.engine-picker__item-login:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .engine-picker__item-hint {
   color: var(--color-fg-tertiary);
   font-size: var(--font-size-xs);
-  padding-right: 8px;
+  flex-shrink: 0;
 }
 
 .md-output-path {
@@ -3521,6 +3505,13 @@ button:focus:not(:focus-visible) {
   flex-shrink: 0;
 }
 
+.conn-card__icon--contain {
+  object-fit: contain;
+  padding: 4px;
+  background-color: var(--color-bg-base);
+  border: 1px solid var(--color-border-default);
+}
+
 .conn-card__name {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
@@ -3626,6 +3617,45 @@ button:focus:not(:focus-visible) {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) 0 var(--space-1);
+}
+
+.conn-card__api-key-edit--stacked {
+  align-items: flex-end;
+}
+
+.conn-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 180px;
+}
+
+.conn-card__field--wide {
+  flex: 1;
+  min-width: 260px;
+}
+
+.conn-card__field-label {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-disabled);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.conn-card__select {
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-base);
+  color: var(--color-fg-primary);
+  font-size: var(--font-size-xs);
+  outline: none;
+}
+
+.conn-card__select:focus {
+  border-color: var(--color-fg-primary);
 }
 
 .conn-card__api-key-input {
