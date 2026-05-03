@@ -244,6 +244,10 @@ contextBridge.exposeInMainWorld('pillAPI', {
 // used inside the pill renderer can reach the same engine IPCs the hub uses.
 // Only the three calls EnginePicker needs — don't grow this without a reason.
 contextBridge.exposeInMainWorld('electronAPI', {
+  shell: {
+    platform: process.platform,
+    getPlatform: (): Promise<string> => ipcRenderer.invoke('shell:get-platform'),
+  },
   sessions: {
     listEngines: (): Promise<Array<{ id: string; displayName: string; binaryName: string }>> =>
       ipcRenderer.invoke('sessions:list-engines'),

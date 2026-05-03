@@ -152,6 +152,7 @@ interface ElectronHotkeysAPI {
 }
 
 interface ElectronShellAPI {
+  platform: string;
   getPlatform: () => Promise<string>;
   setOverlay: (active: boolean) => void;
 }

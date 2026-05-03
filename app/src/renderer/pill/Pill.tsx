@@ -5,6 +5,7 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES,
   formatBytes,
 } from '../../shared/attachments';
+import { fallbackShortcutPlatform, formatShortcutForPlatform } from '../../shared/hotkeys';
 import { EnginePicker } from '../hub/EnginePicker';
 import {
   RESULT_ROW_HEIGHT,
@@ -217,6 +218,8 @@ export function Pill(): React.ReactElement {
   const checkedDomainsRef = useRef<Set<string>>(new Set());
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const platform = window.electronAPI?.shell?.platform ?? fallbackShortcutPlatform();
+  const formatShortcut = useCallback((shortcut: string) => formatShortcutForPlatform(shortcut, platform), [platform]);
 
   useEffect(() => {
     const refetch = (): void => {
@@ -617,7 +620,7 @@ export function Pill(): React.ReactElement {
           </span>
           {hasResults && (
             <span className="cmdbar__hint">
-              <kbd className="cmdbar__kbd">⌘↵</kbd>
+              <kbd className="cmdbar__kbd">{formatShortcut('CommandOrControl+Enter')}</kbd>
               new agent
             </span>
           )}

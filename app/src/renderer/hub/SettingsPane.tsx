@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ConnectionsPane } from './ConnectionsPane';
 import type { ActionId, KeyBinding } from './keybindings';
+import { fallbackShortcutPlatform, keyboardEventToShortcut } from '../../shared/hotkeys';
 
 type ElectronPrivacyAPI = {
   get: () => Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }>;
@@ -271,21 +272,7 @@ interface SettingsPaneProps {
   onUpdateBinding: (id: ActionId, keys: string[]) => void;
   onResetBinding: (id: ActionId) => void;
   onResetAll: () => void;
-}
-
-function captureKeyCombo(e: KeyboardEvent): string | null {
-  if (e.key === 'Escape' || e.key === 'Tab') return null;
-  if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return null;
-
-  const parts: string[] = [];
-  if (e.metaKey) parts.push('Cmd');
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey && e.key.length > 1) parts.push('Shift');
-
-  const key = e.key === ' ' ? 'Space' : e.key;
-  parts.push(key);
-  return parts.join('+');
+  formatShortcut: (shortcut: string) => string;
 }
 
 interface KeybindRowProps {
@@ -293,9 +280,11 @@ interface KeybindRowProps {
   isOverridden: boolean;
   onUpdate: (id: ActionId, keys: string[]) => void;
   onReset: (id: ActionId) => void;
+  platform: string;
+  formatShortcut: (shortcut: string) => string;
 }
 
-function KeybindRow({ kb, isOverridden, onUpdate, onReset }: KeybindRowProps): React.ReactElement {
+function KeybindRow({ kb, isOverridden, onUpdate, onReset, platform, formatShortcut }: KeybindRowProps): React.ReactElement {
   const [recording, setRecording] = useState(false);
   const [firstKey, setFirstKey] = useState<string | null>(null);
 
@@ -319,7 +308,7 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset }: KeybindRowProps): R
         return;
       }
 
-      const combo = captureKeyCombo(e);
+      const combo = keyboardEventToShortcut(e, platform);
       if (!combo) return;
 
       if (firstKey) {
@@ -344,7 +333,7 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset }: KeybindRowProps): R
       clearTimeout(timer);
       window.removeEventListener('keydown', handler, true);
     };
-  }, [recording, firstKey, kb.id, onUpdate]);
+  }, [recording, firstKey, kb.id, onUpdate, platform]);
 
   return (
     <div className={`settings-pane__row${isOverridden ? ' settings-pane__row--modified' : ''}`}>
@@ -359,11 +348,11 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset }: KeybindRowProps): R
         >
           {recording ? (
             <span className="settings-pane__recording">
-              {firstKey ? `${firstKey} + ...` : 'Press key...'}
+              {firstKey ? `${formatShortcut(firstKey)} + ...` : 'Press key...'}
             </span>
           ) : (
             kb.keys.map((k, i) => (
-              <kbd key={i} className="settings-pane__kbd">{k}</kbd>
+              <kbd key={i} className="settings-pane__kbd">{formatShortcut(k)}</kbd>
             ))
           )}
         </button>
@@ -383,8 +372,9 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset }: KeybindRowProps): R
   );
 }
 
-export function SettingsPane({ open, onClose, keybindings, overrides, onUpdateBinding, onResetBinding, onResetAll }: SettingsPaneProps): React.ReactElement | null {
+export function SettingsPane({ open, onClose, keybindings, overrides, onUpdateBinding, onResetBinding, onResetAll, formatShortcut }: SettingsPaneProps): React.ReactElement | null {
   if (!open) return null;
+  const platform = window.electronAPI?.shell?.platform ?? fallbackShortcutPlatform();
 
   return (
     <div className="settings-pane__scrim" onClick={onClose}>
@@ -419,6 +409,8 @@ export function SettingsPane({ open, onClose, keybindings, overrides, onUpdateBi
                 isOverridden={kb.id in overrides}
                 onUpdate={onUpdateBinding}
                 onReset={onResetBinding}
+                platform={platform}
+                formatShortcut={formatShortcut}
               />
             ))}
           </div>

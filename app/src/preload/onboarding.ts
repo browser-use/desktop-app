@@ -18,6 +18,8 @@ export interface CookieImportResult {
 }
 
 const onboardingAPI = {
+  platform: process.platform,
+
   detectChromeProfiles: (): Promise<ChromeProfile[]> =>
     ipcRenderer.invoke('chrome-import:detect-profiles'),
 
@@ -93,6 +95,8 @@ const onboardingAPI = {
 
   testOpenAIKey: (key: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('onboarding:test-openai-key', key),
+
+  getPlatform: (): Promise<string> => ipcRenderer.invoke('shell:get-platform'),
 
   listenShortcut: (): Promise<{ ok: boolean; accelerator: string }> =>
     ipcRenderer.invoke('onboarding:listen-shortcut'),

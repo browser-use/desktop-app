@@ -21,7 +21,7 @@ export const DEFAULT_KEYBINDINGS: KeyBinding[] = [
   { id: 'nav.open', label: 'Open session', keys: ['Enter'], category: 'Navigation' },
   { id: 'goto.dashboard', label: 'Dashboard', keys: ['g d'], category: 'Views' },
   { id: 'goto.agents', label: 'Grid view', keys: ['g a'], category: 'Views' },
-  { id: 'goto.settings', label: 'Settings', keys: ['Cmd+,'], category: 'Views' },
+  { id: 'goto.settings', label: 'Settings', keys: ['CommandOrControl+,'], category: 'Views' },
   { id: 'search.open', label: 'Search', keys: ['/'], category: 'Actions' },
   { id: 'action.create', label: 'New agent', keys: [], category: 'Actions' },
   { id: 'action.createPane', label: 'New pane', keys: [], category: 'Actions' },

@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_KEYBINDINGS } from './keybindings';
 import type { ActionId, KeyBinding } from './keybindings';
-import { DEFAULT_GLOBAL_CMDBAR_ACCELERATOR, acceleratorToRenderer, rendererToAccelerator } from '../../shared/hotkeys';
+import {
+  DEFAULT_GLOBAL_CMDBAR_ACCELERATOR,
+  acceleratorToRenderer,
+  fallbackShortcutPlatform,
+  formatShortcutForPlatform,
+  keyboardEventToShortcut,
+  rendererToAccelerator,
+  shortcutToRenderer,
+} from '../../shared/hotkeys';
 
 export interface VimKeysReturn {
   chordPrefix: string | null;
@@ -10,36 +18,25 @@ export interface VimKeysReturn {
   updateBinding: (id: ActionId, keys: string[]) => void;
   resetBinding: (id: ActionId) => void;
   resetAll: () => void;
-}
-
-function normalizeKey(e: KeyboardEvent): string {
-  const parts: string[] = [];
-  if (e.metaKey) parts.push('Cmd');
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey && e.key.length > 1) parts.push('Shift');
-  const key = e.key === ' ' ? 'Space' : e.key;
-  if (!['Meta', 'Control', 'Alt', 'Shift'].includes(key)) parts.push(key);
-  return parts.join('+');
+  platform: string;
+  formatShortcut: (shortcut: string) => string;
 }
 
 export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): VimKeysReturn {
   const [overrides, setOverrides] = useState<Record<string, string[]>>({});
   const [chordPrefix, setChordPrefix] = useState<string | null>(null);
-  const [platform, setPlatform] = useState<string>(() => {
-    if (typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)) return 'darwin';
-    return 'other';
-  });
+  const [platform, setPlatform] = useState<string>(() => window.electronAPI?.shell?.platform ?? fallbackShortcutPlatform());
   const chordTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
   const keybindings = DEFAULT_KEYBINDINGS.map((kb) => ({
     ...kb,
-    keys: overrides[kb.id] ?? kb.keys,
+    keys: (overrides[kb.id] ?? kb.keys).map((key) => shortcutToRenderer(key, platform)),
   }));
 
   useEffect(() => {
+    if (window.electronAPI?.shell?.platform) return;
     const api = window.electronAPI;
     api?.shell?.getPlatform?.().then((p: string) => setPlatform(p)).catch(() => {});
   }, []);
@@ -73,7 +70,8 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
 
-      const pressed = normalizeKey(e);
+      const pressed = keyboardEventToShortcut(e, platform);
+      if (!pressed) return;
       const combo = chordPrefix ? `${chordPrefix} ${pressed}` : pressed;
 
       for (const kb of keybindings) {
@@ -103,7 +101,7 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [keybindings, chordPrefix]);
+  }, [keybindings, chordPrefix, platform]);
 
   const updateBinding = useCallback((id: ActionId, keys: string[]) => {
     if (id === 'action.createPane') {
@@ -156,5 +154,7 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
       .catch((err: Error) => console.warn('[useVimKeys] resetAll global cmdbar failed', err));
   }, []);
 
-  return { chordPrefix, keybindings, overrides, updateBinding, resetBinding, resetAll };
+  const formatShortcut = useCallback((shortcut: string) => formatShortcutForPlatform(shortcut, platform), [platform]);
+
+  return { chordPrefix, keybindings, overrides, updateBinding, resetBinding, resetAll, platform, formatShortcut };
 }

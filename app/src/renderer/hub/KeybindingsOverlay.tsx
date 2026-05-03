@@ -6,9 +6,10 @@ interface KeybindingsOverlayProps {
   onClose: () => void;
   keybindings: KeyBinding[];
   onOpenSettings: () => void;
+  formatShortcut: (shortcut: string) => string;
 }
 
-export function KeybindingsOverlay({ open, onClose, keybindings, onOpenSettings }: KeybindingsOverlayProps): React.ReactElement | null {
+export function KeybindingsOverlay({ open, onClose, keybindings, onOpenSettings, formatShortcut }: KeybindingsOverlayProps): React.ReactElement | null {
   if (!open) return null;
 
   const categories = new Map<string, KeyBinding[]>();
@@ -34,7 +35,7 @@ export function KeybindingsOverlay({ open, onClose, keybindings, onOpenSettings 
                   <span className="kb-overlay__label">{kb.label}</span>
                   <span className="kb-overlay__keys">
                     {kb.keys.map((k, i) => (
-                      <kbd key={i} className="kb-overlay__kbd">{k}</kbd>
+                      <kbd key={i} className="kb-overlay__kbd">{formatShortcut(k)}</kbd>
                     ))}
                   </span>
                 </div>

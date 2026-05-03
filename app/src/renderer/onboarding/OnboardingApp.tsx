@@ -4,6 +4,7 @@ import introImage from './intro.png';
 import chromeLogo from './chrome-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';
 import codexLogo from './codex-logo.svg';
+import { acceleratorToDisplayParts, keyboardEventToShortcut, rendererToAccelerator } from '../../shared/hotkeys';
 
 interface ChromeProfile {
   directory: string;
@@ -74,6 +75,8 @@ declare global {
       openCodexLoginTerminal: (opts?: { deviceAuth?: boolean }) => Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }>;
       openExternal: (url: string) => Promise<{ opened: boolean }>;
       requestNotifications: () => Promise<{ supported: boolean }>;
+      platform: string;
+      getPlatform: () => Promise<string>;
       listenShortcut: () => Promise<{ ok: boolean; accelerator: string }>;
       setShortcut: (accelerator: string) => Promise<{ ok: boolean; accelerator: string }>;
       onShortcutActivated: (cb: () => void) => () => void;
@@ -101,30 +104,10 @@ type Step = 'intro' | 'profile' | 'apikey' | 'notifications' | 'shortcut';
 
 const DEFAULT_ACCELERATOR = 'CommandOrControl+Shift+Space';
 
-function formatAccelerator(accel: string): string {
-  return accel
-    .replace('CommandOrControl', '\u2318')
-    .replace('Command', '\u2318')
-    .replace('Control', 'Ctrl')
-    .replace('Shift', '\u21E7')
-    .replace('Alt', '\u2325')
-    .replace(/\+/g, ' ');
-}
-
-function buildAccelerator(e: KeyboardEvent): string | null {
-  const mods: string[] = [];
-  if (e.metaKey) mods.push('CommandOrControl');
-  else if (e.ctrlKey) mods.push('CommandOrControl');
-  if (e.shiftKey) mods.push('Shift');
-  if (e.altKey) mods.push('Alt');
-
-  let key = e.key;
-  if (['Meta', 'Control', 'Shift', 'Alt'].includes(key)) return null;
-  if (key === ' ') key = 'Space';
-  else if (key.length === 1) key = key.toUpperCase();
-
-  if (mods.length === 0) return null;
-  return [...mods, key].join('+');
+function buildAccelerator(e: KeyboardEvent, platform: string): string | null {
+  const shortcut = keyboardEventToShortcut(e, platform);
+  if (!shortcut || (!e.metaKey && !e.ctrlKey && !e.altKey)) return null;
+  return rendererToAccelerator(shortcut);
 }
 
 function PreferencesStep({
@@ -496,7 +479,7 @@ export function OnboardingApp() {
   const [recording, setRecording] = useState(false);
   const [shortcutActivated, setShortcutActivated] = useState(false);
   const [pillOpen, setPillOpen] = useState(false);
-
+  const platform = window.onboardingAPI.platform;
 
   useEffect(() => {
     window.onboardingAPI.detectChromeProfiles().then((p) => {
@@ -682,19 +665,20 @@ export function OnboardingApp() {
     const handler = async (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const accel = buildAccelerator(e);
+      const accel = buildAccelerator(e, platform);
       if (!accel) return;
       setRecording(false);
       try {
         const res = await window.onboardingAPI.setShortcut(accel);
         setAccelerator(res.accelerator);
+        (document.activeElement as HTMLElement | null)?.blur?.();
       } catch (err) {
         console.error('[onboarding] setShortcut failed', err);
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [recording]);
+  }, [recording, platform]);
 
   return (
     <div className="onboarding-container">
@@ -1142,7 +1126,10 @@ export function OnboardingApp() {
                 <button
                   type="button"
                   className="shortcut-recording shortcut-clickable"
-                  onClick={() => setRecording(false)}
+                  onClick={(e) => {
+                    if (e.detail === 0) return;
+                    setRecording(false);
+                  }}
                   title="Click to cancel"
                 >
                   <div className="shortcut-recording-dot" />
@@ -1152,10 +1139,13 @@ export function OnboardingApp() {
                 <button
                   type="button"
                   className="shortcut-keys shortcut-clickable"
-                  onClick={() => setRecording(true)}
+                  onClick={(e) => {
+                    if (e.detail === 0) return;
+                    setRecording(true);
+                  }}
                   title="Click to change shortcut"
                 >
-                  {formatAccelerator(accelerator).split(' ').map((key, i, arr) => (
+                  {acceleratorToDisplayParts(accelerator, platform).map((key, i, arr) => (
                     <React.Fragment key={i}>
                       <kbd className="kbd">{key}</kbd>
                       {i < arr.length - 1 && <span className="kbd-plus">+</span>}

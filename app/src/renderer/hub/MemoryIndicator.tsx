@@ -35,9 +35,10 @@ function statusDotClass(status: string): string {
 
 interface MemoryIndicatorProps {
   onOpenSettings?: () => void;
+  settingsShortcut?: string;
 }
 
-export function MemoryIndicator({ onOpenSettings }: MemoryIndicatorProps): React.ReactElement | null {
+export function MemoryIndicator({ onOpenSettings, settingsShortcut }: MemoryIndicatorProps): React.ReactElement | null {
   const [open, setOpen] = useState(false);
 
   const { data } = useQuery<MemoryData>({
@@ -80,7 +81,7 @@ export function MemoryIndicator({ onOpenSettings }: MemoryIndicatorProps): React
       <button
         className="mem-indicator__settings-btn"
         onClick={onOpenSettings}
-        title="Settings (⌘,)"
+        title={settingsShortcut ? `Settings (${settingsShortcut})` : 'Settings'}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M5.73 1.68a1.25 1.25 0 0 1 2.54 0l.1.44a1.25 1.25 0 0 0 1.63.8l.42-.16a1.25 1.25 0 0 1 1.58 1.73l-.2.4a1.25 1.25 0 0 0 .37 1.55l.35.27a1.25 1.25 0 0 1-.44 2.2l-.43.13a1.25 1.25 0 0 0-.86 1.46l.08.44a1.25 1.25 0 0 1-1.97 1.27l-.33-.3a1.25 1.25 0 0 0-1.6-.06l-.36.27a1.25 1.25 0 0 1-2.03-1.17l.05-.44a1.25 1.25 0 0 0-.92-1.42l-.43-.12a1.25 1.25 0 0 1-.33-2.22l.37-.26a1.25 1.25 0 0 0 .44-1.53l-.18-.41A1.25 1.25 0 0 1 4.7 2.93l.42.17a1.25 1.25 0 0 0 1.6-.86l.11-.44Z" stroke="currentColor" strokeWidth="1.1" />

@@ -229,7 +229,7 @@ export function HubApp(): React.ReactElement {
 
   const shortcutFor = (actionId: ActionId): string => {
     const kb = vim.keybindings.find((b) => b.id === actionId);
-    return kb?.keys[0] ?? '';
+    return kb?.keys[0] ? vim.formatShortcut(kb.keys[0]) : '';
   };
 
   const hideBrowserViews = useCallback(() => {
@@ -455,7 +455,10 @@ export function HubApp(): React.ReactElement {
       <header className="hub-toolbar">
         <div className="hub-toolbar__left">
           <span className="hub-toolbar__title">Browser Use</span>
-          <MemoryIndicator onOpenSettings={() => { hideBrowserViews(); setSettingsOpen(true); }} />
+          <MemoryIndicator
+            onOpenSettings={() => { hideBrowserViews(); setSettingsOpen(true); }}
+            settingsShortcut={shortcutFor('goto.settings')}
+          />
         </div>
         <div className="hub-toolbar__center">
           <HubViewToggle
@@ -486,7 +489,7 @@ export function HubApp(): React.ReactElement {
                 setZoomFactor(1.0);
                 localStorage.setItem('hub-zoom-factor', '1');
               }}
-              title="Reset zoom (Cmd+0)"
+              title={`Reset zoom (${vim.formatShortcut('CommandOrControl+0')})`}
             >
               {Math.round(zoomFactor * 100)}%
             </button>
@@ -599,7 +602,7 @@ export function HubApp(): React.ReactElement {
 
       {vim.chordPrefix && (
         <div className="chord-indicator">
-          <kbd className="chord-indicator__key">{vim.chordPrefix}</kbd>
+          <kbd className="chord-indicator__key">{vim.formatShortcut(vim.chordPrefix)}</kbd>
           <span className="chord-indicator__hint">...</span>
         </div>
       )}
@@ -610,6 +613,7 @@ export function HubApp(): React.ReactElement {
           keybindings={vim.keybindings}
           onClose={hideCmdBar}
           onInvoke={(id) => vimHandlers[id]?.()}
+          formatShortcut={vim.formatShortcut}
         />
       )}
 
@@ -623,6 +627,7 @@ export function HubApp(): React.ReactElement {
           hideBrowserViews();
           setSettingsOpen(true);
         }}
+        formatShortcut={vim.formatShortcut}
       />
 
       <SettingsPane
@@ -633,6 +638,7 @@ export function HubApp(): React.ReactElement {
         onUpdateBinding={vim.updateBinding}
         onResetBinding={vim.resetBinding}
         onResetAll={vim.resetAll}
+        formatShortcut={vim.formatShortcut}
       />
     </div>
   );

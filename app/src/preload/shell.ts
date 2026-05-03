@@ -10,6 +10,7 @@ import type { AgentSession, HlEvent, TabInfo, BrowserPoolStats } from '../shared
 
 contextBridge.exposeInMainWorld('electronAPI', {
   shell: {
+    platform: process.platform,
     getPlatform: (): Promise<string> => ipcRenderer.invoke('shell:get-platform'),
     setOverlay: (active: boolean): void => {
       ipcRenderer.send('shell:set-overlay', active);

@@ -7,9 +7,10 @@ interface CommandBarProps {
   keybindings: KeyBinding[];
   onClose: () => void;
   onInvoke?: (id: ActionId) => void;
+  formatShortcut: (shortcut: string) => string;
 }
 
-export function CommandBar({ screen, keybindings, onClose, onInvoke }: CommandBarProps): React.ReactElement {
+export function CommandBar({ screen, keybindings, onClose, onInvoke, formatShortcut }: CommandBarProps): React.ReactElement {
   const actionIds = SCREEN_COMMANDS[screen] ?? [];
   const items = actionIds
     .map((id) => keybindings.find((kb) => kb.id === id))
@@ -27,9 +28,9 @@ export function CommandBar({ screen, keybindings, onClose, onInvoke }: CommandBa
             title={kb.label}
           >
             <span className="cmdhints__keys">
-              {kb.keys[0]?.split(' ').map((token, i) => (
+              {kb.keys[0] ? formatShortcut(kb.keys[0]).split(' ').map((token, i) => (
                 <kbd key={i} className="cmdhints__kbd">{token}</kbd>
-              ))}
+              )) : null}
             </span>
             <span className="cmdhints__label">{kb.label}</span>
           </button>
