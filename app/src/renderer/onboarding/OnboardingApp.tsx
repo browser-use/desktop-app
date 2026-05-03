@@ -4,7 +4,13 @@ import introImage from './intro.png';
 import chromeLogo from './chrome-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';
 import codexLogo from './codex-logo.svg';
-import { acceleratorToDisplayParts, keyboardEventToShortcut, rendererToAccelerator } from '../../shared/hotkeys';
+import {
+  acceleratorToDisplayParts,
+  defaultGlobalCmdbarAccelerator,
+  keyboardEventToShortcut,
+  normalizeShortcutPlatform,
+  rendererToAccelerator,
+} from '../../shared/hotkeys';
 
 interface ChromeProfile {
   directory: string;
@@ -79,6 +85,7 @@ declare global {
       getPlatform: () => Promise<string>;
       listenShortcut: () => Promise<{ ok: boolean; accelerator: string }>;
       setShortcut: (accelerator: string) => Promise<{ ok: boolean; accelerator: string }>;
+      triggerShortcut: () => Promise<{ ok: boolean }>;
       onShortcutActivated: (cb: () => void) => () => void;
       onTaskSubmitted: (cb: () => void) => () => void;
       onPillShown: (cb: () => void) => () => void;
@@ -102,12 +109,14 @@ declare global {
 
 type Step = 'intro' | 'profile' | 'apikey' | 'notifications' | 'shortcut';
 
-const DEFAULT_ACCELERATOR = 'CommandOrControl+Shift+Space';
-
 function buildAccelerator(e: KeyboardEvent, platform: string): string | null {
   const shortcut = keyboardEventToShortcut(e, platform);
   if (!shortcut || (!e.metaKey && !e.ctrlKey && !e.altKey)) return null;
   return rendererToAccelerator(shortcut);
+}
+
+function acceleratorsMatch(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
 }
 
 function PreferencesStep({
@@ -475,11 +484,23 @@ export function OnboardingApp() {
     window.onboardingAPI.openExternal?.('https://docs.anthropic.com/en/docs/claude-code/overview');
   }, []);
 
-  const [accelerator, setAccelerator] = useState<string>(DEFAULT_ACCELERATOR);
+  const [accelerator, setAccelerator] = useState<string>(() => defaultGlobalCmdbarAccelerator(window.onboardingAPI.platform));
   const [recording, setRecording] = useState(false);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [shortcutActivated, setShortcutActivated] = useState(false);
   const [pillOpen, setPillOpen] = useState(false);
-  const platform = window.onboardingAPI.platform;
+  const [platform, setPlatform] = useState(() => normalizeShortcutPlatform(window.onboardingAPI.platform));
+  const suppressRecordingClickUntilRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    window.onboardingAPI.getPlatform?.().then((detectedPlatform) => {
+      if (!cancelled) setPlatform(normalizeShortcutPlatform(detectedPlatform));
+    }).catch(() => {
+      if (!cancelled) setPlatform(normalizeShortcutPlatform(window.onboardingAPI.platform));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     window.onboardingAPI.detectChromeProfiles().then((p) => {
@@ -629,13 +650,15 @@ export function OnboardingApp() {
     }
   }, []);
 
-  // Shortcut step: register default, listen for activation + task submission
+  // Shortcut step: register the current shortcut, listen for activation + task submission
   useEffect(() => {
     if (step !== 'shortcut') return;
     window.onboardingAPI.listenShortcut().then((res) => {
       if (res.accelerator) setAccelerator(res.accelerator);
+      setShortcutError(res.ok ? null : 'That shortcut is unavailable. Choose another one.');
     });
     const unsubActivated = window.onboardingAPI.onShortcutActivated(() => {
+      setRecording(false);
       setShortcutActivated(true);
     });
     const unsubShown = window.onboardingAPI.onPillShown(() => {
@@ -657,28 +680,67 @@ export function OnboardingApp() {
   }, [step]);
 
   // Key recording
-  const recordingRef = useRef(recording);
-  recordingRef.current = recording;
+  const shouldIgnoreRecordingClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    return e.detail === 0 || Date.now() < suppressRecordingClickUntilRef.current;
+  }, []);
+
+  const startRecording = useCallback(() => {
+    setShortcutError(null);
+    setRecording(true);
+  }, []);
 
   useEffect(() => {
     if (!recording) return;
+    const timeout = window.setTimeout(() => {
+      setRecording(false);
+      setShortcutError('No shortcut was detected. Choose another combination.');
+    }, 8000);
     const handler = async (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (e.key === 'Unidentified') {
+        window.clearTimeout(timeout);
+        setRecording(false);
+        setShortcutError('That shortcut is unavailable. Choose another one.');
+        return;
+      }
       const accel = buildAccelerator(e, platform);
       if (!accel) return;
+      window.clearTimeout(timeout);
+      suppressRecordingClickUntilRef.current = Date.now() + 700;
+      (document.activeElement as HTMLElement | null)?.blur?.();
       setRecording(false);
       try {
         const res = await window.onboardingAPI.setShortcut(accel);
         setAccelerator(res.accelerator);
+        setShortcutError(res.ok ? null : 'That shortcut is unavailable. Choose another one.');
         (document.activeElement as HTMLElement | null)?.blur?.();
       } catch (err) {
         console.error('[onboarding] setShortcut failed', err);
+        setShortcutError('Shortcut setup failed. Choose another one.');
       }
     };
     window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener('keydown', handler, true);
+    };
   }, [recording, platform]);
+
+  useEffect(() => {
+    if (step !== 'shortcut' || recording || pillOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      const accel = buildAccelerator(e, platform);
+      if (!accel || !acceleratorsMatch(accel, accelerator)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void window.onboardingAPI.triggerShortcut().catch((err) => {
+        console.error('[onboarding] triggerShortcut failed', err);
+      });
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [accelerator, pillOpen, platform, recording, step]);
 
   return (
     <div className="onboarding-container">
@@ -1127,7 +1189,7 @@ export function OnboardingApp() {
                   type="button"
                   className="shortcut-recording shortcut-clickable"
                   onClick={(e) => {
-                    if (e.detail === 0) return;
+                    if (shouldIgnoreRecordingClick(e)) return;
                     setRecording(false);
                   }}
                   title="Click to cancel"
@@ -1140,8 +1202,8 @@ export function OnboardingApp() {
                   type="button"
                   className="shortcut-keys shortcut-clickable"
                   onClick={(e) => {
-                    if (e.detail === 0) return;
-                    setRecording(true);
+                    if (shouldIgnoreRecordingClick(e)) return;
+                    startRecording();
                   }}
                   title="Click to change shortcut"
                 >
@@ -1155,14 +1217,21 @@ export function OnboardingApp() {
               )}
             </div>
 
-            <p className="shortcut-hint">
-              Press the shortcut to try it.
+            <p className={`shortcut-hint ${shortcutError ? 'shortcut-hint-error' : ''}`}>
+              {shortcutError ?? 'Press the shortcut to try it.'}
             </p>
 
             <div className="apikey-actions">
               <button
                 className="btn btn-secondary"
-                onClick={() => setRecording((r) => !r)}
+                onClick={(e) => {
+                  if (shouldIgnoreRecordingClick(e)) return;
+                  if (recording) {
+                    setRecording(false);
+                  } else {
+                    startRecording();
+                  }
+                }}
               >
                 {recording ? 'Cancel' : 'Change shortcut'}
               </button>

@@ -18,6 +18,10 @@ loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
 import { app, BrowserWindow, crashReporter, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage, shell } from 'electron';
 
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+}
+
 app.setName('Browser Use');
 
 // Native-crash minidumps → userData/Crashpad/. Captures GPU process,

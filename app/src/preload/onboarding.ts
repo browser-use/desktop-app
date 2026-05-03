@@ -104,6 +104,9 @@ const onboardingAPI = {
   setShortcut: (accelerator: string): Promise<{ ok: boolean; accelerator: string }> =>
     ipcRenderer.invoke('onboarding:set-shortcut', accelerator),
 
+  triggerShortcut: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('onboarding:trigger-shortcut'),
+
   onShortcutActivated: (cb: () => void): (() => void) => {
     const handler = () => cb();
     ipcRenderer.on('shortcut-activated', handler);
