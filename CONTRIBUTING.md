@@ -9,8 +9,8 @@ Install these first:
 From root:
 
 ```bash
-git clone https://github.com/browser-use/desktop-app.git
-cd desktop-app
+git clone https://github.com/browser-use/desktop.git
+cd desktop
 task up
 ```
 
@@ -46,7 +46,7 @@ To get your PR reviewed faster, you can message any of the Browser Use employees
 ## Reporting bugs
 
 Open an issue at
-[browser-use/desktop-app/issues](https://github.com/browser-use/desktop-app/issues)
+[browser-use/desktop/issues](https://github.com/browser-use/desktop/issues)
 with enough detail for someone else to reproduce the problem.
 
 Good bug reports include:

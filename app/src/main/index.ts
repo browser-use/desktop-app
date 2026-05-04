@@ -65,7 +65,7 @@ app.setAboutPanelOptions({
   applicationName: 'Browser Use',
   applicationVersion: app.getVersion(),
   copyright: '© 2026 Browser Use',
-  website: 'https://github.com/browser-use/desktop-app',
+  website: 'https://github.com/browser-use/desktop',
 });
 
 import started from 'electron-squirrel-startup';
@@ -1498,7 +1498,7 @@ function buildApplicationMenu(): void {
           label: 'Report an Issue…',
           click: () => {
             mainLogger.debug('menu.reportIssue');
-            shell.openExternal('https://github.com/browser-use/desktop-app/issues');
+            shell.openExternal('https://github.com/browser-use/desktop/issues');
           },
         },
       ],

@@ -43,8 +43,8 @@ const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 // /releases/latest/download URL makes electron-updater fetch latest-mac.yml or
 // latest-linux.yml directly from the published release assets and avoids
 // depending on electron-builder's GitHub provider metadata generation.
-const UPDATE_FEED_URL = 'https://github.com/browser-use/desktop-app/releases/latest/download';
-const LATEST_RELEASE_API_URL = 'https://api.github.com/repos/browser-use/desktop-app/releases/latest';
+const UPDATE_FEED_URL = 'https://github.com/browser-use/desktop/releases/latest/download';
+const LATEST_RELEASE_API_URL = 'https://api.github.com/repos/browser-use/desktop/releases/latest';
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
