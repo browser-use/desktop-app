@@ -116,7 +116,7 @@ export function useVimKeys(handlers: Partial<Record<ActionId, () => void>>): Vim
   const updateBinding = useCallback(async (id: ActionId, keys: string[]): Promise<boolean> => {
     if (id === 'action.createPane') {
       const api = window.electronAPI;
-      const accel = rendererToAccelerator(keys[0] ?? '');
+      const accel = rendererToAccelerator(keys[0] ?? '', platform);
       if (!accel || !api?.hotkeys?.setGlobalCmdbar) {
         console.warn('[useVimKeys] cannot set global cmdbar', { accel, hasApi: !!api });
         return false;

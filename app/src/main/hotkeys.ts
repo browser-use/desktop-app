@@ -2,7 +2,7 @@ import { app, globalShortcut } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { mainLogger } from './logger';
-import { defaultGlobalCmdbarAccelerator } from '../shared/hotkeys';
+import { defaultGlobalCmdbarAccelerator, normalizeAccelerator } from '../shared/hotkeys';
 
 const log = {
   info: (comp: string, ctx: object) => mainLogger.info(comp, ctx as Record<string, unknown>),
@@ -28,7 +28,7 @@ function loadStore(): HotkeyStore {
     const raw = fs.readFileSync(storePath(), 'utf-8');
     const parsed = JSON.parse(raw) as Partial<HotkeyStore>;
     if (typeof parsed.globalCmdbar === 'string' && parsed.globalCmdbar.length > 0) {
-      return { globalCmdbar: parsed.globalCmdbar };
+      return { globalCmdbar: normalizeAccelerator(parsed.globalCmdbar, process.platform) };
     }
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -55,11 +55,11 @@ function isRegistered(accel: string): boolean {
   return globalShortcut.isRegistered(accel);
 }
 
-function tryRegister(accel: string, callback: () => void): boolean {
+function tryRegister(accel: string): boolean {
   try {
     const ok = globalShortcut.register(accel, () => {
       log.info('hotkeys.fired', { hotkey: accel });
-      callback();
+      currentCallback?.();
     });
     return ok && isRegistered(accel);
   } catch (err) {
@@ -79,8 +79,8 @@ function activeRegisteredAccelerator(): string | null {
   return isRegistered(registeredAccelerator) ? registeredAccelerator : null;
 }
 
-function tryRestore(accel: string, callback: () => void): boolean {
-  const ok = tryRegister(accel, callback);
+function tryRestore(accel: string): boolean {
+  const ok = tryRegister(accel);
   if (!ok) return false;
   currentAccelerator = accel;
   registeredAccelerator = accel;
@@ -94,8 +94,13 @@ export function registerHotkeys(callback: () => void): boolean {
   currentCallback = callback;
   log.info('hotkeys.register', { hotkey: currentAccelerator });
 
+  if (activeRegisteredAccelerator() === currentAccelerator) {
+    saveStore({ globalCmdbar: currentAccelerator });
+    return true;
+  }
+
   unregisterRegistered();
-  const ok = tryRegister(currentAccelerator, callback);
+  const ok = tryRegister(currentAccelerator);
 
   if (!ok) {
     log.warn('hotkeys.register.failed', {
@@ -105,7 +110,7 @@ export function registerHotkeys(callback: () => void): boolean {
     registeredAccelerator = null;
     const fallbackAccelerator = defaultGlobalCmdbarAccelerator(process.platform);
     const failedAccelerator = currentAccelerator;
-    if (fallbackAccelerator !== failedAccelerator && tryRestore(fallbackAccelerator, callback)) {
+    if (fallbackAccelerator !== failedAccelerator && tryRestore(fallbackAccelerator)) {
       log.warn('hotkeys.register.fallback', {
         from: failedAccelerator,
         to: fallbackAccelerator,
@@ -116,6 +121,7 @@ export function registerHotkeys(callback: () => void): boolean {
   }
 
   registeredAccelerator = currentAccelerator;
+  saveStore({ globalCmdbar: currentAccelerator });
   return true;
 }
 
@@ -123,14 +129,14 @@ export function setGlobalCmdbarAccelerator(accel: string): { ok: boolean; accele
   if (!accel || typeof accel !== 'string') {
     return { ok: false, accelerator: currentAccelerator };
   }
-  const callback = currentCallback;
-  if (!callback) {
-    currentAccelerator = accel;
-    saveStore({ globalCmdbar: accel });
-    log.info('hotkeys.set.deferred', { hotkey: accel });
+  const normalizedAccel = normalizeAccelerator(accel, process.platform);
+  if (!currentCallback) {
+    currentAccelerator = normalizedAccel;
+    saveStore({ globalCmdbar: normalizedAccel });
+    log.info('hotkeys.set.deferred', { hotkey: normalizedAccel });
     return { ok: true, accelerator: currentAccelerator };
   }
-  if (accel === currentAccelerator && activeRegisteredAccelerator() === accel) {
+  if (normalizedAccel === currentAccelerator && activeRegisteredAccelerator() === normalizedAccel) {
     saveStore({ globalCmdbar: currentAccelerator });
     return { ok: true, accelerator: currentAccelerator };
   }
@@ -138,22 +144,22 @@ export function setGlobalCmdbarAccelerator(accel: string): { ok: boolean; accele
   const previousAccelerator = currentAccelerator;
   const previousRegisteredAccelerator = activeRegisteredAccelerator();
 
-  log.info('hotkeys.set', { from: previousAccelerator, to: accel });
+  log.info('hotkeys.set', { from: previousAccelerator, to: normalizedAccel });
   unregisterRegistered();
 
-  const ok = tryRegister(accel, callback);
+  const ok = tryRegister(normalizedAccel);
   if (ok) {
-    currentAccelerator = accel;
-    registeredAccelerator = accel;
-    saveStore({ globalCmdbar: accel });
+    currentAccelerator = normalizedAccel;
+    registeredAccelerator = normalizedAccel;
+    saveStore({ globalCmdbar: normalizedAccel });
     return { ok: true, accelerator: currentAccelerator };
   }
 
-  log.warn('hotkeys.set.failed', { hotkey: accel });
+  log.warn('hotkeys.set.failed', { hotkey: normalizedAccel });
   currentAccelerator = previousAccelerator;
   registeredAccelerator = null;
 
-  if (previousRegisteredAccelerator && tryRestore(previousRegisteredAccelerator, callback)) {
+  if (previousRegisteredAccelerator && tryRestore(previousRegisteredAccelerator)) {
     return { ok: false, accelerator: currentAccelerator };
   }
   if (previousRegisteredAccelerator) {
@@ -161,9 +167,9 @@ export function setGlobalCmdbarAccelerator(accel: string): { ok: boolean; accele
   }
 
   const fallbackAccelerator = defaultGlobalCmdbarAccelerator(process.platform);
-  if (fallbackAccelerator !== accel && tryRestore(fallbackAccelerator, callback)) {
+  if (fallbackAccelerator !== normalizedAccel && tryRestore(fallbackAccelerator)) {
     log.warn('hotkeys.set.fallback', {
-      failed: accel,
+      failed: normalizedAccel,
       fallback: fallbackAccelerator,
     });
     return { ok: false, accelerator: currentAccelerator };

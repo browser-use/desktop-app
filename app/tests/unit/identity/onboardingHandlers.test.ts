@@ -21,19 +21,31 @@ const {
   mockGlobalShortcut,
   mockOnPillVisibilityChange,
   mockTogglePill,
+  mockGetGlobalCmdbarAccelerator,
+  mockRegisterHotkeys,
   mockSetGlobalCmdbarAccelerator,
-} = vi.hoisted(() => ({
-  loggerSpy: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  mockCreatePillWindow: vi.fn(),
-  mockGlobalShortcut: {
-    register: vi.fn((_accelerator: string, _callback: () => void) => true),
-    isRegistered: vi.fn((_accelerator: string) => true),
-    unregister: vi.fn(),
-  },
-  mockOnPillVisibilityChange: vi.fn(),
-  mockTogglePill: vi.fn(),
-  mockSetGlobalCmdbarAccelerator: vi.fn((accelerator: string) => ({ ok: true, accelerator })),
-}));
+  hotkeyState,
+} = vi.hoisted(() => {
+  const state = { accelerator: 'CommandOrControl+Shift+Space' };
+  return {
+    loggerSpy: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    mockCreatePillWindow: vi.fn(),
+    mockGlobalShortcut: {
+      register: vi.fn((_accelerator: string, _callback: () => void) => true),
+      isRegistered: vi.fn((_accelerator: string) => true),
+      unregister: vi.fn(),
+    },
+    mockOnPillVisibilityChange: vi.fn(),
+    mockTogglePill: vi.fn(),
+    hotkeyState: state,
+    mockGetGlobalCmdbarAccelerator: vi.fn(() => state.accelerator),
+    mockRegisterHotkeys: vi.fn((_callback: () => void) => true),
+    mockSetGlobalCmdbarAccelerator: vi.fn((accelerator: string) => {
+      state.accelerator = accelerator;
+      return { ok: true, accelerator };
+    }),
+  };
+});
 
 vi.mock('../../../src/main/logger', () => ({ mainLogger: loggerSpy }));
 
@@ -66,6 +78,8 @@ vi.mock('../../../src/main/pill', () => ({
 }));
 
 vi.mock('../../../src/main/hotkeys', () => ({
+  getGlobalCmdbarAccelerator: mockGetGlobalCmdbarAccelerator,
+  registerHotkeys: mockRegisterHotkeys,
   setGlobalCmdbarAccelerator: mockSetGlobalCmdbarAccelerator,
 }));
 
@@ -109,10 +123,6 @@ async function invokeHandler(channel: string, ...args: unknown[]): Promise<unkno
   return handler({} as never, ...args);
 }
 
-const EXPECTED_DEFAULT_ACCELERATOR = process.platform === 'linux'
-  ? 'Alt+Space'
-  : 'CommandOrControl+Shift+Space';
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -127,7 +137,12 @@ describe('onboardingHandlers.ts', () => {
     vi.clearAllMocks();
     mockGlobalShortcut.register.mockReturnValue(true);
     mockGlobalShortcut.isRegistered.mockReturnValue(true);
-    mockSetGlobalCmdbarAccelerator.mockImplementation((accelerator: string) => ({ ok: true, accelerator }));
+    hotkeyState.accelerator = 'CommandOrControl+Shift+Space';
+    mockRegisterHotkeys.mockReturnValue(true);
+    mockSetGlobalCmdbarAccelerator.mockImplementation((accelerator: string) => {
+      hotkeyState.accelerator = accelerator;
+      return { ok: true, accelerator };
+    });
     handlers.clear();
     accountStore = makeAccountStore();
     onboardingWindow = makeWindow();
@@ -183,11 +198,11 @@ describe('onboardingHandlers.ts', () => {
       expect(openShellWindow).toHaveBeenCalled();
     });
 
-    it('unregisters the temporary onboarding shortcut before opening the shell', async () => {
+    it('keeps the shared hotkey manager registered when opening the shell', async () => {
       await invokeHandler('onboarding:set-shortcut', 'CommandOrControl+Alt+Space');
       mockGlobalShortcut.unregister.mockClear();
       openShellWindow.mockImplementation(() => {
-        expect(mockGlobalShortcut.unregister).toHaveBeenCalledWith('CommandOrControl+Alt+Space');
+        expect(mockGlobalShortcut.unregister).not.toHaveBeenCalled();
         return { id: 2 };
       });
 
@@ -213,76 +228,28 @@ describe('onboardingHandlers.ts', () => {
   });
 
   describe('shortcut setup handlers', () => {
-    it('keeps the selected accelerator when the shortcut step listens again', async () => {
-      await invokeHandler('onboarding:listen-shortcut');
+    it('registers the onboarding callback through the shared hotkey manager', async () => {
+      const result = await invokeHandler('onboarding:listen-shortcut') as { ok: boolean; accelerator: string };
 
-      const setResult = await invokeHandler('onboarding:set-shortcut', 'Alt+Space') as { ok: boolean; accelerator: string };
-      expect(setResult).toEqual({ ok: true, accelerator: 'Alt+Space' });
-      expect(mockSetGlobalCmdbarAccelerator).toHaveBeenCalledWith('Alt+Space');
-
-      const listenResult = await invokeHandler('onboarding:listen-shortcut') as { ok: boolean; accelerator: string };
-      expect(listenResult).toEqual({ ok: true, accelerator: 'Alt+Space' });
-      expect(mockGlobalShortcut.register).toHaveBeenLastCalledWith('Alt+Space', expect.any(Function));
+      expect(result).toEqual({ ok: true, accelerator: 'CommandOrControl+Shift+Space' });
+      expect(mockCreatePillWindow).toHaveBeenCalledTimes(1);
+      expect(mockRegisterHotkeys).toHaveBeenCalledWith(expect.any(Function));
     });
 
-    it('rolls back to the previous accelerator when registration fails', async () => {
-      await invokeHandler('onboarding:set-shortcut', 'Alt+Space');
-
-      mockGlobalShortcut.register.mockImplementation((accelerator: string) => accelerator !== 'CommandOrControl+Alt+Space');
-
+    it('persists selected shortcuts through the same manager used by settings', async () => {
       const result = await invokeHandler('onboarding:set-shortcut', 'CommandOrControl+Alt+Space') as { ok: boolean; accelerator: string };
 
-      expect(result).toEqual({ ok: false, accelerator: 'Alt+Space' });
-      expect(mockGlobalShortcut.unregister).toHaveBeenLastCalledWith('Alt+Space');
-      expect(mockGlobalShortcut.register).toHaveBeenLastCalledWith('Alt+Space', expect.any(Function));
+      expect(result).toEqual({ ok: true, accelerator: 'CommandOrControl+Alt+Space' });
+      expect(mockRegisterHotkeys).toHaveBeenCalledWith(expect.any(Function));
+      expect(mockSetGlobalCmdbarAccelerator).toHaveBeenCalledWith('CommandOrControl+Alt+Space');
+      expect(mockGlobalShortcut.register).not.toHaveBeenCalled();
     });
 
-    it('does not treat a failed rollback as an active registration', async () => {
-      await invokeHandler('onboarding:set-shortcut', 'Alt+Space');
-
-      mockGlobalShortcut.register.mockReturnValue(true);
-      mockGlobalShortcut.isRegistered.mockImplementation((accelerator: string) => {
-        return accelerator !== 'CommandOrControl+Alt+Space' && accelerator !== 'Alt+Space';
-      });
-
-      const result = await invokeHandler('onboarding:set-shortcut', 'CommandOrControl+Alt+Space') as { ok: boolean; accelerator: string };
-
-      expect(result).toEqual({ ok: false, accelerator: 'Alt+Space' });
-      expect(loggerSpy.warn).toHaveBeenCalledWith(
-        'onboardingHandlers.shortcutRollback.failed',
-        { accelerator: 'Alt+Space' },
-      );
-
-      mockGlobalShortcut.unregister.mockClear();
-      mockGlobalShortcut.register.mockReturnValue(true);
-      mockGlobalShortcut.isRegistered.mockReturnValue(true);
-
-      const listenResult = await invokeHandler('onboarding:listen-shortcut') as { ok: boolean; accelerator: string };
-
-      expect(listenResult).toEqual({ ok: true, accelerator: 'Alt+Space' });
-      expect(mockGlobalShortcut.unregister).not.toHaveBeenCalled();
-      expect(mockGlobalShortcut.register).toHaveBeenLastCalledWith('Alt+Space', expect.any(Function));
-    });
-
-    it('treats portal registration as failed when Electron does not report it registered', async () => {
-      mockGlobalShortcut.isRegistered.mockImplementation((accelerator: string) => accelerator !== 'Alt+Space');
-
+    it('returns the manager result when a shortcut cannot be registered', async () => {
+      mockSetGlobalCmdbarAccelerator.mockImplementation(() => ({ ok: false, accelerator: 'Alt+Space' }));
       const result = await invokeHandler('onboarding:set-shortcut', 'Alt+Space') as { ok: boolean; accelerator: string };
 
-      expect(result).toEqual({ ok: false, accelerator: EXPECTED_DEFAULT_ACCELERATOR });
-    });
-
-    it('returns the previous accelerator when Electron rejects an invalid accelerator', async () => {
-      mockGlobalShortcut.register.mockImplementation((accelerator: string) => {
-        if (accelerator === 'CommandOrControl+Unidentified') {
-          throw new TypeError('conversion failure');
-        }
-        return true;
-      });
-
-      const result = await invokeHandler('onboarding:set-shortcut', 'CommandOrControl+Unidentified') as { ok: boolean; accelerator: string };
-
-      expect(result).toEqual({ ok: false, accelerator: EXPECTED_DEFAULT_ACCELERATOR });
+      expect(result).toEqual({ ok: false, accelerator: 'Alt+Space' });
     });
 
     it('lets the onboarding window trigger the shortcut as a focused-window fallback', async () => {

@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, globalShortcut, Notification, shell } from 'electron';
+import { ipcMain, BrowserWindow, Notification, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { mainLogger } from '../logger';
 import { AccountStore } from './AccountStore';
@@ -7,10 +7,8 @@ import { createPillWindow, togglePill, onPillVisibilityChange } from '../pill';
 import { saveApiKey as authSaveApiKey, setAuthMode as authSetMode, saveOpenAIKey as authSaveOpenAIKey } from './authStore';
 import { getAdapter } from '../hl/engines';
 import { enrichedEnv, resolveCliSpawn } from '../hl/engines/pathEnrich';
-import { defaultGlobalCmdbarAccelerator } from '../../shared/hotkeys';
-import { setGlobalCmdbarAccelerator } from '../hotkeys';
-
-const GLOBAL_SHORTCUT = defaultGlobalCmdbarAccelerator(process.platform);
+import { normalizeAccelerator } from '../../shared/hotkeys';
+import { getGlobalCmdbarAccelerator, registerHotkeys, setGlobalCmdbarAccelerator } from '../hotkeys';
 
 const ANTHROPIC_SERVICE = 'com.browser-use.desktop.anthropic';
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -323,8 +321,6 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
   });
 
   let pillCreated = false;
-  let currentAccelerator = GLOBAL_SHORTCUT;
-  let registeredAccelerator: string | null = null;
 
   const fireOnboardingShortcut = (accelerator: string): void => {
     mainLogger.info('onboardingHandlers.shortcutFired', { accelerator });
@@ -333,40 +329,7 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
     if (w) w.webContents.send('shortcut-activated');
   };
 
-  const tryRegisterShortcut = (accelerator: string): boolean => {
-    let ok: boolean;
-    try {
-      const registered = globalShortcut.register(accelerator, () => {
-        fireOnboardingShortcut(accelerator);
-      });
-      const isRegistered = globalShortcut.isRegistered(accelerator);
-      ok = registered && isRegistered;
-      mainLogger.info('onboardingHandlers.shortcutRegister.result', {
-        accelerator,
-        registered,
-        isRegistered,
-        ok,
-      });
-    } catch (err) {
-      mainLogger.warn('onboardingHandlers.shortcutRegister.threw', {
-        accelerator,
-        error: (err as Error).message,
-      });
-      ok = false;
-    }
-    return ok;
-  };
-
-  const unregisterRegisteredShortcut = (): string | null => {
-    const previousRegisteredAccelerator = registeredAccelerator;
-    if (previousRegisteredAccelerator) {
-      globalShortcut.unregister(previousRegisteredAccelerator);
-      registeredAccelerator = null;
-    }
-    return previousRegisteredAccelerator;
-  };
-
-  const registerOnboardingShortcut = (accelerator: string): boolean => {
+  const ensureOnboardingShortcut = (): boolean => {
     if (!pillCreated) {
       createPillWindow();
       onPillVisibilityChange((visible) => {
@@ -378,46 +341,29 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       mainLogger.info('onboardingHandlers.pillCreated');
     }
 
-    const previousAccelerator = currentAccelerator;
-    const previousRegisteredAccelerator = unregisterRegisteredShortcut();
-    const ok = tryRegisterShortcut(accelerator);
-    if (ok) {
-      currentAccelerator = accelerator;
-      registeredAccelerator = accelerator;
-    } else if (previousRegisteredAccelerator && previousRegisteredAccelerator !== accelerator) {
-      const rollbackOk = tryRegisterShortcut(previousRegisteredAccelerator);
-      if (rollbackOk) {
-        registeredAccelerator = previousRegisteredAccelerator;
-      } else {
-        mainLogger.warn('onboardingHandlers.shortcutRollback.failed', {
-          accelerator: previousRegisteredAccelerator,
-        });
-      }
-    }
-    if (!ok) currentAccelerator = previousAccelerator;
-    return ok;
+    return registerHotkeys(() => fireOnboardingShortcut(getGlobalCmdbarAccelerator()));
   };
 
   ipcMain.handle('onboarding:listen-shortcut', () => {
-    mainLogger.info('onboardingHandlers.listenShortcut', { accelerator: currentAccelerator });
-    const ok = registerOnboardingShortcut(currentAccelerator);
-    return { ok, accelerator: currentAccelerator };
+    mainLogger.info('onboardingHandlers.listenShortcut', { accelerator: getGlobalCmdbarAccelerator() });
+    const ok = ensureOnboardingShortcut();
+    return { ok, accelerator: getGlobalCmdbarAccelerator() };
   });
 
   ipcMain.handle('onboarding:set-shortcut', (_event, accelerator: string) => {
     const validated = assertString(accelerator, 'accelerator', 100);
-    mainLogger.info('onboardingHandlers.setShortcut', { accelerator: validated });
-    const ok = registerOnboardingShortcut(validated);
-    if (ok) {
-      const persisted = setGlobalCmdbarAccelerator(validated);
-      mainLogger.info('onboardingHandlers.setShortcut.persisted', { ...persisted });
-    }
-    return { ok, accelerator: ok ? validated : currentAccelerator };
+    const normalized = normalizeAccelerator(validated, process.platform);
+    mainLogger.info('onboardingHandlers.setShortcut', { accelerator: normalized });
+    ensureOnboardingShortcut();
+    const result = setGlobalCmdbarAccelerator(normalized);
+    mainLogger.info('onboardingHandlers.setShortcut.persisted', { ...result });
+    return result;
   });
 
   ipcMain.handle('onboarding:trigger-shortcut', () => {
-    mainLogger.info('onboardingHandlers.triggerShortcut', { accelerator: currentAccelerator });
-    fireOnboardingShortcut(currentAccelerator);
+    const accelerator = getGlobalCmdbarAccelerator();
+    mainLogger.info('onboardingHandlers.triggerShortcut', { accelerator });
+    fireOnboardingShortcut(accelerator);
     return { ok: true };
   });
 
@@ -451,13 +397,6 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
     mainLogger.info('onboardingHandlers.complete.accountSaved');
 
     await new Promise((resolve) => setTimeout(resolve, 400));
-
-    const previousOnboardingAccelerator = unregisterRegisteredShortcut();
-    if (previousOnboardingAccelerator) {
-      mainLogger.info('onboardingHandlers.complete.shortcutUnregistered', {
-        accelerator: previousOnboardingAccelerator,
-      });
-    }
 
     const shell = openShellWindow();
     mainLogger.info('onboardingHandlers.complete.shellOpened', {

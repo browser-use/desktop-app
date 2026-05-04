@@ -112,7 +112,7 @@ type Step = 'intro' | 'profile' | 'apikey' | 'notifications' | 'shortcut';
 function buildAccelerator(e: KeyboardEvent, platform: string): string | null {
   const shortcut = keyboardEventToShortcut(e, platform);
   if (!shortcut || (!e.metaKey && !e.ctrlKey && !e.altKey)) return null;
-  return rendererToAccelerator(shortcut);
+  return rendererToAccelerator(shortcut, platform);
 }
 
 function acceleratorsMatch(a: string, b: string): boolean {

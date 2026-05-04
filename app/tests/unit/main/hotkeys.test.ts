@@ -88,6 +88,39 @@ describe('main/hotkeys.ts', () => {
     expect(hotkeys.getGlobalCmdbarAccelerator()).toBe(CUSTOM_ACCELERATOR);
   });
 
+  it('swaps callbacks without re-registering an already active shortcut', async () => {
+    const hotkeys = await loadHotkeys();
+    const onboardingCallback = vi.fn();
+    const shellCallback = vi.fn();
+
+    expect(hotkeys.registerHotkeys(onboardingCallback)).toBe(true);
+    expect(hotkeys.registerHotkeys(shellCallback)).toBe(true);
+
+    expect(mockGlobalShortcut.unregister).not.toHaveBeenCalled();
+    expect(mockGlobalShortcut.register).toHaveBeenCalledTimes(1);
+
+    const registeredCallback = mockGlobalShortcut.register.mock.calls[0][1] as () => void;
+    registeredCallback();
+
+    expect(onboardingCallback).not.toHaveBeenCalled();
+    expect(shellCallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes duplicated modifiers from older saved shortcuts before registering', async () => {
+    fs.writeFileSync(
+      hotkeysStorePath(),
+      JSON.stringify({ globalCmdbar: 'CommandOrControl+CommandOrControl+Alt+Space' }),
+      'utf-8',
+    );
+    const hotkeys = await loadHotkeys();
+
+    expect(hotkeys.registerHotkeys(vi.fn())).toBe(true);
+
+    expect(mockGlobalShortcut.register).toHaveBeenLastCalledWith(CUSTOM_ACCELERATOR, expect.any(Function));
+    expect(hotkeys.getGlobalCmdbarAccelerator()).toBe(CUSTOM_ACCELERATOR);
+    expect(readSavedAccelerator()).toBe(CUSTOM_ACCELERATOR);
+  });
+
   it('repairs a saved shortcut when Electron no longer reports it registered', async () => {
     const hotkeys = await loadHotkeys();
     const callback = vi.fn();

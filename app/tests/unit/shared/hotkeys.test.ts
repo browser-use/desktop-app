@@ -4,6 +4,7 @@ import {
   defaultGlobalCmdbarAccelerator,
   formatShortcutForPlatform,
   keyboardEventToShortcut,
+  normalizeAccelerator,
   normalizeShortcutPlatform,
   rendererToAccelerator,
   shortcutToRenderer,
@@ -79,6 +80,18 @@ describe('shortcut platform normalization', () => {
 
     expect(shortcut).toBe('Cmd+Alt+Space');
     expect(rendererToAccelerator(shortcut ?? '')).toBe('CommandOrControl+Alt+Space');
+  });
+
+  it('normalizes duplicated command modifiers in saved accelerators', () => {
+    expect(normalizeAccelerator('CommandOrControl+CommandOrControl+Alt+Space', 'darwin')).toBe(
+      'CommandOrControl+Alt+Space',
+    );
+  });
+
+  it('preserves a physical Control modifier on macOS when platform is explicit', () => {
+    expect(rendererToAccelerator('Cmd+Ctrl+Alt+Space', 'darwin')).toBe(
+      'CommandOrControl+Control+Alt+Space',
+    );
   });
 
   it('keeps shift when capturing space shortcuts', () => {
