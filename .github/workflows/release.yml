@@ -348,7 +348,7 @@ jobs:
         run: node .github/scripts/generate-release-notes.mjs
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-metadata.outputs.tag }}
           name: ${{ needs.release-metadata.outputs.release_name }}
@@ -511,7 +511,7 @@ jobs:
         run: node .github/scripts/generate-release-notes.mjs
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-metadata.outputs.tag }}
           name: ${{ needs.release-metadata.outputs.release_name }}
@@ -644,7 +644,7 @@ jobs:
         run: node .github/scripts/generate-release-notes.mjs
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-metadata.outputs.tag }}
           name: ${{ needs.release-metadata.outputs.release_name }}
