@@ -137,6 +137,13 @@ html, body {
   margin-top: 1px;
 }
 
+.cmdbar__engine-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 /* ---------------------------------------------------------------------------
    ACTION BUTTONS — circular, glassy
 --------------------------------------------------------------------------- */
@@ -743,4 +750,147 @@ html, body {
   color: var(--color-fg-tertiary);
   font-size: var(--font-size-xs);
   flex-shrink: 0;
+}
+
+.browsercode-model-picker {
+  position: relative;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.browsercode-model-picker--compact .browsercode-model-picker__toggle {
+  max-width: 128px;
+}
+
+.browsercode-model-picker__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 170px;
+  height: 30px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--color-fg-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.browsercode-model-picker__toggle:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--color-fg-primary);
+}
+
+.browsercode-model-picker__label,
+.browsercode-model-picker__item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browsercode-model-picker__logo,
+.browsercode-model-picker__mark {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.browsercode-model-picker__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-fg-primary);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.browsercode-model-picker__mark--qwen {
+  background: rgba(84, 177, 255, 0.18);
+  color: rgb(153, 211, 255);
+}
+
+.browsercode-model-picker__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 280px;
+  max-height: 360px;
+  overflow: auto;
+  background-color: rgba(28, 28, 32, 0.97);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 12px 32px rgba(0, 0, 0, 0.5);
+  z-index: 45;
+  padding: 6px;
+}
+
+.browsercode-model-picker__group + .browsercode-model-picker__group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.browsercode-model-picker__group-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px;
+  color: var(--color-fg-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.browsercode-model-picker__item,
+.browsercode-model-picker__setup {
+  appearance: none;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-fg-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.browsercode-model-picker__item:hover,
+.browsercode-model-picker__setup:hover,
+.browsercode-model-picker__item--active {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.browsercode-model-picker__item-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.browsercode-model-picker__check,
+.browsercode-model-picker__locked {
+  color: var(--color-fg-tertiary);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+.browsercode-model-picker__locked {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.browsercode-model-picker__error {
+  margin: 6px 4px 2px;
+  color: var(--color-status-error);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
 }

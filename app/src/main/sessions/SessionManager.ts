@@ -71,6 +71,9 @@ export class SessionManager extends EventEmitter {
         (session as AgentSession & { engine?: string }).engine = row.engine;
         this.sessionEngines.set(row.id, row.engine);
       }
+      if (row.model) {
+        session.model = row.model;
+      }
       if (row.auth_mode === 'apiKey' || row.auth_mode === 'subscription') {
         session.authMode = row.auth_mode;
       }
@@ -168,7 +171,12 @@ export class SessionManager extends EventEmitter {
       this.emitTermBytes(id, { type: 'user_input', text: session.prompt });
     }
 
-    mainLogger.info('SessionManager.startSession', { id, resumed: session.output.length > 0 });
+    mainLogger.info('SessionManager.startSession', {
+      id,
+      resumed: session.output.length > 0,
+      engine: session.engine ?? this.getSessionEngine(id),
+      model: session.model ?? null,
+    });
     this.emitEvent('session-updated', { ...session });
     return abortController;
   }
@@ -318,7 +326,14 @@ export class SessionManager extends EventEmitter {
     this.abortControllers.delete(id);
     session.status = 'idle';
     this.db.updateSessionStatus(id, 'idle');
-    mainLogger.info('SessionManager.completeSession', { id, outputLines: session.output.length });
+    mainLogger.info('SessionManager.completeSession', {
+      id,
+      outputLines: session.output.length,
+      engine: session.engine ?? this.getSessionEngine(id),
+      model: session.model ?? null,
+      authMode: session.authMode ?? null,
+      costUsd: session.costUsd ?? null,
+    });
     this.emitEvent('session-completed', { ...session });
   }
 
@@ -348,7 +363,12 @@ export class SessionManager extends EventEmitter {
 
     this.resetStuckTimer(id);
 
-    mainLogger.info('SessionManager.resumeSession', { id, promptLength: prompt.length });
+    mainLogger.info('SessionManager.resumeSession', {
+      id,
+      promptLength: prompt.length,
+      engine: session.engine ?? this.getSessionEngine(id),
+      model: session.model ?? null,
+    });
     this.emitEvent('session-updated', { ...session });
     return abortController;
   }
@@ -453,7 +473,12 @@ export class SessionManager extends EventEmitter {
     session.status = 'stopped';
     session.error = error;
     this.db.updateSessionStatus(id, 'stopped', error);
-    mainLogger.info('SessionManager.failSession', { id, error });
+    mainLogger.info('SessionManager.failSession', {
+      id,
+      error,
+      engine: session.engine ?? this.getSessionEngine(id),
+      model: session.model ?? null,
+    });
     this.emitEvent('session-error', { ...session });
   }
 
@@ -494,6 +519,7 @@ export class SessionManager extends EventEmitter {
     if (session) {
       (session as AgentSession & { engine?: string }).engine = engineId;
       this.db.updateEngine(id, engineId);
+      mainLogger.info('SessionManager.setSessionEngine', { id, engineId });
       this.emitEvent('session-updated', { ...session });
     }
   }
@@ -501,6 +527,22 @@ export class SessionManager extends EventEmitter {
   /** Retrieve the per-session engine id, or null if never set. */
   getSessionEngine(id: string): string | null {
     return this.sessionEngines.get(id) ?? null;
+  }
+
+  setSessionModel(id: string, model: string | null): void {
+    const session = this.sessions.get(id);
+    if (!session) {
+      mainLogger.warn('SessionManager.setSessionModel.notFound', { id, model });
+      return;
+    }
+    session.model = model ?? undefined;
+    this.db.updateModel(id, model);
+    mainLogger.info('SessionManager.setSessionModel', {
+      id,
+      engine: session.engine ?? this.getSessionEngine(id),
+      model,
+    });
+    this.emitEvent('session-updated', { ...session });
   }
 
   /** Snapshot the auth mode + subscription type that actually ran this session.

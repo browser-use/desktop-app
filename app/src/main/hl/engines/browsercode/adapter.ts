@@ -24,6 +24,24 @@ const ID = 'browsercode';
 const BIN = 'bcode';
 const DEFAULT_MODEL = 'moonshotai/kimi-k2.6';
 
+const CUSTOM_PROVIDER_CONFIG: Record<string, { name: string; npm: string; baseURL: string }> = {
+  alibaba: {
+    name: 'Qwen / Alibaba',
+    npm: '@ai-sdk/openai-compatible',
+    baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  },
+  'kimi-for-coding': {
+    name: 'Kimi for Coding',
+    npm: '@ai-sdk/anthropic',
+    baseURL: 'https://api.kimi.com/coding/v1',
+  },
+  minimax: {
+    name: 'MiniMax',
+    npm: '@ai-sdk/anthropic',
+    baseURL: 'https://api.minimax.io/anthropic/v1',
+  },
+};
+
 function runCapture(bin: string, args: string[], timeoutMs = 5000): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     let child;
@@ -67,6 +85,10 @@ function toolPreview(part: Record<string, unknown>): string {
   catch { return String(output).slice(0, 4000); }
 }
 
+function providerLocalModelId(providerId: string, model: string): string {
+  return model.startsWith(`${providerId}/`) ? model.slice(providerId.length + 1) : model;
+}
+
 const browserCodeAdapter: EngineAdapter = {
   id: ID,
   displayName: 'BrowserCode',
@@ -104,14 +126,30 @@ const browserCodeAdapter: EngineAdapter = {
     env.DO_NOT_TRACK = env.DO_NOT_TRACK ?? '1';
 
     const providerId = ctx.browserCodeProviderId ?? 'moonshotai';
+    const model = ctx.browserCodeModel || DEFAULT_MODEL;
     if (ctx.savedApiKey) {
       env.OPENCODE_AUTH_CONTENT = JSON.stringify({
         [providerId]: { type: 'api', key: ctx.savedApiKey },
       });
     }
+    const providerConfig = CUSTOM_PROVIDER_CONFIG[providerId];
     env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
-      model: ctx.browserCodeModel || DEFAULT_MODEL,
+      model,
       tools: { browser_execute: false },
+      ...(providerConfig ? {
+        provider: {
+          [providerId]: {
+            npm: providerConfig.npm,
+            name: providerConfig.name,
+            options: { baseURL: providerConfig.baseURL },
+            models: {
+              [providerLocalModelId(providerId, model)]: {
+                name: providerLocalModelId(providerId, model),
+              },
+            },
+          },
+        },
+      } : {}),
     });
     return env;
   },
@@ -150,6 +188,10 @@ const browserCodeAdapter: EngineAdapter = {
     }
 
     if (typeof e.sessionID === 'string') capturedSessionId = e.sessionID;
+    if (typeof e.model === 'string') ctx.currentModel = e.model;
+    if (e.part && typeof e.part === 'object' && typeof (e.part as Record<string, unknown>).model === 'string') {
+      ctx.currentModel = (e.part as Record<string, string>).model;
+    }
 
     if (e.type === 'text') {
       const text = textFromPart(e.part);

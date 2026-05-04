@@ -7,6 +7,7 @@ import {
 } from '../../shared/attachments';
 import { fallbackShortcutPlatform, formatShortcutForPlatform } from '../../shared/hotkeys';
 import { EnginePicker } from '../hub/EnginePicker';
+import { BrowserCodeModelPicker } from '../hub/BrowserCodeModelPicker';
 import {
   RESULT_ROW_HEIGHT,
   MAX_RESULTS,
@@ -80,6 +81,17 @@ function faviconUrl(site: string | null | undefined): string | null {
 
 const DOMAIN_RE = /\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\/[^\s]*)?/i;
 const DOMAIN_RE_GLOBAL = /\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\/[^\s]*)?/gi;
+const ENGINE_STORAGE_KEY = 'hub.selectedEngine';
+const DEFAULT_ENGINE = 'claude-code';
+
+function loadStoredEngine(): string {
+  try {
+    const value = localStorage.getItem(ENGINE_STORAGE_KEY);
+    return value && value.length > 0 ? value : DEFAULT_ENGINE;
+  } catch {
+    return DEFAULT_ENGINE;
+  }
+}
 
 function extractDomain(text: string): string | null {
   if (!text) return null;
@@ -211,7 +223,9 @@ export function Pill(): React.ReactElement {
   const [value, setValue] = useState('');
   const [sessions, setSessions] = useState<SessionLite[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [engine, setEngine] = useState<string>('claude-code');
+  const [engine, setEngine] = useState<string>(() => loadStoredEngine());
+  const [engineMenuOpen, setEngineMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; bytes: Uint8Array }>>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [validFavicons, setValidFavicons] = useState<Set<string>>(new Set());
@@ -323,10 +337,11 @@ export function Pill(): React.ReactElement {
     const chipsRows = attachments.length > 0 ? Math.ceil(attachments.length / 3) : 0;
     const chipsHeight = chipsRows * CHIP_ROW_HEIGHT;
     const errorHeight = attachError ? ERROR_ROW_HEIGHT : 0;
-    const total = searchHeight + resultHeight + dashboardHeight + chipsHeight + errorHeight + FOOTER_HEIGHT;
-    console.log('[Pill.resize]', { taHeight, searchHeight, resultHeight, dashboardHeight, chipsHeight, errorHeight, total });
+    const dropdownHeight = engineMenuOpen || modelMenuOpen ? 220 : 0;
+    const total = searchHeight + resultHeight + dashboardHeight + chipsHeight + errorHeight + FOOTER_HEIGHT + dropdownHeight;
+    console.log('[Pill.resize]', { taHeight, searchHeight, resultHeight, dashboardHeight, chipsHeight, errorHeight, dropdownHeight, total });
     window.pillAPI.setExpanded(total);
-  }, [hasResults, results.length, value, attachments.length, attachError, showDashboard, hasRecents, recents.length]);
+  }, [hasResults, results.length, value, attachments.length, attachError, showDashboard, hasRecents, recents.length, engineMenuOpen, modelMenuOpen]);
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     setAttachError(null);
@@ -361,6 +376,11 @@ export function Pill(): React.ReactElement {
 
   const removeAttachment = useCallback((i: number) => {
     setAttachments((prev) => prev.filter((_, idx) => idx !== i));
+  }, []);
+
+  const handleEngineChange = useCallback((id: string) => {
+    setEngine(id);
+    try { localStorage.setItem(ENGINE_STORAGE_KEY, id); } catch { /* ignore */ }
   }, []);
 
   const submit = useCallback(() => {
@@ -482,7 +502,8 @@ export function Pill(): React.ReactElement {
               }}
             />
             <div className="cmdbar__engine-picker">
-              <EnginePicker value={engine} onChange={setEngine} onOpenChange={() => {}} />
+              <EnginePicker value={engine} onChange={handleEngineChange} onOpenChange={setEngineMenuOpen} />
+              <BrowserCodeModelPicker visible={engine === 'browsercode'} compact onOpenChange={setModelMenuOpen} />
             </div>
             <button
               className="cmdbar__send"

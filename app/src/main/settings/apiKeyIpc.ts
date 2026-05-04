@@ -51,6 +51,7 @@ const CH_BCODE_DELETE = 'settings:browsercode:delete';
 export interface BrowserCodeProviderOption {
   id: string;
   name: string;
+  apiKind: 'openai' | 'anthropic';
   apiBaseUrl: string;
   defaultModel: string;
   models: Array<{ id: string; label: string }>;
@@ -60,6 +61,7 @@ const BROWSER_CODE_PROVIDERS: BrowserCodeProviderOption[] = [
   {
     id: 'moonshotai',
     name: 'Moonshot / Kimi',
+    apiKind: 'openai',
     apiBaseUrl: 'https://api.moonshot.ai/v1',
     defaultModel: 'moonshotai/kimi-k2.6',
     models: [
@@ -72,12 +74,44 @@ const BROWSER_CODE_PROVIDERS: BrowserCodeProviderOption[] = [
   {
     id: 'kimi-for-coding',
     name: 'Kimi for Coding',
+    apiKind: 'anthropic',
     apiBaseUrl: 'https://api.kimi.com/coding/v1',
     defaultModel: 'kimi-for-coding/k2p6',
     models: [
       { id: 'kimi-for-coding/k2p6', label: 'K2P6' },
       { id: 'kimi-for-coding/k2p5', label: 'K2P5' },
       { id: 'kimi-for-coding/kimi-k2-thinking', label: 'Kimi K2 Thinking' },
+    ],
+  },
+  {
+    id: 'alibaba',
+    name: 'Qwen / Alibaba',
+    apiKind: 'openai',
+    apiBaseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    defaultModel: 'alibaba/qwen3-coder-plus',
+    models: [
+      { id: 'alibaba/qwen3-coder-plus', label: 'Qwen3 Coder Plus' },
+      { id: 'alibaba/qwen3.6-plus', label: 'Qwen3.6 Plus' },
+      { id: 'alibaba/qwen3.5-plus', label: 'Qwen3.5 Plus' },
+      { id: 'alibaba/qwen3-coder-flash', label: 'Qwen3 Coder Flash' },
+      { id: 'alibaba/qwen-plus', label: 'Qwen Plus' },
+      { id: 'alibaba/qwen3-max', label: 'Qwen3 Max' },
+      { id: 'alibaba/qwen3-coder-480b-a35b-instruct', label: 'Qwen3 Coder 480B' },
+    ],
+  },
+  {
+    id: 'minimax',
+    name: 'MiniMax',
+    apiKind: 'anthropic',
+    apiBaseUrl: 'https://api.minimax.io/anthropic/v1',
+    defaultModel: 'minimax/MiniMax-M2.7',
+    models: [
+      { id: 'minimax/MiniMax-M2.7', label: 'MiniMax M2.7' },
+      { id: 'minimax/MiniMax-M2.7-highspeed', label: 'MiniMax M2.7 Highspeed' },
+      { id: 'minimax/MiniMax-M2.5', label: 'MiniMax M2.5' },
+      { id: 'minimax/MiniMax-M2.5-highspeed', label: 'MiniMax M2.5 Highspeed' },
+      { id: 'minimax/MiniMax-M2.1', label: 'MiniMax M2.1' },
+      { id: 'minimax/MiniMax-M2', label: 'MiniMax M2' },
     ],
   },
 ];
@@ -330,6 +364,12 @@ function providerLocalModelId(provider: BrowserCodeProviderOption, model: string
   return model.startsWith(`${provider.id}/`) ? model.slice(provider.id.length + 1) : model;
 }
 
+function assertProviderModel(provider: BrowserCodeProviderOption, model: string): void {
+  if (!provider.models.some((m) => m.id === model)) {
+    throw new Error(`Unsupported BrowserCode model for ${provider.name}: ${model}`);
+  }
+}
+
 async function testOpenAiCompatibleKey(provider: BrowserCodeProviderOption, key: string, model: string): Promise<{ success: boolean; error?: string }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
@@ -365,6 +405,47 @@ async function testOpenAiCompatibleKey(provider: BrowserCodeProviderOption, key:
   }
 }
 
+async function testAnthropicCompatibleKey(provider: BrowserCodeProviderOption, key: string, model: string): Promise<{ success: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${provider.apiBaseUrl}/messages`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model: providerLocalModelId(provider, model),
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+    clearTimeout(timeoutId);
+    if (response.ok) return { success: true };
+    let errorMsg = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { error?: { message?: string }; message?: string };
+      if (body?.error?.message) errorMsg = body.error.message;
+      else if (body?.message) errorMsg = body.message;
+    } catch { /* ignore */ }
+    mainLogger.warn('apiKeyIpc.browserCode.test.failed', {
+      providerId: provider.id,
+      apiKind: provider.apiKind,
+      status: response.status,
+      error: errorMsg,
+    });
+    return { success: false, error: errorMsg };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const msg = (err as Error).message ?? 'Network error';
+    mainLogger.warn('apiKeyIpc.browserCode.test.exception', { providerId: provider.id, apiKind: provider.apiKind, error: msg });
+    return { success: false, error: msg };
+  }
+}
+
 async function handleBrowserCodeTest(
   _e: Electron.IpcMainInvokeEvent,
   payload: { providerId: string; model: string; apiKey: string },
@@ -373,9 +454,12 @@ async function handleBrowserCodeTest(
   const model = assertString(payload?.model, 'model', 160);
   const key = assertString(payload?.apiKey, 'apiKey', 500);
   const provider = providerFromId(providerId);
-  mainLogger.info('apiKeyIpc.browserCode.test', { providerId, model, keyLength: key.length });
-  const result = await testOpenAiCompatibleKey(provider, key, model);
-  mainLogger.info('apiKeyIpc.browserCode.test.result', { providerId, model, success: result.success, error: result.error });
+  assertProviderModel(provider, model);
+  mainLogger.info('apiKeyIpc.browserCode.test', { providerId, model, apiKind: provider.apiKind, keyLength: key.length });
+  const result = provider.apiKind === 'anthropic'
+    ? await testAnthropicCompatibleKey(provider, key, model)
+    : await testOpenAiCompatibleKey(provider, key, model);
+  mainLogger.info('apiKeyIpc.browserCode.test.result', { providerId, model, apiKind: provider.apiKind, success: result.success, error: result.error });
   return result;
 }
 
@@ -386,7 +470,8 @@ async function handleBrowserCodeSave(
   const providerId = assertString(payload?.providerId, 'providerId', 80);
   const model = assertString(payload?.model, 'model', 160);
   const apiKeyInput = assertString(payload?.apiKey ?? '', 'apiKey', 500).trim();
-  providerFromId(providerId);
+  const provider = providerFromId(providerId);
+  assertProviderModel(provider, model);
   const { getAdapter } = await import('../hl/engines');
   const installed = await getAdapter('browsercode')?.probeInstalled();
   if (!installed?.installed) {
@@ -395,9 +480,9 @@ async function handleBrowserCodeSave(
   const existing = await loadBrowserCodeConfig();
   const apiKey = apiKeyInput || (existing?.providerId === providerId ? existing.apiKey : '');
   if (!apiKey) throw new Error('API key is required for this provider');
-  mainLogger.info('apiKeyIpc.browserCode.save', { providerId, model, keyLength: apiKey.length, reusedExistingKey: !apiKeyInput });
+  mainLogger.info('apiKeyIpc.browserCode.save', { providerId, model, apiKind: provider.apiKind, keyLength: apiKey.length, reusedExistingKey: !apiKeyInput });
   await saveBrowserCodeConfig({ providerId, model, apiKey });
-  mainLogger.info('apiKeyIpc.browserCode.save.ok', { providerId, model, reusedExistingKey: !apiKeyInput });
+  mainLogger.info('apiKeyIpc.browserCode.save.ok', { providerId, model, apiKind: provider.apiKind, reusedExistingKey: !apiKeyInput });
 }
 
 async function handleBrowserCodeDelete(): Promise<void> {

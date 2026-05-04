@@ -632,6 +632,16 @@ app.whenReady().then(async () => {
     if (!adapter) throw new Error(`unknown engine: ${engineId}`);
 
     const [installed, authed] = await Promise.all([adapter.probeInstalled(), adapter.probeAuthed()]);
+    mainLogger.info('main.session.engine.preflight', {
+      id,
+      engineId,
+      displayName: adapter.displayName,
+      installed: installed.installed,
+      installedVersion: installed.version ?? null,
+      installedError: installed.error ?? null,
+      authed: authed.authed,
+      authError: authed.error ?? null,
+    });
     if (!installed.installed) {
       throw new Error(`${adapter.displayName} is not installed. Install ${adapter.displayName} and try again.`);
     }
@@ -697,6 +707,7 @@ app.whenReady().then(async () => {
         cdpPort: resolvedCdp.port,
         signal: abortController.signal,
         onSessionId: (sid) => sessionManager.setClaudeSessionId(id, sid),
+        onModelResolved: ({ model }) => sessionManager.setSessionModel(id, model),
         onAuthResolved: ({ authMode, subscriptionType }) => sessionManager.setSessionAuth(id, authMode, subscriptionType),
         onEvent: (event) => {
           if (event.type === 'done') {
@@ -825,6 +836,7 @@ app.whenReady().then(async () => {
       signal: abortController.signal,
       resumeSessionId: sessionManager.getClaudeSessionId(validatedId),
       onSessionId: (sid) => sessionManager.setClaudeSessionId(validatedId, sid),
+      onModelResolved: ({ model }) => sessionManager.setSessionModel(validatedId, model),
       onAuthResolved: ({ authMode, subscriptionType }) => sessionManager.setSessionAuth(validatedId, authMode, subscriptionType),
       onEvent: (event) => {
         if (event.type === 'done') {
@@ -899,6 +911,7 @@ app.whenReady().then(async () => {
       // Rerun intentionally starts a fresh conversation; SessionManager.rerunSession
       // already cleared any stored resume id.
       onSessionId: (sid) => sessionManager.setClaudeSessionId(validatedId, sid),
+      onModelResolved: ({ model }) => sessionManager.setSessionModel(validatedId, model),
       onAuthResolved: ({ authMode, subscriptionType }) => sessionManager.setSessionAuth(validatedId, authMode, subscriptionType),
       onEvent: (event) => {
         if (event.type === 'done') {

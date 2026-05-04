@@ -266,6 +266,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
       log.info('preload.pill.electronAPI.settings.open', { message: 'Invoking pill:open-settings from shared renderer API' });
       return ipcRenderer.invoke('pill:open-settings');
     },
+    browserCode: {
+      getStatus: (): Promise<{
+        present: boolean;
+        providerId?: string;
+        model?: string;
+        masked?: string;
+        installed?: { installed: boolean; version?: string; error?: string };
+        providers: Array<{
+          id: string;
+          name: string;
+          defaultModel: string;
+          models: Array<{ id: string; label: string }>;
+        }>;
+      }> => ipcRenderer.invoke('settings:browsercode:get-status'),
+      save: (payload: { providerId: string; model: string; apiKey: string }): Promise<void> =>
+        ipcRenderer.invoke('settings:browsercode:save', payload),
+      test: (payload: { providerId: string; model: string; apiKey: string }): Promise<{ success: boolean; error?: string }> =>
+        ipcRenderer.invoke('settings:browsercode:test', payload),
+      delete: (): Promise<void> => ipcRenderer.invoke('settings:browsercode:delete'),
+    },
   },
 });
 

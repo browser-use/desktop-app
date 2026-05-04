@@ -122,6 +122,8 @@ export interface RunEngineOptions {
   signal?: AbortSignal;
   onEvent: (e: HlEvent) => void;
   onSessionId?: (id: string) => void;
+  /** Fired when the runner can identify the model that this spawn is using. */
+  onModelResolved?: (info: { model: string; source: 'config' | 'engine' }) => void;
   /** Fired once per run with the resolved auth for this spawn, so the caller
    *  can stamp the session with the mode that actually ran it. */
   onAuthResolved?: (info: { authMode: 'apiKey' | 'subscription' | null; subscriptionType: string | null }) => void;

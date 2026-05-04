@@ -124,6 +124,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
   let savedApiKey: string | undefined;
   let browserCodeProviderId: string | undefined;
   let browserCodeModel: string | undefined;
+  let configuredModel: string | undefined;
   let cliAuthed = false;
   try {
     if (adapter.id === 'codex') {
@@ -136,6 +137,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
         savedApiKey = cfg.apiKey;
         browserCodeProviderId = cfg.providerId;
         browserCodeModel = cfg.model;
+        configuredModel = cfg.model;
       }
       cliAuthed = (await adapter.probeAuthed()).authed;
     } else {
@@ -214,6 +216,23 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
   const wrappedPrompt = adapter.wrapPrompt(spawnCtx);
   const args = adapter.buildSpawnArgs(spawnCtx, wrappedPrompt);
   const env = adapter.buildEnv(spawnCtx, { ...process.env });
+  let lastReportedModel: string | undefined;
+  const reportModel = (model: string | undefined, source: 'config' | 'engine'): void => {
+    if (!model || model === lastReportedModel) return;
+    lastReportedModel = model;
+    engineLogger.info('session.model.resolved', {
+      sessionId: opts.sessionId,
+      engineId: adapter.id,
+      model,
+      source,
+      providerId: adapter.id === 'browsercode' ? browserCodeProviderId ?? null : null,
+    });
+    if (opts.onModelResolved) {
+      try { opts.onModelResolved({ model, source }); }
+      catch (err) { engineLogger.warn('engines.run.onModelResolved.threw', { error: (err as Error).message }); }
+    }
+  };
+  reportModel(configuredModel, 'config');
 
   engineLogger.info('engines.run.spawn', {
     engineId: adapter.id,
@@ -224,6 +243,8 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     hasResume: !!opts.resumeSessionId,
     attachmentCount: attachmentRefs.length,
     authSource: savedApiKey ? 'savedApiKey' : 'cliManaged',
+    providerId: adapter.id === 'browsercode' ? browserCodeProviderId ?? null : null,
+    model: configuredModel ?? null,
     args: args.map((a) => (a.length > 120 ? `${a.slice(0, 100)}…<${a.length}ch>` : a)),
     cwd: opts.harnessDir,
     envPathLength: envPathValue(env).length,
@@ -352,6 +373,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     harnessHelpersPath: harnessHelpersAbs,
     harnessToolsPath: harnessToolsAbs,
     harnessSkillPath: harnessSkillAbs,
+    currentModel: configuredModel,
   };
 
   let buf = '';
@@ -386,6 +408,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
       if (!line.trim()) continue;
       try {
         const result = adapter.parseLine(line, parseCtx);
+        reportModel(parseCtx.currentModel, 'engine');
         if (result.capturedSessionId && opts.onSessionId) {
           try { opts.onSessionId(result.capturedSessionId); }
           catch (err) { engineLogger.warn('engines.run.onSessionId.threw', { error: (err as Error).message }); }
