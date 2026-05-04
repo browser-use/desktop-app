@@ -87,6 +87,18 @@ export function createShellWindow(opts?: ShellWindowOptions): BrowserWindow {
     minHeight: MIN_HEIGHT,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 16, y: 16 },
+    // Windows: `titleBarStyle: 'hidden'` removes the entire native title bar
+    // including the system menu (top-left) and min/max/close buttons
+    // (top-right) — the user can't close the window from chrome (#388).
+    // Restore native caption controls via Window Controls Overlay; macOS keeps
+    // its traffic lights from `hidden` alone, so this branch is Win-only.
+    ...(process.platform === 'win32' && {
+      titleBarOverlay: {
+        color: incognito ? '#1a1a2e' : '#0d0d0d',
+        symbolColor: '#e6eaee',
+        height: 32,
+      },
+    }),
     backgroundColor: incognito ? '#1a1a2e' : '#0d0d0d',
     webPreferences: {
       preload: path.join(__dirname, 'shell.js'),
