@@ -1015,6 +1015,12 @@ html, body {
   animation: pulse 2s ease-in-out infinite;
 }
 
+.shortcut-hint-error {
+  color: var(--color-status-error);
+  animation: none;
+  opacity: 1;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }

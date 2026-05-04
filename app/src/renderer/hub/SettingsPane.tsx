@@ -269,7 +269,7 @@ interface SettingsPaneProps {
   onClose: () => void;
   keybindings: KeyBinding[];
   overrides: Record<string, string[]>;
-  onUpdateBinding: (id: ActionId, keys: string[]) => void;
+  onUpdateBinding: (id: ActionId, keys: string[]) => Promise<boolean>;
   onResetBinding: (id: ActionId) => void;
   onResetAll: () => void;
   formatShortcut: (shortcut: string) => string;
@@ -278,7 +278,7 @@ interface SettingsPaneProps {
 interface KeybindRowProps {
   kb: KeyBinding;
   isOverridden: boolean;
-  onUpdate: (id: ActionId, keys: string[]) => void;
+  onUpdate: (id: ActionId, keys: string[]) => Promise<boolean>;
   onReset: (id: ActionId) => void;
   platform: string;
   formatShortcut: (shortcut: string) => string;
@@ -287,45 +287,66 @@ interface KeybindRowProps {
 function KeybindRow({ kb, isOverridden, onUpdate, onReset, platform, formatShortcut }: KeybindRowProps): React.ReactElement {
   const [recording, setRecording] = useState(false);
   const [firstKey, setFirstKey] = useState<string | null>(null);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+  const isGlobalShortcut = kb.id === 'action.createPane';
+
+  const finishRecording = useCallback(async (keys: string[]) => {
+    setRecording(false);
+    setFirstKey(null);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    const ok = await onUpdate(kb.id, keys);
+    setRecordingError(ok ? null : 'That shortcut is unavailable. Choose another one.');
+  }, [kb.id, onUpdate]);
 
   useEffect(() => {
     if (!recording) return;
     const timer = setTimeout(() => {
       if (firstKey) {
-        onUpdate(kb.id, [firstKey]);
+        void finishRecording([firstKey]);
+      } else {
         setRecording(false);
-        setFirstKey(null);
+        setRecordingError('No shortcut was detected. Choose another combination.');
       }
-    }, 700);
+    }, firstKey ? 700 : 8000);
 
-    const handler = (e: KeyboardEvent) => {
+    const handler = async (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
 
       if (e.key === 'Escape') {
         setRecording(false);
         setFirstKey(null);
+        setRecordingError(null);
+        return;
+      }
+
+      if (e.key === 'Unidentified') {
+        clearTimeout(timer);
+        setRecording(false);
+        setFirstKey(null);
+        setRecordingError('That shortcut is unavailable. Choose another one.');
         return;
       }
 
       const combo = keyboardEventToShortcut(e, platform);
       if (!combo) return;
 
+      if (isGlobalShortcut && !e.metaKey && !e.ctrlKey && !e.altKey) return;
+
       if (firstKey) {
         clearTimeout(timer);
-        onUpdate(kb.id, [`${firstKey} ${combo}`]);
-        setRecording(false);
-        setFirstKey(null);
+        await finishRecording([`${firstKey} ${combo}`]);
         return;
       }
 
       // If modifier present, commit immediately. Else wait briefly for possible chord.
       if (e.metaKey || e.ctrlKey || e.altKey) {
-        onUpdate(kb.id, [combo]);
-        setRecording(false);
+        clearTimeout(timer);
+        await finishRecording([combo]);
         return;
       }
 
+      setRecordingError(null);
       setFirstKey(combo);
     };
     window.addEventListener('keydown', handler, true);
@@ -333,7 +354,7 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset, platform, formatShort
       clearTimeout(timer);
       window.removeEventListener('keydown', handler, true);
     };
-  }, [recording, firstKey, kb.id, onUpdate, platform]);
+  }, [finishRecording, firstKey, isGlobalShortcut, platform, recording]);
 
   return (
     <div className={`settings-pane__row${isOverridden ? ' settings-pane__row--modified' : ''}`}>
@@ -342,6 +363,7 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset, platform, formatShort
         <button
           className={`settings-pane__key-btn${recording ? ' settings-pane__key-btn--recording' : ''}`}
           onClick={() => {
+            setRecordingError(null);
             setRecording(true);
             setFirstKey(null);
           }}
@@ -368,6 +390,7 @@ function KeybindRow({ kb, isOverridden, onUpdate, onReset, platform, formatShort
           </svg>
         </button>
       </div>
+      {recordingError && <span className="settings-pane__key-error">{recordingError}</span>}
     </div>
   );
 }

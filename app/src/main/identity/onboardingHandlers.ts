@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, globalShortcut, Notification, shell } from 'electron';
+import { ipcMain, BrowserWindow, Notification, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { mainLogger } from '../logger';
 import { AccountStore } from './AccountStore';
@@ -7,8 +7,8 @@ import { createPillWindow, togglePill, onPillVisibilityChange } from '../pill';
 import { saveApiKey as authSaveApiKey, setAuthMode as authSetMode, saveOpenAIKey as authSaveOpenAIKey } from './authStore';
 import { getAdapter } from '../hl/engines';
 import { enrichedEnv, resolveCliSpawn } from '../hl/engines/pathEnrich';
-
-const GLOBAL_SHORTCUT = 'CommandOrControl+Shift+Space';
+import { normalizeAccelerator } from '../../shared/hotkeys';
+import { getGlobalCmdbarAccelerator, registerHotkeys, setGlobalCmdbarAccelerator } from '../hotkeys';
 
 const ANTHROPIC_SERVICE = 'com.browser-use.desktop.anthropic';
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -321,9 +321,15 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
   });
 
   let pillCreated = false;
-  let currentAccelerator = GLOBAL_SHORTCUT;
 
-  const registerOnboardingShortcut = (accelerator: string): boolean => {
+  const fireOnboardingShortcut = (accelerator: string): void => {
+    mainLogger.info('onboardingHandlers.shortcutFired', { accelerator });
+    togglePill();
+    const w = liveOnboardingWindow();
+    if (w) w.webContents.send('shortcut-activated');
+  };
+
+  const ensureOnboardingShortcut = (): boolean => {
     if (!pillCreated) {
       createPillWindow();
       onPillVisibilityChange((visible) => {
@@ -335,28 +341,30 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
       mainLogger.info('onboardingHandlers.pillCreated');
     }
 
-    globalShortcut.unregister(currentAccelerator);
-    const ok = globalShortcut.register(accelerator, () => {
-      mainLogger.info('onboardingHandlers.shortcutFired', { accelerator });
-      togglePill();
-      const w = liveOnboardingWindow();
-      if (w) w.webContents.send('shortcut-activated');
-    });
-    if (ok) currentAccelerator = accelerator;
-    return ok;
+    return registerHotkeys(() => fireOnboardingShortcut(getGlobalCmdbarAccelerator()));
   };
 
   ipcMain.handle('onboarding:listen-shortcut', () => {
-    mainLogger.info('onboardingHandlers.listenShortcut');
-    const ok = registerOnboardingShortcut(GLOBAL_SHORTCUT);
-    return { ok, accelerator: GLOBAL_SHORTCUT };
+    mainLogger.info('onboardingHandlers.listenShortcut', { accelerator: getGlobalCmdbarAccelerator() });
+    const ok = ensureOnboardingShortcut();
+    return { ok, accelerator: getGlobalCmdbarAccelerator() };
   });
 
   ipcMain.handle('onboarding:set-shortcut', (_event, accelerator: string) => {
     const validated = assertString(accelerator, 'accelerator', 100);
-    mainLogger.info('onboardingHandlers.setShortcut', { accelerator: validated });
-    const ok = registerOnboardingShortcut(validated);
-    return { ok, accelerator: ok ? validated : currentAccelerator };
+    const normalized = normalizeAccelerator(validated, process.platform);
+    mainLogger.info('onboardingHandlers.setShortcut', { accelerator: normalized });
+    ensureOnboardingShortcut();
+    const result = setGlobalCmdbarAccelerator(normalized);
+    mainLogger.info('onboardingHandlers.setShortcut.persisted', { ...result });
+    return result;
+  });
+
+  ipcMain.handle('onboarding:trigger-shortcut', () => {
+    const accelerator = getGlobalCmdbarAccelerator();
+    mainLogger.info('onboardingHandlers.triggerShortcut', { accelerator });
+    fireOnboardingShortcut(accelerator);
+    return { ok: true };
   });
 
   ipcMain.handle('onboarding:request-notifications', () => {
@@ -433,6 +441,7 @@ export function unregisterOnboardingHandlers(): void {
   ipcMain.removeHandler('onboarding:open-external');
   ipcMain.removeHandler('onboarding:listen-shortcut');
   ipcMain.removeHandler('onboarding:set-shortcut');
+  ipcMain.removeHandler('onboarding:trigger-shortcut');
   ipcMain.removeHandler('onboarding:request-notifications');
   ipcMain.removeHandler('onboarding:complete');
   mainLogger.info('onboardingHandlers.unregistered');

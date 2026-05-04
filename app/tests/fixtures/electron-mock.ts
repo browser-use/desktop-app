@@ -46,6 +46,7 @@ export const BrowserWindow = {
 
 export const globalShortcut = {
   register: (): boolean => false,
+  isRegistered: (): boolean => false,
   unregister: (): void => undefined,
   unregisterAll: (): void => undefined,
 };
