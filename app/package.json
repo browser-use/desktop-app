@@ -3,13 +3,13 @@
   "productName": "Browser Use",
   "version": "0.0.30",
   "description": "Browser Use — a desktop agent hub for Claude Code and Codex",
-  "homepage": "https://github.com/browser-use/desktop-app",
+  "homepage": "https://github.com/browser-use/desktop",
   "repository": {
     "type": "git",
-    "url": "https://github.com/browser-use/desktop-app.git"
+    "url": "https://github.com/browser-use/desktop.git"
   },
   "bugs": {
-    "url": "https://github.com/browser-use/desktop-app/issues"
+    "url": "https://github.com/browser-use/desktop/issues"
   },
   "main": ".vite/build/main.js",
   "private": true,
