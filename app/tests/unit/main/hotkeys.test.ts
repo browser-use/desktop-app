@@ -25,9 +25,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../../../src/main/logger', () => ({ mainLogger: loggerSpy }));
 
-const EXPECTED_DEFAULT_ACCELERATOR = process.platform === 'linux'
-  ? 'Alt+Space'
-  : 'CommandOrControl+Shift+Space';
+const EXPECTED_DEFAULT_ACCELERATOR = 'CommandOrControl+Shift+Space';
 
 const CUSTOM_ACCELERATOR = 'CommandOrControl+Alt+Space';
 

@@ -32,9 +32,9 @@ describe('shortcut platform normalization', () => {
     expect(normalizeShortcutPlatform('Linux x86_64')).toBe('linux');
   });
 
-  it('uses Alt+Space as the Linux default and keeps the existing default elsewhere', () => {
-    expect(defaultGlobalCmdbarAccelerator('linux')).toBe('Alt+Space');
-    expect(defaultGlobalCmdbarAccelerator('Linux x86_64')).toBe('Alt+Space');
+  it('uses the same global command-bar default on desktop platforms', () => {
+    expect(defaultGlobalCmdbarAccelerator('linux')).toBe('CommandOrControl+Shift+Space');
+    expect(defaultGlobalCmdbarAccelerator('Linux x86_64')).toBe('CommandOrControl+Shift+Space');
     expect(defaultGlobalCmdbarAccelerator('darwin')).toBe('CommandOrControl+Shift+Space');
     expect(defaultGlobalCmdbarAccelerator('win32')).toBe('CommandOrControl+Shift+Space');
   });
@@ -92,6 +92,11 @@ describe('shortcut platform normalization', () => {
     expect(rendererToAccelerator('Cmd+Ctrl+Alt+Space', 'darwin')).toBe(
       'CommandOrControl+Control+Alt+Space',
     );
+  });
+
+  it('keeps renderer Cmd labels ctrl-equivalent on Windows and Linux', () => {
+    expect(rendererToAccelerator('Cmd+Shift+Space', 'linux')).toBe('CommandOrControl+Shift+Space');
+    expect(rendererToAccelerator('Command+Shift+Space', 'win32')).toBe('CommandOrControl+Shift+Space');
   });
 
   it('keeps shift when capturing space shortcuts', () => {

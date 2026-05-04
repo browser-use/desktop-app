@@ -17,9 +17,13 @@ import path from 'node:path';
 loadDotEnv({ path: path.resolve(__dirname, '..', '..', '.env') });
 
 import { app, BrowserWindow, crashReporter, globalShortcut, ipcMain, Menu, MenuItemConstructorOptions, nativeImage, shell } from 'electron';
+import { mergeChromiumFeature } from './startup/chromiumFeatures';
 
 if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+  app.commandLine.appendSwitch(
+    'enable-features',
+    mergeChromiumFeature(app.commandLine.getSwitchValue('enable-features'), 'GlobalShortcutsPortal'),
+  );
 }
 
 app.setName('Browser Use');

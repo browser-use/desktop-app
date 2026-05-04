@@ -3,15 +3,15 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useVimKeys } from '../../../src/renderer/hub/useVimKeys';
+import { useVimKeys, type VimKeysReturn } from '../../../src/renderer/hub/useVimKeys';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function installElectronApi(accelerator = 'CommandOrControl+Alt+Space'): void {
+function installElectronApi(accelerator = 'CommandOrControl+Alt+Space', platform = 'darwin'): void {
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
-      shell: { platform: 'darwin' },
+      shell: { platform },
       hotkeys: {
         getGlobalCmdbar: vi.fn(async () => accelerator),
         setGlobalCmdbar: vi.fn(async (next: string) => ({ ok: true, accelerator: next })),
@@ -26,17 +26,18 @@ function installElectronApi(accelerator = 'CommandOrControl+Alt+Space'): void {
   });
 }
 
-function Harness({ onCreatePane }: { onCreatePane: () => void }): React.ReactElement {
-  useVimKeys({ 'action.createPane': onCreatePane });
+function Harness({ onCreatePane, onReady }: { onCreatePane: () => void; onReady?: (vim: VimKeysReturn) => void }): React.ReactElement {
+  const vim = useVimKeys({ 'action.createPane': onCreatePane });
+  onReady?.(vim);
   return <input data-testid="task-input" />;
 }
 
-function renderHarness(onCreatePane: () => void): { container: HTMLDivElement; root: Root } {
+function renderHarness(onCreatePane: () => void, onReady?: (vim: VimKeysReturn) => void): { container: HTMLDivElement; root: Root } {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(<Harness onCreatePane={onCreatePane} />);
+    root.render(<Harness onCreatePane={onCreatePane} onReady={onReady} />);
   });
   return { container, root };
 }
@@ -74,6 +75,24 @@ describe('useVimKeys global command fallback', () => {
     });
 
     expect(onCreatePane).toHaveBeenCalledTimes(1);
+
+    act(() => root.unmount());
+  });
+
+  it('resets the global command shortcut to the shared desktop default on Linux', async () => {
+    installElectronApi('Alt+Space', 'linux');
+    let vim: VimKeysReturn | null = null;
+    const { root } = renderHarness(vi.fn(), (next) => { vim = next; });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vim?.resetBinding('action.createPane');
+    });
+
+    expect(window.electronAPI?.hotkeys?.setGlobalCmdbar).toHaveBeenCalledWith('CommandOrControl+Shift+Space');
 
     act(() => root.unmount());
   });

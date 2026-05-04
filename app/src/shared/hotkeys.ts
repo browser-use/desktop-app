@@ -8,7 +8,6 @@
  */
 
 export const DEFAULT_GLOBAL_CMDBAR_ACCELERATOR = 'CommandOrControl+Shift+Space';
-export const DEFAULT_LINUX_GLOBAL_CMDBAR_ACCELERATOR = 'Alt+Space';
 
 const MODIFIER_KEYS = new Set(['Meta', 'Control', 'Alt', 'Shift']);
 const SPACE_KEYS = new Set([' ', '\u00A0', 'Spacebar']);
@@ -27,10 +26,8 @@ export function fallbackShortcutPlatform(platform?: string): string {
   return normalizeShortcutPlatform(platform);
 }
 
-export function defaultGlobalCmdbarAccelerator(platform?: string): string {
-  return normalizeShortcutPlatform(platform) === 'linux'
-    ? DEFAULT_LINUX_GLOBAL_CMDBAR_ACCELERATOR
-    : DEFAULT_GLOBAL_CMDBAR_ACCELERATOR;
+export function defaultGlobalCmdbarAccelerator(_platform?: string): string {
+  return DEFAULT_GLOBAL_CMDBAR_ACCELERATOR;
 }
 
 function displayModifier(part: string, platform: string): string {
@@ -91,7 +88,7 @@ function normalizeAcceleratorPart(part: string, platform?: string): string {
       return 'CommandOrControl';
     case 'cmd':
     case 'command':
-      return normalizedPlatform && normalizedPlatform !== 'darwin' ? 'Command' : 'CommandOrControl';
+      return 'CommandOrControl';
     case 'ctrl':
     case 'control':
       return normalizedPlatform === 'darwin' ? 'Control' : 'CommandOrControl';
