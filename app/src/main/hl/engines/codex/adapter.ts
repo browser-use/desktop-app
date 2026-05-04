@@ -142,15 +142,28 @@ const codexAdapter: EngineAdapter = {
     return lines.join('\n');
   },
 
-  buildSpawnArgs(ctx: SpawnContext, wrappedPrompt: string): string[] {
-    // `codex exec resume <id> <prompt>` for continuation; otherwise plain exec.
+  buildSpawnArgs(ctx: SpawnContext): string[] {
+    // `codex exec resume <id> -` for continuation; otherwise plain exec.
+    // The trailing `-` tells codex to read the prompt from stdin — see
+    // getStdinPayload below for why we never pass the prompt via argv.
     // --yolo skips sandbox + approvals — acceptable because the agent is
     //   already scoped by env BU_TARGET_ID and cwd. Equivalent to Claude Code's
     //   --dangerously-skip-permissions.
     if (ctx.resumeSessionId) {
-      return ['exec', 'resume', ctx.resumeSessionId, '--json', '--yolo', wrappedPrompt];
+      return ['exec', 'resume', ctx.resumeSessionId, '--json', '--yolo', '-'];
     }
-    return ['exec', '--json', '--yolo', wrappedPrompt];
+    return ['exec', '--json', '--yolo', '-'];
+  },
+
+  getStdinPayload(_ctx: SpawnContext, wrappedPrompt: string): string {
+    // Pass the prompt via stdin to dodge a Windows-specific bug: codex on
+    // Windows installs as `codex.cmd` (an npm batch shim), which we route
+    // through `cmd.exe /d /s /c`. cmd.exe terminates argument parsing at any
+    // raw newline inside a quoted arg, so a multi-line wrappedPrompt gets
+    // truncated and word-split — codex then sees the second word ("are") as
+    // an unexpected positional and exits with a clap parse error. Stdin
+    // sidesteps argv quoting entirely on every platform.
+    return wrappedPrompt;
   },
 
   buildEnv(ctx: SpawnContext, baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

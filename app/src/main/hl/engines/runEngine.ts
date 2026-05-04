@@ -204,13 +204,27 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     },
   });
 
+  // If the adapter wants to feed the prompt via stdin (Windows-safe path —
+  // see EngineAdapter.getStdinPayload), open stdin as a pipe instead of
+  // ignoring it, then write+end after spawn.
+  const stdinPayload = adapter.getStdinPayload?.(spawnCtx, wrappedPrompt);
+  const stdinMode: 'pipe' | 'ignore' = stdinPayload != null ? 'pipe' : 'ignore';
+
   let child: ChildProcessWithoutNullStreams;
   try {
     const resolved = resolveCliSpawn(adapter.binaryName, args, { env });
-    child = spawn(resolved.command, resolved.args, { cwd: opts.harnessDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(resolved.command, resolved.args, { cwd: opts.harnessDir, env, stdio: [stdinMode, 'pipe', 'pipe'] });
   } catch (err) {
     opts.onEvent({ type: 'error', message: `spawn_failed: ${(err as Error).message}` });
     return;
+  }
+
+  if (stdinPayload != null) {
+    try {
+      child.stdin.end(stdinPayload, 'utf-8');
+    } catch (err) {
+      engineLogger.warn('engines.run.stdinWrite.failed', { engineId: adapter.id, error: (err as Error).message });
+    }
   }
 
   const onAbort = () => {
