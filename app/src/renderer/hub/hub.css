@@ -83,6 +83,15 @@
   justify-content: space-between;
   padding: 0 var(--space-10);
   padding-top: 36px;
+  /* Reserve space for the Windows Controls Overlay (min/max/close) so the
+     "+ New agent" button and other right-side toolbar items can't sit under
+     the native caption buttons. The env() vars are set by Chromium only when
+     titleBarOverlay is enabled (Windows); on macOS/Linux they're unset and
+     this resolves to 0 — Mac keeps its existing space-10 right padding. */
+  padding-right: calc(
+    var(--space-10) +
+    max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
   height: calc(40px + 30px);
   flex-shrink: 0;
   -webkit-app-region: drag;
