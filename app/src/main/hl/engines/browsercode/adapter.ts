@@ -98,7 +98,7 @@ const browserCodeAdapter: EngineAdapter = {
   },
 
   buildEnv(ctx: SpawnContext, baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    const env = { ...baseEnv };
+    const env = enrichedEnv(baseEnv);
     env.BU_TARGET_ID = ctx.targetId;
     env.BU_CDP_PORT = String(ctx.cdpPort);
     env.DO_NOT_TRACK = env.DO_NOT_TRACK ?? '1';
@@ -186,9 +186,11 @@ const browserCodeAdapter: EngineAdapter = {
           source: 'exact',
         });
       }
-      const summary = (ctx.lastNarrative ?? '').trim() || 'Task completed';
-      events.push({ type: 'done', summary, iterations: ctx.iter });
-      ctx.lastNarrative = undefined;
+      if (part.reason === 'stop') {
+        const summary = (ctx.lastNarrative ?? '').trim() || 'Task completed';
+        events.push({ type: 'done', summary, iterations: ctx.iter });
+        ctx.lastNarrative = undefined;
+      }
     }
 
     if (e.type === 'tool_use' && e.part && typeof e.part === 'object') {
