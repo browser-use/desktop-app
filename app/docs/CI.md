@@ -49,14 +49,22 @@ Two entry points:
    The workflow builds on macOS, produces an unsigned DMG (or a signed +
    notarized DMG if secrets are present), creates a Squirrel.Mac update ZIP,
    writes `latest-mac.yml`, and publishes a GitHub
-   Release at `https://github.com/<owner>/<repo>/releases/tag/v1.2.3` with
-   the DMG, update ZIP, and updater metadata attached. Release notes are
-   auto-generated from commits since the previous tag.
+   Release named `Browser Use Desktop v1.2.3` at
+   `https://github.com/<owner>/<repo>/releases/tag/v1.2.3` with the DMG,
+   update ZIP, and updater metadata attached. Release notes are generated
+   from commits since the previous stable semver tag. The release
+   workflow resolves that tag once, asks GitHub for PR-aware release notes,
+   and falls back to a compare-based commit list when the range has no
+   PR-linked changes. That keeps `What's Changed`, contributors, and
+   `Full Changelog` deterministic across all platform jobs.
 
 2. **`workflow_dispatch`** — for iteration and tester builds. Inputs:
 
-   - `skip-signing` (bool, default `true`) — build unsigned.
-   - `tag` (string, optional) — defaults to `v0.0.0-dev-<timestamp>`.
+   - `platform` (`all`, `mac`, `windows`, `linux`) — choose which assets to
+     build and publish.
+   - `signing-mode` (`unsigned`, `signed`, `notarized`) — controls macOS
+     signing behavior.
+   - `tag` (string, optional) — defaults to `v0.0.0-dev-<run-id>`.
      The workflow always creates a Release at that tag; if it contains
      `-dev`, `-rc`, `-beta`, or `-alpha`, it is marked **prerelease**.
 
@@ -64,12 +72,15 @@ Two entry points:
 
    ```bash
    gh workflow run release.yml --ref main \
+     -f platform=all \
+     -f signing-mode=signed \
      -f tag=v0.0.0-smoketest-$(date +%s)
    ```
 
 **Cutting a signed release.** For tag pushes, signing activates
-automatically when the secrets are set. For `workflow_dispatch`, flip
-`skip-signing: false`. The required secrets:
+automatically when the secrets are set. For `workflow_dispatch`, use
+`-f signing-mode=signed` or `-f signing-mode=notarized`. The required
+secrets:
 
 - `SIGNING_IDENTITY`
 - `APPLE_ID`

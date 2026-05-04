@@ -58,8 +58,36 @@ env:
   NODE_VERSION: '22'
 
 jobs:
+  release-metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
+      release_name: ${{ steps.metadata.outputs.release_name }}
+      previous_tag: ${{ steps.metadata.outputs.previous_tag }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history and tags make the previous-tag choice explicit and
+          # stable instead of relying on GitHub's implicit previous release.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Resolve tag and previous stable tag
+        id: metadata
+        run: node .github/scripts/resolve-release-metadata.mjs
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+
   make:
     name: Package + make DMG (macOS)
+    needs: release-metadata
     if: ${{ github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'mac' }}
     concurrency:
       group: release-${{ github.event.inputs.tag || github.ref_name }}-mac
@@ -77,32 +105,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          # Full history so release-notes generation can walk back to the
-          # previous tag.
+          # Keep full history in release jobs so packaging and diagnostics
+          # have complete tag metadata available.
           fetch-depth: 0
-
-      - name: Resolve release tag
-        id: tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-          elif [[ -n "${INPUT_TAG}" ]]; then
-            TAG="${INPUT_TAG}"
-          else
-            TAG="v0.0.0-dev-${GITHUB_RUN_ID}"
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          # Prerelease if the tag contains a recognized pre-release suffix.
-          if [[ "${TAG}" == *-dev* || "${TAG}" == *-rc* || "${TAG}" == *-beta* || "${TAG}" == *-alpha* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Resolved tag: ${TAG}"
-        env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
 
       - uses: actions/setup-node@v6
         with:
@@ -223,7 +228,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="${{ steps.tag.outputs.tag }}"
+          tag="${{ needs.release-metadata.outputs.tag }}"
           tag_version="${tag#v}"
           package_version="$(node -p "require('./app/package.json').version")"
           if [[ "$tag_version" != "$package_version" ]]; then
@@ -335,14 +340,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Generate deterministic release notes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-metadata.outputs.tag }}
+          PREVIOUS_TAG: ${{ needs.release-metadata.outputs.previous_tag }}
+        run: node .github/scripts/generate-release-notes.mjs
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
-          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
-          # Auto-generate notes from commits since the previous tag.
-          generate_release_notes: true
+          tag_name: ${{ needs.release-metadata.outputs.tag }}
+          name: ${{ needs.release-metadata.outputs.release_name }}
+          prerelease: ${{ needs.release-metadata.outputs.prerelease == 'true' }}
+          body_path: release-notes.md
           # For workflow_dispatch runs the tag doesn't exist yet — let the
           # action create it against the workflow's sha.
           target_commitish: ${{ github.sha }}
@@ -358,7 +369,7 @@ jobs:
       - name: Verify published updater feed
         shell: bash
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.release-metadata.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -410,6 +421,7 @@ jobs:
 
   make-windows:
     name: Package + make Squirrel (Windows)
+    needs: release-metadata
     if: ${{ github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
     concurrency:
       group: release-${{ github.event.inputs.tag || github.ref_name }}-windows
@@ -422,27 +434,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Resolve release tag
-        id: tag
-        shell: pwsh
-        env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
-        run: |
-          if ($env:GITHUB_REF -like 'refs/tags/*') {
-            $tag = $env:GITHUB_REF.Substring('refs/tags/'.Length)
-          } elseif ($env:INPUT_TAG) {
-            $tag = $env:INPUT_TAG
-          } else {
-            $tag = "v0.0.0-dev-$env:GITHUB_RUN_ID"
-          }
-          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          if ($tag -match '-(dev|rc|beta|alpha)') {
-            'prerelease=true' | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          } else {
-            'prerelease=false' | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          }
-          "Resolved tag: $tag"
 
       - uses: actions/setup-node@v6
         with:
@@ -462,7 +453,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          $tag = '${{ steps.tag.outputs.tag }}'
+          $tag = '${{ needs.release-metadata.outputs.tag }}'
           $tagVersion = $tag.TrimStart('v')
           $packageVersion = node -p "require('./app/package.json').version"
           if ($tagVersion -ne $packageVersion) {
@@ -512,13 +503,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Generate deterministic release notes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-metadata.outputs.tag }}
+          PREVIOUS_TAG: ${{ needs.release-metadata.outputs.previous_tag }}
+        run: node .github/scripts/generate-release-notes.mjs
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
-          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
-          generate_release_notes: true
+          tag_name: ${{ needs.release-metadata.outputs.tag }}
+          name: ${{ needs.release-metadata.outputs.release_name }}
+          prerelease: ${{ needs.release-metadata.outputs.prerelease == 'true' }}
+          body_path: release-notes.md
           target_commitish: ${{ github.sha }}
           fail_on_unmatched_files: false
           files: release-assets-windows/*
@@ -526,7 +524,7 @@ jobs:
       - name: Verify published Windows update feed
         shell: pwsh
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.release-metadata.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
         run: |
           $baseUrl = "https://github.com/$env:REPOSITORY/releases/download/$env:TAG"
@@ -573,6 +571,7 @@ jobs:
 
   make-linux:
     name: Package Linux distros (Docker)
+    needs: release-metadata
     if: ${{ github.event_name == 'push' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
     concurrency:
       group: release-${{ github.event.inputs.tag || github.ref_name }}-linux
@@ -586,34 +585,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve release tag
-        id: tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-          elif [[ -n "${INPUT_TAG}" ]]; then
-            TAG="${INPUT_TAG}"
-          else
-            TAG="v0.0.0-dev-${GITHUB_RUN_ID}"
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          if [[ "${TAG}" == *-dev* || "${TAG}" == *-rc* || "${TAG}" == *-beta* || "${TAG}" == *-alpha* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Resolved tag: ${TAG}"
-        env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
-
       - name: Validate package version for tag releases
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           set -euo pipefail
-          tag="${{ steps.tag.outputs.tag }}"
+          tag="${{ needs.release-metadata.outputs.tag }}"
           tag_version="${tag#v}"
           package_version="$(node -p "require('./app/package.json').version")"
           if [[ "$tag_version" != "$package_version" ]]; then
@@ -659,13 +636,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Generate deterministic release notes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-metadata.outputs.tag }}
+          PREVIOUS_TAG: ${{ needs.release-metadata.outputs.previous_tag }}
+        run: node .github/scripts/generate-release-notes.mjs
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
-          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
-          generate_release_notes: true
+          tag_name: ${{ needs.release-metadata.outputs.tag }}
+          name: ${{ needs.release-metadata.outputs.release_name }}
+          prerelease: ${{ needs.release-metadata.outputs.prerelease == 'true' }}
+          body_path: release-notes.md
           target_commitish: ${{ github.sha }}
           fail_on_unmatched_files: false
           files: |
@@ -674,7 +658,7 @@ jobs:
       - name: Verify published Linux update feed
         shell: bash
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.release-metadata.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
