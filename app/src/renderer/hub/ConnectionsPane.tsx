@@ -3,7 +3,7 @@ import anthropicLogo from './anthropic-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';
 import openaiLogo from './openai-logo.svg';
 import codexLogo from './codex-logo.svg';
-import cursorLogo from './cursor-logo.svg';
+import cursorLogo from './cursor-logo-white.svg';
 import { CookieBrowser, type CookieBrowserApi } from '../shared/CookieBrowser';
 
 type WaStatus = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error';
