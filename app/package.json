@@ -97,7 +97,7 @@
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@tanstack/react-query": "^5.99.2",
+    "@tanstack/react-query": "^5.100.8",
     "@types/ws": "^8.18.1",
     "@visx/curve": "^3.12.0",
     "@visx/gradient": "^3.12.0",
