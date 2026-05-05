@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import claudeLogoSrc from './claude-logo.svg?raw';
 import openaiLogoSrc from './openai-logo.svg?raw';
+import cursorLogoSrc from './cursor-logo.svg?raw';
 
 export interface EngineInfo {
   id: string;
@@ -21,6 +22,9 @@ function EngineLogo({ id }: { id: string }): React.ReactElement {
   }
   if (id === 'codex') {
     return <span className="engine-logo" dangerouslySetInnerHTML={{ __html: openaiLogoSrc as string }} />;
+  }
+  if (id === 'cursor-agent') {
+    return <span className="engine-logo" dangerouslySetInnerHTML={{ __html: cursorLogoSrc as string }} />;
   }
   return (
     <span className="engine-logo">
