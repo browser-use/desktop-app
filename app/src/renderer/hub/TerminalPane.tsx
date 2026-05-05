@@ -196,8 +196,19 @@ export function TerminalPane({ sessionId, engine, isActive }: TerminalPaneProps)
       s.timer = window.setInterval(paintSpinner, SPINNER_INTERVAL_MS);
     };
 
+    // Hoisted above the idle timer so the spinner gate can check it. The
+    // replay write path (`term.write(replay)` below) bypasses
+    // `writeStreamBytes` and therefore can't call `stopSpinner` itself, so
+    // the spinner MUST stay dormant until replay finishes — otherwise its
+    // periodic `\r\x1b[2K` repaints race the replay stream and erase rows
+    // mid-render.
+    let disposed = false;
+    let replayApplied = false;
+    const pending: string[] = [];
+
     const maybeStartSpinner = (): void => {
       const s = spin.current;
+      if (!replayApplied) return;
       if (!s.active) return;
       if (s.visible) return;
       if (!s.cursorAtLineStart) return;
@@ -208,9 +219,6 @@ export function TerminalPane({ sessionId, engine, isActive }: TerminalPaneProps)
 
     spin.current.idleTimer = window.setInterval(maybeStartSpinner, SPINNER_INTERVAL_MS);
 
-    let disposed = false;
-    let replayApplied = false;
-    const pending: string[] = [];
     const api = window.electronAPI;
 
     const writeStreamBytes = (bytes: string): void => {

@@ -136,7 +136,18 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
       // White (rather than brightCyan) reads more naturally against the slate
       // bg highlight — the cyan-on-blue contrast looked like a syntax error.
       const FG_WHITE = '\x1b[38;2;230;234;238m';
-      out.push(`${leading}${BG_USER_INPUT}${BOLD}${FG_WHITE}› ${event.text}${ERASE_EOL}${RESET}\r\n`);
+      // Multi-line prompts: re-apply the bg + ERASE_EOL on every line so the
+      // highlight reads as a banded block. First line gets the `›` prefix;
+      // continuation lines get a 2-space indent so wrapped prose aligns under
+      // the prompt text.
+      const lines = event.text.split(/\r?\n/);
+      const formatted = lines
+        .map((line, i) => {
+          const prefix = i === 0 ? '› ' : '  ';
+          return `${BG_USER_INPUT}${BOLD}${FG_WHITE}${prefix}${line}${ERASE_EOL}${RESET}`;
+        })
+        .join('\r\n');
+      out.push(`${leading}${formatted}\r\n`);
       return finish();
     }
 
