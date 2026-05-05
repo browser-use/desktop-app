@@ -11,6 +11,11 @@ import type { HlEvent } from '../../shared/session-schemas';
 const RESET = '\x1b[0m';
 const BOLD = '\x1b[1m';
 const DIM = '\x1b[2m';
+// Subtle slate background for user_input rows. Paired with `\x1b[K` to fill
+// the rest of the row with the same bg so the highlight reads as a banded row
+// rather than a colored span behind text.
+const BG_USER_INPUT = '\x1b[48;2;28;38;52m';
+const ERASE_EOL = '\x1b[K';
 const FG = {
   red: '\x1b[31m',
   green: '\x1b[32m',
@@ -125,7 +130,24 @@ export function hlEventToTermBytes(event: HlEvent, state: TermTranslatorState): 
       // is the top of the stream; a leading newline there would leave an
       // empty first row.
       const leading = state.hasEmitted ? '\r\n' : '';
-      out.push(`${leading}${BOLD}${FG.brightCyan}› ${event.text}${RESET}\r\n`);
+      // Order matters: BG before FG/BOLD; ERASE_EOL after the text fills the
+      // rest of the row with the bg color; RESET clears all SGR before the
+      // trailing CRLF so the next row starts on a clean slate.
+      // White (rather than brightCyan) reads more naturally against the slate
+      // bg highlight — the cyan-on-blue contrast looked like a syntax error.
+      const FG_WHITE = '\x1b[38;2;230;234;238m';
+      // Multi-line prompts: re-apply the bg + ERASE_EOL on every line so the
+      // highlight reads as a banded block. First line gets the `›` prefix;
+      // continuation lines get a 2-space indent so wrapped prose aligns under
+      // the prompt text.
+      const lines = event.text.split(/\r?\n/);
+      const formatted = lines
+        .map((line, i) => {
+          const prefix = i === 0 ? '› ' : '  ';
+          return `${BG_USER_INPUT}${BOLD}${FG_WHITE}${prefix}${line}${ERASE_EOL}${RESET}`;
+        })
+        .join('\r\n');
+      out.push(`${leading}${formatted}\r\n`);
       return finish();
     }
 

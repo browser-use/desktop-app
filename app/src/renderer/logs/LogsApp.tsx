@@ -38,6 +38,7 @@ interface DoneInfo {
 interface SessionShape {
   id: string;
   status?: string;
+  engine?: string;
   error?: string;
   output?: Array<{ type: string } & Partial<Record<string, unknown>>>;
 }
@@ -253,6 +254,7 @@ export function LogsApp(): React.ReactElement {
   const [files, setFiles] = useState<FileOutputEntry[]>([]);
   const [done, setDone] = useState<DoneInfo | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string | null>(null);
+  const [sessionEngine, setSessionEngine] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -325,6 +327,7 @@ export function LogsApp(): React.ReactElement {
       setDone(doneEv ? { summary: String(doneEv.summary ?? 'Task completed'), iterations: Number(doneEv.iterations ?? 0) } : null);
       setErrorMsg(session.error ?? null);
       setSessionStatus(session.status ?? null);
+      setSessionEngine(session.engine ?? null);
     });
     return unsub;
   }, [sessionId]);
@@ -358,6 +361,7 @@ export function LogsApp(): React.ReactElement {
     setDone(null);
     setErrorMsg(null);
     setSessionStatus(null);
+    setSessionEngine(null);
     if (!sessionId) return;
     let cancelled = false;
     void window.electronAPI?.sessions.get(sessionId).then((raw) => {
@@ -377,6 +381,7 @@ export function LogsApp(): React.ReactElement {
       setDone(doneEv ? { summary: String(doneEv.summary ?? 'Task completed'), iterations: Number(doneEv.iterations ?? 0) } : null);
       setErrorMsg(session?.error ?? null);
       setSessionStatus(session?.status ?? null);
+      setSessionEngine(session?.engine ?? null);
     }).catch((err) => console.error('[LogsApp] sessions.get failed', err));
     return () => { cancelled = true; };
   }, [sessionId]);
@@ -496,7 +501,12 @@ export function LogsApp(): React.ReactElement {
       </header>
       <div className="logs-term">
         {sessionId ? (
-          <TerminalPane key={sessionId} sessionId={sessionId} />
+          <TerminalPane
+            key={sessionId}
+            sessionId={sessionId}
+            engine={sessionEngine}
+            isActive={sessionStatus === 'running'}
+          />
         ) : (
           <div className="logs-empty">waiting for session…</div>
         )}
