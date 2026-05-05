@@ -273,8 +273,48 @@ tasks:
         echo "Once green:"
         echo "  https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/releases/tag/$tag"
 
+  release:preview:
+    desc: Throwaway preview build from the CURRENT branch — defaults to windows/unsigned for tester handoff. Override with PLATFORM=mac|linux|all SIGNING_MODE=signed|notarized.
+    silent: true
+    cmds:
+      - |
+        set -euo pipefail
+        platform="{{default "windows" .PLATFORM}}"
+        signing_mode="{{default "unsigned" .SIGNING_MODE}}"
+
+        case "$platform" in
+          all|mac|windows|linux) ;;
+          *)
+            echo "✗ Invalid PLATFORM '$platform' (expected all, mac, windows, or linux)"
+            exit 1
+            ;;
+        esac
+        case "$signing_mode" in
+          unsigned|signed|notarized) ;;
+          *)
+            echo "✗ Invalid SIGNING_MODE '$signing_mode' (expected unsigned, signed, or notarized)"
+            exit 1
+            ;;
+        esac
+
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        if [ "$branch" = "HEAD" ]; then
+          echo "✗ Detached HEAD — checkout a branch first."
+          exit 1
+        fi
+
+        echo "→ dispatching release.yml: ref=$branch platform=$platform signing-mode=$signing_mode (auto tag v0.0.0-dev-<timestamp>)"
+        gh workflow run release.yml --ref "$branch" -f platform="$platform" -f signing-mode="$signing_mode"
+
+        sleep 3
+        run_id=$(gh run list --repo "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+        if [ -n "$run_id" ]; then
+          echo "  gh run watch $run_id"
+          echo "  https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/actions/runs/$run_id"
+        fi
+
   release:dispatch:
-    desc: Manually run release.yml for PLATFORM=all|mac|windows|linux without creating a tag locally. Optional TAG=... SIGNING_MODE=unsigned|signed|notarized.
+    desc: Manually run release.yml on MAIN for PLATFORM=all|mac|windows|linux. For previews from a feature branch use release:preview instead. Optional TAG=... SIGNING_MODE=unsigned|signed|notarized.
     silent: true
     cmds:
       - |
