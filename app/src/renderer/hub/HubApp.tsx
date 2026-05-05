@@ -350,10 +350,11 @@ export function HubApp(): React.ReactElement {
     }
   }, [focusIndex, sessions, gridColumns, gridPage]);
 
-  const handleCreateSession = useCallback(async (input: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>; engine?: string }) => {
+  const handleCreateSession = useCallback(async (input: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>; engine?: string; model?: string }) => {
     const prompt = typeof input === 'string' ? input : input.prompt;
     const attachments = typeof input === 'string' ? [] : (input.attachments ?? []);
     const engine = typeof input === 'string' ? undefined : input.engine;
+    const model = typeof input === 'string' ? undefined : input.model;
     if (isMock) {
       const id = `session-${++sessionCounter}`;
       const now = Date.now();
@@ -389,10 +390,10 @@ export function HubApp(): React.ReactElement {
     if (!api) { console.error('[HubApp] electronAPI not available'); return; }
 
     try {
-      console.log('[HubApp] createSession (live)', { prompt, attachmentCount: attachments.length });
+      console.log('[HubApp] createSession (live)', { prompt, attachmentCount: attachments.length, engine, model });
       const id = await api.sessions.create(
-        attachments.length > 0 || engine
-          ? { prompt, attachments, engine }
+        attachments.length > 0 || engine || model
+          ? { prompt, attachments, engine, model }
           : prompt,
       );
       console.log('[HubApp] session created', { id });

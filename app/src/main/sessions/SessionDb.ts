@@ -15,6 +15,7 @@ interface SessionRow {
   origin_conversation_id: string | null;
   primary_site: string | null;
   engine: string | null;
+  model: string | null;
   auth_mode: string | null;
   subscription_type: string | null;
   cost_usd: number | null;
@@ -34,6 +35,7 @@ export class SessionDb {
     updateCreatedAt: Database.Statement;
     updatePrimarySite: Database.Statement;
     updateEngine: Database.Statement;
+    updateModel: Database.Statement;
     updateAuth: Database.Statement;
     updateUsage: Database.Statement;
     getSession: Database.Statement;
@@ -100,6 +102,9 @@ export class SessionDb {
       ),
       updateEngine: this.db.prepare(
         'UPDATE sessions SET engine = ?, updated_at = ? WHERE id = ?'
+      ),
+      updateModel: this.db.prepare(
+        'UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?'
       ),
       updateAuth: this.db.prepare(
         'UPDATE sessions SET auth_mode = ?, subscription_type = ?, updated_at = ? WHERE id = ?'
@@ -333,6 +338,18 @@ export class SessionDb {
       mainLogger.info('SessionDb.migration.complete', { version: 10 });
     }
 
+    if (this.getVersion() < 11) {
+      mainLogger.info('SessionDb.migration.running', { from: this.getVersion(), to: 11 });
+      this.db.transaction(() => {
+        const cols = this.db.pragma('table_info(sessions)') as Array<{ name: string }>;
+        if (!cols.some((c) => c.name === 'model')) {
+          this.db.exec('ALTER TABLE sessions ADD COLUMN model TEXT');
+        }
+        this.setVersion(11);
+      })();
+      mainLogger.info('SessionDb.migration.complete', { version: 11 });
+    }
+
     const final = this.getVersion();
     if (final !== DB_SCHEMA_VERSION) {
       const msg = `SessionDb migration did not reach expected version. Got ${final}, expected ${DB_SCHEMA_VERSION}.`;
@@ -413,6 +430,20 @@ export class SessionDb {
       }
     } catch (err) {
       mainLogger.error('SessionDb.updateEngine.failed', { id, engine, error: (err as Error).message });
+      throw err;
+    }
+  }
+
+  updateModel(id: string, model: string | null): void {
+    if (this.closed) return;
+    const now = Date.now();
+    try {
+      const result = this.stmts.updateModel.run(model, now, id);
+      if (result.changes === 0) {
+        mainLogger.warn('SessionDb.updateModel.notFound', { id, model });
+      }
+    } catch (err) {
+      mainLogger.error('SessionDb.updateModel.failed', { id, model, error: (err as Error).message });
       throw err;
     }
   }

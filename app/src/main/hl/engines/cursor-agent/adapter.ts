@@ -21,6 +21,7 @@ import { enrichedEnv, resolveCliSpawn } from '../pathEnrich';
 import type {
   AuthProbe,
   EngineAdapter,
+  EngineModelList,
   InstallProbe,
   ParseContext,
   ParseResult,
@@ -31,6 +32,29 @@ import type { HlEvent } from '../../../../shared/session-schemas';
 const ID = 'cursor-agent';
 const DISPLAY = 'Cursor Agent';
 const BIN = 'agent';
+
+function parseCursorModels(stdout: string): EngineModelList['models'] {
+  const models: EngineModelList['models'] = [];
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line === 'Available models' || line.startsWith('Tip:')) continue;
+    const match = line.match(/^(\S+)\s+-\s+(.+)$/);
+    if (!match) continue;
+    const id = match[1];
+    const rawName = match[2].trim();
+    const isDefault = /\(default\)/i.test(rawName);
+    const isCurrent = /\(current\)/i.test(rawName);
+    const displayName = rawName.replace(/\s+\((?:default|current)\)/gi, '').trim();
+    models.push({
+      id,
+      displayName: displayName || id,
+      source: 'cli',
+      isDefault,
+      isCurrent,
+    });
+  }
+  return models;
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -192,6 +216,28 @@ const cursorAgentAdapter: EngineAdapter = {
     });
   },
 
+  async listModels(): Promise<EngineModelList> {
+    const r = await runCli(['--list-models'], 10_000);
+    if (!r.ok) {
+      return {
+        engineId: ID,
+        source: 'fallback',
+        error: r.stderr || r.stdout || 'Unable to list Cursor Agent models',
+        models: [
+          { id: 'auto', displayName: 'Auto', source: 'fallback' },
+          { id: 'composer-2-fast', displayName: 'Composer 2 Fast', source: 'fallback' },
+          { id: 'composer-2', displayName: 'Composer 2', source: 'fallback' },
+        ],
+      };
+    }
+    const models = parseCursorModels(r.stdout);
+    return {
+      engineId: ID,
+      source: 'cli',
+      models,
+    };
+  },
+
   wrapPrompt(ctx: SpawnContext): string {
     const lines: string[] = [
       'You are driving a specific Chromium browser view on this machine.',
@@ -228,6 +274,7 @@ const cursorAgentAdapter: EngineAdapter = {
       '--trust',
       '--sandbox', 'disabled',
     ];
+    if (ctx.model) args.push('--model', ctx.model);
     if (ctx.resumeSessionId) args.push('--resume', ctx.resumeSessionId);
     args.push(wrappedPrompt);
     return args;

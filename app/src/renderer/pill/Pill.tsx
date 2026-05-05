@@ -29,6 +29,7 @@ declare global {
         prompt: string,
         attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>,
         engine?: string,
+        model?: string,
       ) => Promise<{ task_id: string }>;
       hide: () => void;
       setExpanded: (expanded: boolean | number) => void;
@@ -212,6 +213,7 @@ export function Pill(): React.ReactElement {
   const [sessions, setSessions] = useState<SessionLite[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [engine, setEngine] = useState<string>('claude-code');
+  const [model, setModel] = useState<string | undefined>(undefined);
   const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; bytes: Uint8Array }>>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [validFavicons, setValidFavicons] = useState<Set<string>>(new Set());
@@ -373,11 +375,11 @@ export function Pill(): React.ReactElement {
     }
     if (!trimmed) return;
     const attachArg = attachments.length > 0 ? attachments : undefined;
-    window.pillAPI.submit(trimmed, attachArg, engine);
+    window.pillAPI.submit(trimmed, attachArg, engine, model);
     setValue('');
     setAttachments([]);
     setAttachError(null);
-  }, [value, selectedIdx, navList, showDashboard, attachments, engine]);
+  }, [value, selectedIdx, navList, showDashboard, attachments, engine, model]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -398,7 +400,7 @@ export function Pill(): React.ReactElement {
         const trimmed = value.trim();
         if (trimmed) {
           const attachArg = attachments.length > 0 ? attachments : undefined;
-          window.pillAPI.submit(trimmed, attachArg, engine);
+          window.pillAPI.submit(trimmed, attachArg, engine, model);
           setValue('');
           setAttachments([]);
           setAttachError(null);
@@ -408,7 +410,7 @@ export function Pill(): React.ReactElement {
         submit();
       }
     },
-    [submit, value, navList.length, attachments, engine],
+    [submit, value, navList.length, attachments, engine, model],
   );
 
   const highlightVisible = hasResults && selectedIdx >= 0;
@@ -482,7 +484,14 @@ export function Pill(): React.ReactElement {
               }}
             />
             <div className="cmdbar__engine-picker">
-              <EnginePicker value={engine} onChange={setEngine} onOpenChange={() => {}} />
+              <EnginePicker
+                value={engine}
+                model={model}
+                labelMode="model"
+                onChange={(id) => { setEngine(id); setModel(undefined); }}
+                onModelChange={setModel}
+                onOpenChange={() => {}}
+              />
             </div>
             <button
               className="cmdbar__send"
