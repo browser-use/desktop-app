@@ -3,6 +3,7 @@ import anthropicLogo from './anthropic-logo.svg';
 import claudeCodeLogo from './claude-code-logo.svg';
 import openaiLogo from './openai-logo.svg';
 import codexLogo from './codex-logo.svg';
+import cursorLogo from './cursor-logo-white.svg';
 import { CookieBrowser, type CookieBrowserApi } from '../shared/CookieBrowser';
 
 type WaStatus = 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'error';
@@ -18,6 +19,12 @@ interface OpenAiStatus {
   masked?: string;
 }
 interface CodexStatus {
+  installed: boolean;
+  authed: boolean;
+  version?: string;
+  error?: string;
+}
+interface CursorStatus {
   installed: boolean;
   authed: boolean;
   version?: string;
@@ -64,6 +71,8 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
 
   const [codexStatus, setCodexStatus] = useState<CodexStatus>({ installed: false, authed: false });
   const [codexWaiting, setCodexWaiting] = useState(false);
+  const [cursorStatus, setCursorStatus] = useState<CursorStatus>({ installed: false, authed: false });
+  const [cursorWaiting, setCursorWaiting] = useState(false);
   // Surfaced from the codex login PTY when --device-auth is in play. Drives
   // the small "one-time code" block below the Codex card so users on
   // restricted networks (no localhost-callback) can still sign in.
@@ -103,6 +112,22 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
       });
     } catch (err) {
       console.error('[connections] refreshCodex failed', err);
+    }
+  }, []);
+
+  const refreshCursor = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.settings?.cursor) return;
+    try {
+      const s = await api.settings.cursor.status();
+      setCursorStatus({
+        installed: s.installed.installed,
+        authed: s.authed.authed,
+        version: s.installed.version,
+        error: s.installed.error ?? s.authed.error,
+      });
+    } catch (err) {
+      console.error('[connections] refreshCursor failed', err);
     }
   }, []);
 
@@ -173,7 +198,8 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
     refreshKey();
     refreshOpenai();
     refreshCodex();
-  }, [refreshKey, refreshOpenai, refreshCodex]);
+    refreshCursor();
+  }, [refreshKey, refreshOpenai, refreshCodex, refreshCursor]);
 
   // Periodic refresh while the pane is mounted — catches external state
   // changes (user runs `claude auth logout` in a terminal, codex token
@@ -184,9 +210,10 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
       refreshKey();
       refreshOpenai();
       refreshCodex();
+      refreshCursor();
     }, 5000);
     return () => clearInterval(id);
-  }, [refreshKey, refreshOpenai, refreshCodex]);
+  }, [refreshKey, refreshOpenai, refreshCodex, refreshCursor]);
 
   // Poll codex status while user completes the codex OAuth flow. Tighter
   // interval than the 5s panel refresh so the UI flips to "Signed in" the
@@ -212,6 +239,46 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
     void tick();
     return () => { cancelled = true; };
   }, [codexWaiting, refreshCodex, codexStatus.authed]);
+
+  // Poll cursor status while user completes the `agent login` OAuth flow.
+  useEffect(() => {
+    if (!cursorWaiting) return;
+    let cancelled = false;
+    let attempts = 0;
+    const MAX = 180;
+    const tick = async () => {
+      if (cancelled) return;
+      attempts++;
+      await refreshCursor();
+      if (cursorStatus.authed) {
+        setCursorWaiting(false);
+        return;
+      }
+      if (attempts >= MAX) { setCursorWaiting(false); return; }
+      setTimeout(tick, 1000);
+    };
+    void tick();
+    return () => { cancelled = true; };
+  }, [cursorWaiting, refreshCursor, cursorStatus.authed]);
+
+  const handleCursorLogin = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.settings?.cursor) return;
+    setCursorWaiting(true);
+    const res = await api.settings.cursor.login();
+    if (!res.opened) {
+      console.warn('[connections] cursor login failed', res.error);
+      setCursorWaiting(false);
+    }
+  }, []);
+
+  const handleCursorLogout = useCallback(async () => {
+    const api = window.electronAPI;
+    if (!api?.settings?.cursor?.logout) return;
+    const res = await api.settings.cursor.logout();
+    if (!res.opened) console.warn('[connections] cursor logout failed', res.error);
+    await refreshCursor();
+  }, [refreshCursor]);
 
   const handleSaveOpenai = useCallback(async () => {
     const api = window.electronAPI;
@@ -594,6 +661,43 @@ export function ConnectionsPane({ embedded }: ConnectionsPaneProps): React.React
             )}
           </div>
         )}
+      </div>
+
+      <div className="conn-card">
+        <div className="conn-card__header">
+          <img className="conn-card__icon" src={cursorLogo} alt="" />
+          <div className="conn-card__info">
+            <div className="conn-card__title-row">
+              <span className="conn-card__name">Cursor</span>
+              <span className={`conn-card__dot ${cursorStatus.authed ? 'conn-card__dot--connected' : cursorWaiting ? 'conn-card__dot--connecting' : 'conn-card__dot--disconnected'}`} />
+            </div>
+            <span className="conn-card__subtitle">
+              {cursorStatus.authed
+                ? `Signed in with Cursor${cursorStatus.version ? ` · v${cursorStatus.version}` : ''}`
+                : cursorWaiting
+                ? 'Finish the OAuth flow in your browser…'
+                : !cursorStatus.installed
+                ? 'Cursor Agent CLI not installed — run `curl https://cursor.com/install -fsS | bash`'
+                : 'Not connected'}
+            </span>
+          </div>
+          <div className="conn-card__actions">
+            {cursorStatus.authed && (
+              <button className="conn-card__btn conn-card__btn--secondary" onClick={handleCursorLogout}>
+                Sign out
+              </button>
+            )}
+            {!cursorStatus.authed && cursorStatus.installed && (
+              <button
+                className="conn-card__btn conn-card__btn--primary"
+                onClick={handleCursorLogin}
+                disabled={cursorWaiting}
+              >
+                {cursorWaiting ? 'Waiting…' : 'Sign in with Cursor'}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="conn-card">

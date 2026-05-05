@@ -38,6 +38,7 @@ const CH_OAI_SAVE = 'settings:openai-key:save';
 const CH_OAI_TEST = 'settings:openai-key:test';
 const CH_OAI_DELETE = 'settings:openai-key:delete';
 const CH_CODEX_LOGOUT = 'settings:codex:logout';
+const CH_CURSOR_LOGOUT = 'settings:cursor-agent:logout';
 const CH_CC_LOGIN = 'settings:claude-code:login';
 const CH_CC_LOGOUT = 'settings:claude-code:logout';
 
@@ -290,6 +291,11 @@ async function handleCodexLogout(): Promise<{ opened: boolean; error?: string }>
   return runLogoutCommand('codex', ['logout']);
 }
 
+async function handleCursorLogout(): Promise<{ opened: boolean; error?: string }> {
+  mainLogger.info('apiKeyIpc.cursor.logout');
+  return runLogoutCommand('agent', ['logout']);
+}
+
 async function handleClaudeCodeLogout(): Promise<{ opened: boolean; error?: string }> {
   mainLogger.info('apiKeyIpc.claudeCode.logout');
   // Clear our keychain mirror first so the UI updates immediately; then
@@ -313,6 +319,7 @@ export function registerApiKeyHandlers(): void {
   ipcMain.handle(CH_OAI_TEST, handleOpenAiTest);
   ipcMain.handle(CH_OAI_DELETE, handleOpenAiDelete);
   ipcMain.handle(CH_CODEX_LOGOUT, handleCodexLogout);
+  ipcMain.handle(CH_CURSOR_LOGOUT, handleCursorLogout);
   ipcMain.handle(CH_CC_LOGIN, handleClaudeCodeLogin);
   ipcMain.handle(CH_CC_LOGOUT, handleClaudeCodeLogout);
   mainLogger.info('apiKeyIpc.register.ok');

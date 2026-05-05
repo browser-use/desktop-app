@@ -180,6 +180,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     cdpPort: opts.cdpPort,
     resumeSessionId: opts.resumeSessionId,
     savedApiKey,
+    model: opts.model,
     attachmentRefs,
   };
   const wrappedPrompt = adapter.wrapPrompt(spawnCtx);
@@ -193,6 +194,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
     targetId,
     cdpPort: opts.cdpPort,
     hasResume: !!opts.resumeSessionId,
+    model: opts.model ?? null,
     attachmentCount: attachmentRefs.length,
     authSource: savedApiKey ? 'savedApiKey' : 'cliManaged',
     args: args.map((a) => (a.length > 120 ? `${a.slice(0, 100)}…<${a.length}ch>` : a)),

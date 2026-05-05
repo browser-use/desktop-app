@@ -24,6 +24,8 @@ export interface SpawnContext {
   resumeSessionId?: string;
   /** Optional user-supplied API key; adapter decides how to inject. */
   savedApiKey?: string;
+  /** Optional model id selected by the user. Undefined means use the CLI default. */
+  model?: string;
   /** List of attachment paths (relative to harnessDir) the adapter may mention in wrappedPrompt. */
   attachmentRefs: Array<{ relPath: string; mime: string; size: number }>;
 }
@@ -92,6 +94,8 @@ export interface EngineAdapter {
    *  can't use the default localhost-callback OAuth. Callers should poll
    *  `probeAuthed()` to detect when auth.json / OAuth creds appear. */
   openLoginInTerminal(opts?: { deviceAuth?: boolean }): Promise<{ opened: boolean; error?: string; verificationUrl?: string; deviceCode?: string }>;
+  /** List selectable models when the engine supports it. Static fallbacks are OK. */
+  listModels?(): Promise<EngineModelList>;
 
   // Execution
   /** Produce the argv for spawning this engine in headless mode. */
@@ -118,6 +122,8 @@ export interface EngineAdapter {
 export interface RunEngineOptions {
   engineId: string;
   prompt: string;
+  /** Optional model id selected by the user. Undefined means use the CLI default. */
+  model?: string;
   sessionId: string;
   webContents: WebContents;
   cdpPort: number;
@@ -130,4 +136,25 @@ export interface RunEngineOptions {
   /** Fired once per run with the resolved auth for this spawn, so the caller
    *  can stamp the session with the mode that actually ran it. */
   onAuthResolved?: (info: { authMode: 'apiKey' | 'subscription' | null; subscriptionType: string | null }) => void;
+}
+
+export interface EngineModelInfo {
+  id: string;
+  displayName: string;
+  description?: string;
+  source: 'cli' | 'app-server' | 'static' | 'env' | 'fallback';
+  isDefault?: boolean;
+  isCurrent?: boolean;
+  hidden?: boolean;
+  supportedReasoningEfforts?: string[];
+}
+
+export interface EngineModelList {
+  engineId: string;
+  models: EngineModelInfo[];
+  source: EngineModelInfo['source'];
+  error?: string;
+  cached?: boolean;
+  cachedAt?: number;
+  expiresAt?: number;
 }

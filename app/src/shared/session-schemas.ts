@@ -138,6 +138,7 @@ export const AgentSessionSchema = z.object({
   primarySite: z.string().nullable().optional(),
   lastActivityAt: z.number().optional(),
   engine: z.string().optional(),
+  model: z.string().optional(),
   // Snapshotted at spawn — whether the run was authenticated via API key or
   // subscription OAuth. Optional on existing rows (pre-migration-v9 sessions
   // predate this field). Distinct from the live auth mode in authStore because

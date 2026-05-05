@@ -1034,6 +1034,11 @@ export function AgentPane({ session, focused, onRerun, onFollowUp, onDismiss, on
           {session.engine === 'claude-code' && (
             <img className="pane__engine-icon" src={claudeCodeLogo} alt="Claude Code" title="Claude Code" />
           )}
+          {session.model && (
+            <span className="pane__model-badge" title={`Model: ${session.model}`}>
+              {session.model}
+            </span>
+          )}
           {session.authMode && (
             <span
               className={`pane__auth-badge pane__auth-badge--${session.authMode}`}

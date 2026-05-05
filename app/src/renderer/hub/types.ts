@@ -26,6 +26,7 @@ export interface AgentSession {
   primarySite?: string | null;
   lastActivityAt?: number;
   engine?: string;
+  model?: string;
   authMode?: 'apiKey' | 'subscription';
   subscriptionType?: string;
   costUsd?: number;

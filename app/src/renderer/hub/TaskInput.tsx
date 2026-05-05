@@ -19,6 +19,7 @@ export interface TaskInputSubmission {
   prompt: string;
   attachments: TaskInputAttachment[];
   engine: string;
+  model?: string;
 }
 
 interface TaskInputProps {
@@ -26,6 +27,7 @@ interface TaskInputProps {
 }
 
 const ENGINE_STORAGE_KEY = 'hub.selectedEngine';
+const MODEL_STORAGE_PREFIX = 'hub.selectedModel.';
 const DEFAULT_ENGINE = 'claude-code';
 
 function loadStoredEngine(): string {
@@ -34,6 +36,25 @@ function loadStoredEngine(): string {
     return v && v.length > 0 ? v : DEFAULT_ENGINE;
   } catch {
     return DEFAULT_ENGINE;
+  }
+}
+
+function loadStoredModel(engineId: string): string | undefined {
+  try {
+    const v = localStorage.getItem(`${MODEL_STORAGE_PREFIX}${engineId}`);
+    return v && v.length > 0 ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeSelectedModel(engineId: string, model: string | undefined): void {
+  try {
+    const key = `${MODEL_STORAGE_PREFIX}${engineId}`;
+    if (model) localStorage.setItem(key, model);
+    else localStorage.removeItem(key);
+  } catch {
+    // ignore
   }
 }
 
@@ -78,6 +99,11 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [engine, setEngine] = useState<string>(() => loadStoredEngine());
+  const [modelsByEngine, setModelsByEngine] = useState<Record<string, string | undefined>>(() => {
+    const storedEngine = loadStoredEngine();
+    const storedModel = loadStoredModel(storedEngine);
+    return storedModel ? { [storedEngine]: storedModel } : {};
+  });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -121,18 +147,25 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
   const submit = useCallback(() => {
     const trimmed = value.trim();
     if (!trimmed && attachments.length === 0) return;
-    console.log('[TaskInput] submit', { promptLength: trimmed.length, attachmentCount: attachments.length });
-    onSubmit({ prompt: trimmed, attachments, engine });
+    const model = modelsByEngine[engine];
+    console.log('[TaskInput] submit', { promptLength: trimmed.length, attachmentCount: attachments.length, engine, model });
+    onSubmit({ prompt: trimmed, attachments, engine, model });
     setValue('');
     setAttachments([]);
     setErrorMsg(null);
     textareaRef.current?.focus();
-  }, [value, attachments, engine, onSubmit]);
+  }, [value, attachments, engine, modelsByEngine, onSubmit]);
 
   const onEngineChange = useCallback((id: string) => {
     setEngine(id);
+    setModelsByEngine((prev) => (id in prev ? prev : { ...prev, [id]: loadStoredModel(id) }));
     try { localStorage.setItem(ENGINE_STORAGE_KEY, id); } catch { /* ignore */ }
   }, []);
+
+  const onModelChange = useCallback((model: string | undefined) => {
+    setModelsByEngine((prev) => ({ ...prev, [engine]: model }));
+    storeSelectedModel(engine, model);
+  }, [engine]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -225,7 +258,13 @@ export const TaskInput = forwardRef<TaskInputHandle, TaskInputProps>(function Ta
           >
             <PaperclipIcon />
           </button>
-          <EnginePicker value={engine} onChange={onEngineChange} />
+          <EnginePicker
+            value={engine}
+            model={modelsByEngine[engine]}
+            modelByEngine={modelsByEngine}
+            onChange={onEngineChange}
+            onModelChange={onModelChange}
+          />
           <input
             ref={fileInputRef}
             type="file"

@@ -6,6 +6,7 @@
 // Adapters (side-effect register()):
 import './claude-code/adapter';
 import './codex/adapter';
+import './cursor-agent/adapter';
 
 export { runEngine } from './runEngine';
 export { get as getAdapter, list as listAdapters, DEFAULT_ENGINE_ID } from './registry';

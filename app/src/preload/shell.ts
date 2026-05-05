@@ -91,6 +91,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       logout: (): Promise<{ opened: boolean; error?: string }> =>
         ipcRenderer.invoke('settings:codex:logout'),
     },
+    cursor: {
+      status: (): Promise<{
+        id: string;
+        displayName: string;
+        installed: { installed: boolean; version?: string; error?: string };
+        authed: { authed: boolean; error?: string };
+      }> => ipcRenderer.invoke('sessions:engine-status', 'cursor-agent'),
+      login: (): Promise<{ opened: boolean; error?: string }> =>
+        ipcRenderer.invoke('sessions:engine-login', 'cursor-agent'),
+      logout: (): Promise<{ opened: boolean; error?: string }> =>
+        ipcRenderer.invoke('settings:cursor-agent:logout'),
+    },
     privacy: {
       get: (): Promise<{ telemetry: boolean; telemetryUpdatedAt: string | null; version: number }> =>
         ipcRenderer.invoke('consent:get'),
@@ -168,7 +180,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   sessions: {
     create: (
-      promptOrPayload: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>; engine?: string },
+      promptOrPayload: string | { prompt: string; attachments?: Array<{ name: string; mime: string; bytes: Uint8Array }>; engine?: string; model?: string },
     ): Promise<string> => ipcRenderer.invoke('sessions:create', promptOrPayload),
     start: (id: string): Promise<void> => ipcRenderer.invoke('sessions:start', id),
     cancel: (id: string): Promise<void> => ipcRenderer.invoke('sessions:cancel', id),
@@ -187,6 +199,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sessions:open-in-editor', { editorId, filePath }),
     listEngines: (): Promise<Array<{ id: string; displayName: string; binaryName: string }>> =>
       ipcRenderer.invoke('sessions:list-engines'),
+    listEngineModels: (engineId: string, opts?: { forceRefresh?: boolean }): Promise<{
+      engineId: string;
+      models: Array<{ id: string; displayName: string; description?: string; source: string; isDefault?: boolean; isCurrent?: boolean; hidden?: boolean; supportedReasoningEfforts?: string[] }>;
+      source: string;
+      error?: string;
+      cached?: boolean;
+      cachedAt?: number;
+      expiresAt?: number;
+    }> => ipcRenderer.invoke('sessions:list-engine-models', engineId, opts),
     engineStatus: (engineId: string): Promise<{
       id: string;
       displayName: string;

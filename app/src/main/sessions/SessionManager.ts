@@ -26,11 +26,8 @@ export class SessionManager extends EventEmitter {
    * In-memory only — cleared on process restart and on rerun.
    */
   private claudeSessionIds: Map<string, string> = new Map();
-  /**
-   * Per-session engine id chosen at create time. In-memory only; reverts to
-   * default on process restart until a DB column is added in migration v8.
-   */
   private sessionEngines: Map<string, string> = new Map();
+  private sessionModels: Map<string, string> = new Map();
   private termStates: Map<string, TermTranslatorState> = new Map();
   private db: SessionDb;
 
@@ -70,6 +67,10 @@ export class SessionManager extends EventEmitter {
       if (row.engine) {
         (session as AgentSession & { engine?: string }).engine = row.engine;
         this.sessionEngines.set(row.id, row.engine);
+      }
+      if (row.model) {
+        (session as AgentSession & { model?: string }).model = row.model;
+        this.sessionModels.set(row.id, row.model);
       }
       if (row.auth_mode === 'apiKey' || row.auth_mode === 'subscription') {
         session.authMode = row.auth_mode;
@@ -373,6 +374,8 @@ export class SessionManager extends EventEmitter {
     this.clearStuckTimer(id);
     this.abortControllers.delete(id);
     this.sessions.delete(id);
+    this.sessionEngines.delete(id);
+    this.sessionModels.delete(id);
     this.termStates.delete(id);
     this.db.deleteSession(id);
     mainLogger.info('SessionManager.deleteSession', { id });
@@ -485,7 +488,7 @@ export class SessionManager extends EventEmitter {
     return this.claudeSessionIds.get(id);
   }
 
-  /** Record the engine id chosen for this session (in-memory only). Also
+  /** Record the engine id chosen for this session. Also
    *  stamps `session.engine` so every future `{ ...session }` snapshot carries
    *  the provider id to the renderer for header icon rendering. */
   setSessionEngine(id: string, engineId: string): void {
@@ -501,6 +504,24 @@ export class SessionManager extends EventEmitter {
   /** Retrieve the per-session engine id, or null if never set. */
   getSessionEngine(id: string): string | null {
     return this.sessionEngines.get(id) ?? null;
+  }
+
+  /** Record the explicit model selected for this session. Null means CLI default. */
+  setSessionModel(id: string, model: string | null): void {
+    const session = this.sessions.get(id);
+    if (model) this.sessionModels.set(id, model);
+    else this.sessionModels.delete(id);
+    this.db.updateModel(id, model);
+    if (session) {
+      if (model) (session as AgentSession & { model?: string }).model = model;
+      else delete (session as AgentSession & { model?: string }).model;
+      this.emitEvent('session-updated', { ...session });
+    }
+  }
+
+  /** Retrieve the per-session explicit model, or null for CLI default. */
+  getSessionModel(id: string): string | null {
+    return this.sessionModels.get(id) ?? null;
   }
 
   /** Snapshot the auth mode + subscription type that actually ran this session.
