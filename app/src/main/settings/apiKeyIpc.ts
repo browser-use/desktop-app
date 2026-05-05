@@ -148,6 +148,7 @@ async function handleClaudeCodeLogin(): Promise<{ ok: boolean; error?: string }>
       child = spawn(resolved.command, resolved.args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         env,
+        ...resolved.spawnOptions,
       });
     } catch (err) {
       finish({ ok: false, error: (err as Error).message });
@@ -256,7 +257,7 @@ function runLogoutCommand(bin: string, args: string[]): Promise<{ opened: boolea
     try {
       const env = enrichedEnv();
       const resolved = resolveCliSpawn(bin, args, { env });
-      child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+      child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env, ...resolved.spawnOptions });
     } catch (err) {
       resolve({ opened: false, error: `spawn failed: ${(err as Error).message}` });
       return;

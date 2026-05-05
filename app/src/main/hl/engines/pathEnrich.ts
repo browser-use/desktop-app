@@ -192,6 +192,12 @@ export interface ResolvedCli {
   args: string[];
   /** True iff we rewrote the call to go through cmd.exe. */
   viaCmdShell: boolean;
+  /** Spread into spawn options. Carries `windowsVerbatimArguments: true`
+   *  whenever we hand-built the cmd.exe command line — without it, Node's
+   *  libuv `quote_cmd_arg` will re-quote our already-quoted cmdline arg
+   *  and cmd.exe ends up trying to execute the entire quoted blob as a
+   *  single program name. */
+  spawnOptions: { windowsVerbatimArguments?: boolean };
 }
 
 export function resolveCliSpawn(
@@ -200,17 +206,17 @@ export function resolveCliSpawn(
   opts: { platform?: Platform; env?: NodeJS.ProcessEnv } = {},
 ): ResolvedCli {
   const platform = opts.platform ?? process.platform;
-  if (platform !== 'win32') return { command: name, args: [...args], viaCmdShell: false };
+  if (platform !== 'win32') return { command: name, args: [...args], viaCmdShell: false, spawnOptions: {} };
 
   const env = opts.env ?? enrichedEnv();
   const resolved = findOnWindowsPath(name, env);
-  if (!resolved) return { command: name, args: [...args], viaCmdShell: false };
+  if (!resolved) return { command: name, args: [...args], viaCmdShell: false, spawnOptions: {} };
 
   const ext = path.win32.extname(resolved).toLowerCase();
   if (!WIN_SHIM_EXTS.includes(ext as (typeof WIN_SHIM_EXTS)[number])) {
     // Native .exe (or .com) — spawn it directly. Use the resolved absolute
     // path so we're not at the mercy of PATH ordering at exec time.
-    return { command: resolved, args: [...args], viaCmdShell: false };
+    return { command: resolved, args: [...args], viaCmdShell: false, spawnOptions: {} };
   }
 
   if (ext === '.ps1') {
@@ -220,6 +226,7 @@ export function resolveCliSpawn(
       command: 'powershell.exe',
       args: ['-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', resolved, ...args],
       viaCmdShell: false,
+      spawnOptions: {},
     };
   }
 
@@ -229,10 +236,19 @@ export function resolveCliSpawn(
   // the outer layer and leaves the inner quoted tokens intact for parsing.
   // Without this, a leading quote (from a space-containing path like
   // "C:\Program Files\...") gets stripped by /s, breaking the command.
+  //
+  // CRITICAL: callers MUST spread spawnOptions onto their spawn() call.
+  // `windowsVerbatimArguments: true` disables Node's libuv arg re-quoting,
+  // which would otherwise wrap our already-quoted cmdline in a SECOND pair
+  // of escaped quotes — cmd.exe then sees `"\"path args\""`, the backslashes
+  // are literal (cmd doesn't recognize `\"` as an escape), and the whole
+  // mess is treated as a single program name. Verified against Win11 +
+  // GitHub Actions windows-latest in tests/unit/hl/codexStdinWindows.test.ts.
   const cmdline = [resolved, ...args].map(quoteForCmdExe).join(' ');
   return {
     command: process.env.ComSpec || 'cmd.exe',
     args: ['/d', '/s', '/c', `"${cmdline}"`],
     viaCmdShell: true,
+    spawnOptions: { windowsVerbatimArguments: true },
   };
 }

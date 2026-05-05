@@ -102,7 +102,7 @@ export function registerOnboardingHandlers(deps: OnboardingHandlerDeps): void {
   ipcMain.handle('onboarding:run-claude-login', async () => {
     const env = enrichedEnv();
     const resolved = resolveCliSpawn('claude', ['auth', 'login', '--claudeai'], { env });
-    const child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+    const child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env, ...resolved.spawnOptions });
     let stderrBuf = '';
     let stdoutBuf = '';
     child.stdout?.on('data', (d) => { stdoutBuf += String(d); if (stdoutBuf.length > 4096) stdoutBuf = stdoutBuf.slice(-4096); });
@@ -485,7 +485,7 @@ function runCli(bin: string, args: string[], timeoutMs = 5000): Promise<{ ok: bo
     try {
       const env = enrichedEnv();
       const resolved = resolveCliSpawn(bin, args, { env });
-      child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+      child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env, ...resolved.spawnOptions });
     } catch (err) {
       resolve({ ok: false, stdout: '', stderr: '', error: (err as Error).message });
       return;

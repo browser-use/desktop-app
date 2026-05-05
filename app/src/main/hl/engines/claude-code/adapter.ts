@@ -62,7 +62,7 @@ function runCli(args: string[], timeoutMs = 5000): Promise<{ ok: boolean; stdout
     try {
       const env = enrichedEnv();
       const resolved = resolveCliSpawn(BIN, args, { env });
-      child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+      child = spawn(resolved.command, resolved.args, { stdio: ['ignore', 'pipe', 'pipe'], env, ...resolved.spawnOptions });
     }
     catch { resolve({ ok: false, stdout: '', stderr: 'spawn failed' }); return; }
     let stdout = ''; let stderr = '';

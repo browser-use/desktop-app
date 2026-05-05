@@ -213,7 +213,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<void> {
   let child: ChildProcessWithoutNullStreams;
   try {
     const resolved = resolveCliSpawn(adapter.binaryName, args, { env });
-    child = spawn(resolved.command, resolved.args, { cwd: opts.harnessDir, env, stdio: [stdinMode, 'pipe', 'pipe'] });
+    child = spawn(resolved.command, resolved.args, { cwd: opts.harnessDir, env, stdio: [stdinMode, 'pipe', 'pipe'], ...resolved.spawnOptions });
   } catch (err) {
     opts.onEvent({ type: 'error', message: `spawn_failed: ${(err as Error).message}` });
     return;

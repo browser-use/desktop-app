@@ -48,7 +48,7 @@ describe.skipIf(!onWindows)('codex stdin path on Windows', () => {
     let stdoutBuf = '';
     let stderrBuf = '';
     const exitCode = await new Promise<number | null>((resolveSpawn, rejectSpawn) => {
-      const child = spawn(resolved.command, resolved.args, { env, cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(resolved.command, resolved.args, { env, cwd: tmp, stdio: ['pipe', 'pipe', 'pipe'], ...resolved.spawnOptions });
       child.stdout.on('data', (c: Buffer) => { stdoutBuf += c.toString('utf-8'); });
       child.stderr.on('data', (c: Buffer) => { stderrBuf += c.toString('utf-8'); });
       child.on('error', rejectSpawn);
